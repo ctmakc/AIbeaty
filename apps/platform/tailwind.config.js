@@ -1,9 +1,11 @@
+const path = require("path");
+
 module.exports = {
   darkMode: "class",
   content: [
-    "./screens/**/*.html",
-    "./screens/**/*.js",
-    "./index.html"
+    path.join(__dirname, "screens/**/*.html"),
+    path.join(__dirname, "screens/**/*.js"),
+    path.join(__dirname, "index.html")
   ],
   theme: {
     extend: {
