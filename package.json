@@ -12,7 +12,8 @@
     "platform:build-css": "tailwindcss -c apps/platform/tailwind.config.js -i apps/platform/styles/platform.tailwind.css -o apps/platform/styles/platform.css --minify",
     "preplatform:serve": "npm run platform:build-css",
     "landing:serve": "python3 -m http.server 4173 -d apps/landing",
-    "platform:serve": "python3 -m http.server 4174 -d apps/platform"
+    "platform:serve": "node apps/platform/server.js",
+    "platform:api:check": "node apps/platform/server.js --check"
   },
   "devDependencies": {
     "@tailwindcss/container-queries": "^0.1.1",

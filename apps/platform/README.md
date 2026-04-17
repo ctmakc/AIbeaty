@@ -24,7 +24,7 @@ npm run platform:serve
 
 Then open `http://localhost:4174`.
 
-`platform:serve` now rebuilds the local Tailwind bundle first, so the imported Stitch screens no longer depend on the Tailwind CDN at runtime.
+`platform:serve` now rebuilds the local Tailwind bundle first, serves the static platform shell, and exposes `/api/platform/*` from the same process on `4174`.
 
 ## Note
 
@@ -45,5 +45,24 @@ This keeps the screens static-first while making them ready for backend-fed data
 - shared CSS build: `apps/platform/styles/platform.css`
 - Tailwind source: `apps/platform/styles/platform.tailwind.css`
 - Tailwind config: `apps/platform/tailwind.config.js`
+- local platform server: `apps/platform/server.js`
 
 This keeps the visual output intact while making the platform deterministic enough for backend integration work.
+
+## Local API
+
+- `GET /api/platform/health`
+- `GET /api/platform`
+- `GET /api/platform/<screen-id>`
+
+Examples:
+
+- `/api/platform/salon-performance-luminous-core`
+- `/api/platform/unified-inbox-luminous-core`
+- `/api/platform/inventory-management-luminous-core`
+
+Validation:
+
+```bash
+npm run platform:api:check
+```
