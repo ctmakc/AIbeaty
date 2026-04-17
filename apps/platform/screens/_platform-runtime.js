@@ -112,7 +112,12 @@
     qsa("button, a").forEach(function (node) {
       if (node.dataset.actionBound === "true") return;
       var text = (node.textContent || "").replace(/\s+/g, " ").trim().toLowerCase();
-      if (!text) return;
+      var href = node.tagName === "A" ? node.getAttribute("href") : "";
+      var iconText = qsa(".material-symbols-outlined", node)
+        .map(function (icon) {
+          return (icon.textContent || "").trim().toLowerCase();
+        })
+        .join(" ");
       var message = null;
       if (text.includes("export report")) message = "Export queue stubbed. Wire this to reporting API next.";
       else if (text.includes("view all activity")) message = "Full activity feed view is queued for backend wiring.";
@@ -125,11 +130,20 @@
       else if (text.includes("activate")) message = "Workflow activation stubbed. POST to automations endpoint next.";
       else if (text.includes("test run")) message = "Test run stubbed. Use this to preview automation on backend.";
       else if (text.includes("view all hair") || text.includes("view all")) message = "Expanded list view is pending backend pagination.";
+      else if (text.includes("new booking")) message = "Booking drawer stubbed. Wire this to appointment creation flow.";
+      else if (text.includes("new client")) message = "New client flow stubbed. POST this to CRM backend next.";
+      else if (text.includes("save") || text.includes("save changes")) message = "Changes stored locally for now. Persist them through the backend mutation next.";
+      else if (text.includes("duplicate")) message = "Duplicate action stubbed. Clone this entity through backend when ready.";
       else if (text.includes("book") && !text.includes("new booking")) message = "Booking action stubbed. Route this to booking flow after backend wiring.";
       else if (text.includes("close")) message = "Drawer close action kept intentionally local for now.";
+      else if (iconText.includes("notifications")) message = "Notifications center is shell-only until backend events land.";
+      else if (iconText.includes("dark_mode")) message = "Theme toggle is intentionally held until shared app preferences exist.";
+      else if (iconText.includes("account_circle")) message = "Profile menu shell is ready for auth/account wiring.";
+      else if (!text && (iconText.includes("edit") || iconText.includes("more_horiz"))) message = "Inline actions are stubbed until backend mutations are connected.";
+      else if (href === "#") message = "This control is reserved for the next backend integration step.";
       if (!message) return;
       node.addEventListener("click", function (event) {
-        if (node.tagName === "A" && node.getAttribute("href") && node.getAttribute("href") !== "#") return;
+        if (node.tagName === "A" && href && href !== "#") return;
         event.preventDefault();
         notify(message);
       });
@@ -334,7 +348,7 @@
             item.name.toLowerCase().indexOf(term) !== -1 ||
             item.brand.toLowerCase().indexOf(term) !== -1 ||
             item.sku.toLowerCase().indexOf(term) !== -1) &&
-          (currentTab === "professional" || item.name.toLowerCase().indexOf("retail") !== -1)
+          (!item.category || item.category === currentTab)
         );
       });
     }

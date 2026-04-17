@@ -38,11 +38,13 @@
         { "label": "Restock Order", "value": "Create PO", "detail": "Generate automated PO for low items." }
       ],
       "items": [
-        { "name": "Hydration Shampoo Gal.", "sku": "HYD-001", "brand": "Olaplex", "stock": "2 Gal", "stockTone": "low", "reorderPoint": "4 Gal", "cost": "$120.00", "icon": "water_drop" },
-        { "name": "Color Protect Conditioner", "sku": "COL-042", "brand": "Pureology", "stock": "8 Gal", "stockTone": "ok", "reorderPoint": "3 Gal", "cost": "$145.50", "icon": "water_drop" },
-        { "name": "Bleach Powder 500g", "sku": "BLCH-99", "brand": "Wella", "stock": "1 Tub", "stockTone": "low", "reorderPoint": "5 Tubs", "cost": "$45.00", "icon": "brush" },
-        { "name": "Developer 20 Vol", "sku": "DEV-20", "brand": "Redken", "stock": "12 Btls", "stockTone": "ok", "reorderPoint": "6 Btls", "cost": "$18.00", "icon": "science" },
-        { "name": "Styling Hairspray Strong", "sku": "STY-882", "brand": "Kenra", "stock": "5 Cans", "stockTone": "watch", "reorderPoint": "5 Cans", "cost": "$22.00", "icon": "sprinkler" }
+        { "name": "Hydration Shampoo Gal.", "sku": "HYD-001", "brand": "Olaplex", "stock": "2 Gal", "stockTone": "low", "reorderPoint": "4 Gal", "cost": "$120.00", "icon": "water_drop", "category": "professional" },
+        { "name": "Color Protect Conditioner", "sku": "COL-042", "brand": "Pureology", "stock": "8 Gal", "stockTone": "ok", "reorderPoint": "3 Gal", "cost": "$145.50", "icon": "water_drop", "category": "professional" },
+        { "name": "Bleach Powder 500g", "sku": "BLCH-99", "brand": "Wella", "stock": "1 Tub", "stockTone": "low", "reorderPoint": "5 Tubs", "cost": "$45.00", "icon": "brush", "category": "professional" },
+        { "name": "Developer 20 Vol", "sku": "DEV-20", "brand": "Redken", "stock": "12 Btls", "stockTone": "ok", "reorderPoint": "6 Btls", "cost": "$18.00", "icon": "science", "category": "professional" },
+        { "name": "Styling Hairspray Strong", "sku": "STY-882", "brand": "Kenra", "stock": "5 Cans", "stockTone": "watch", "reorderPoint": "5 Cans", "cost": "$22.00", "icon": "sprinkler", "category": "professional" },
+        { "name": "Retail Shine Spray", "sku": "RTL-204", "brand": "Amika", "stock": "14 Units", "stockTone": "ok", "reorderPoint": "6 Units", "cost": "$18.50", "icon": "auto_fix_high", "category": "retail" },
+        { "name": "Travel Dry Shampoo", "sku": "RTL-118", "brand": "IGK", "stock": "4 Units", "stockTone": "low", "reorderPoint": "8 Units", "cost": "$9.00", "icon": "air", "category": "retail" }
       ],
       "shipments": [
         { "title": "Order Delivered: Olaplex", "meta": "PO-2026-089 • Received by Sarah J.", "time": "10:42 AM", "status": "Received" },
@@ -262,6 +264,18 @@
           "conversionRate": "28%",
           "revenue": "+$1,020",
           "icon": "cake",
+          "tone": "tertiary"
+        },
+        {
+          "name": "Lapsed Guest Winback",
+          "subtitle": "SMS + Rebooking Offer",
+          "trigger": "No completed visit in 90 days",
+          "action": "Send text with stylist-specific rebooking link",
+          "sent": "88",
+          "converted": "19",
+          "conversionRate": "22%",
+          "revenue": "+$1,440",
+          "icon": "person_search",
           "tone": "tertiary"
         }
       ],
