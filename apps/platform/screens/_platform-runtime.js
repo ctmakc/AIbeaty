@@ -165,9 +165,39 @@
     return "bg-surface-container text-on-surface-variant";
   }
 
+  function getNumericStockValue(stockLabel) {
+    var match = String(stockLabel || "").match(/[\d.]+/);
+    return match ? Number(match[0]) : 0;
+  }
+
   function setSearchPlaceholder(value) {
     var input = qs("header input[type='text']");
     if (input && value) input.placeholder = value;
+  }
+
+  function screenApiUrl() {
+    return apiBase.replace(/\/$/, "") + "/" + pageFile.replace(".html", "");
+  }
+
+  function fetchJson(url) {
+    return fetch(url, { headers: { Accept: "application/json" } }).then(function (response) {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    });
+  }
+
+  function mutateJson(url, method, payload) {
+    return fetch(url, {
+      method: method,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload || {})
+    }).then(function (response) {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    });
   }
 
   function renderPerformance(page) {
@@ -261,6 +291,11 @@
   }
 
   function renderInventory(page) {
+    function syncPage(nextPage) {
+      renderInventory(nextPage);
+      bindStaticButtons();
+    }
+
     var title = qs(".max-w-7xl h2.text-3xl");
     var subtitle = title && title.parentElement ? title.parentElement.querySelector("p") : null;
     if (title) title.textContent = page.title;
@@ -332,7 +367,20 @@
       }
       qsa("[data-edit-item]").forEach(function (button) {
         button.addEventListener("click", function () {
-          notify("Edit item stubbed for " + button.dataset.editItem + ".");
+          var itemName = button.dataset.editItem;
+          var item = items.find(function (entry) { return entry.name === itemName; });
+          if (!item) return;
+          var currentStock = getNumericStockValue(item.stock);
+          var nextStock = window.prompt("Update stock for " + item.name, String(currentStock));
+          if (nextStock === null) return;
+          mutateJson(apiBase.replace(/\/$/, "") + "/inventory/items/" + encodeURIComponent(item.sku), "PATCH", {
+            stock: nextStock
+          }).then(function (payload) {
+            notify("Inventory updated for " + item.name + ".");
+            syncPage(payload.page);
+          }).catch(function () {
+            notify("Inventory update failed.", "error");
+          });
         });
       });
     }
@@ -409,6 +457,21 @@
           );
         })
         .join("");
+    }
+
+    var createPoButton = qsa(".grid.grid-cols-1.md\\:grid-cols-4 > div button")[0];
+    if (createPoButton) {
+      createPoButton.dataset.actionBound = "true";
+      createPoButton.addEventListener("click", function () {
+        mutateJson(apiBase.replace(/\/$/, "") + "/inventory/restock-orders", "POST", {
+          scope: currentTab
+        }).then(function (payload) {
+          notify("Restock order created from live backend.");
+          syncPage(payload.page);
+        }).catch(function () {
+          notify("Restock order request failed.", "error");
+        });
+      });
     }
   }
 
@@ -980,6 +1043,11 @@
   }
 
   function renderAutomations(page) {
+    function syncPage(nextPage) {
+      renderAutomations(nextPage);
+      bindStaticButtons();
+    }
+
     var title = qs("main h2.text-3xl");
     var subtitle = title && title.parentElement ? title.parentElement.querySelector("p") : null;
     if (title) title.textContent = page.title;
@@ -992,27 +1060,30 @@
 
     function renderWorkflows(list) {
       if (!workflowsWrap) return;
-      var listHeader = '<div class="flex items-center justify-between mb-2"><h3 class="font-headline font-bold text-lg text-on-surface">Active Workflows</h3><span class="text-xs font-bold text-primary bg-primary/10 px-3 py-1 rounded-full">' + (list.length ? list.length + " Running" : "0 Running") + "</span></div>";
+      var enabledCount = list.filter(function (workflow) { return workflow.enabled !== false; }).length;
+      var listHeader = '<div class="flex items-center justify-between mb-2"><h3 class="font-headline font-bold text-lg text-on-surface">Active Workflows</h3><span class="text-xs font-bold text-primary bg-primary/10 px-3 py-1 rounded-full">' + enabledCount + " Running</span></div>";
       workflowsWrap.innerHTML =
         listHeader +
         (list.length
           ? list
               .map(function (workflow) {
                 var toneClass = workflow.tone === "error" ? "bg-error/10 text-error" : "bg-tertiary/10 text-tertiary";
-                return '<div class="workflow-card bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-transparent hover:border-outline-variant/10 transition-colors group" data-workflow-name="' + workflow.name.toLowerCase() + '"><div class="flex items-center justify-between mb-5"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl ' + toneClass + ' flex items-center justify-center"><span class="material-symbols-outlined" style="font-variation-settings: \'FILL\' 1;">' + workflow.icon + '</span></div><div><h4 class="font-headline font-bold text-on-surface">' + workflow.name + '</h4><p class="text-xs text-on-surface-variant mt-0.5">' + workflow.subtitle + '</p></div></div><button class="workflow-toggle w-11 h-6 bg-primary rounded-full relative transition-colors shadow-inner flex items-center px-1" data-enabled="true"><div class="w-4 h-4 bg-white rounded-full translate-x-5 transition-transform shadow-sm"></div></button></div><div class="bg-surface-container-low rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-6"><div class="flex items-center gap-2 flex-1"><span class="font-headline font-black text-xs text-primary uppercase tracking-widest bg-white px-2 py-1 rounded-lg shadow-sm">If</span><span class="font-body text-sm font-medium text-on-surface">' + workflow.trigger + '</span></div><span class="material-symbols-outlined text-outline-variant hidden sm:block">arrow_right_alt</span><div class="flex items-center gap-2 flex-1"><span class="font-headline font-black text-xs text-tertiary uppercase tracking-widest bg-white px-2 py-1 rounded-lg shadow-sm">Then</span><span class="font-body text-sm font-medium text-on-surface">' + workflow.action + '</span></div></div><div class="grid grid-cols-3 gap-4"><div class="bg-surface px-4 py-3 rounded-xl flex flex-col"><span class="text-xs text-on-surface-variant font-medium mb-1">Sent (30d)</span><span class="font-headline font-extrabold text-xl text-on-surface">' + workflow.sent + '</span></div><div class="bg-surface px-4 py-3 rounded-xl flex flex-col"><span class="text-xs text-on-surface-variant font-medium mb-1">Converted</span><div class="flex items-baseline gap-2"><span class="font-headline font-extrabold text-xl text-on-surface">' + workflow.converted + '</span><span class="text-xs font-bold text-secondary">' + workflow.conversionRate + '</span></div></div><div class="bg-surface px-4 py-3 rounded-xl flex flex-col"><span class="text-xs text-on-surface-variant font-medium mb-1">Revenue Recovered</span><span class="font-headline font-extrabold text-xl text-secondary">' + workflow.revenue + '</span></div></div></div>';
+                var enabled = workflow.enabled !== false;
+                return '<div class="workflow-card bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-transparent hover:border-outline-variant/10 transition-colors group" data-workflow-name="' + workflow.name.toLowerCase() + '"><div class="flex items-center justify-between mb-5"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl ' + toneClass + ' flex items-center justify-center"><span class="material-symbols-outlined" style="font-variation-settings: \'FILL\' 1;">' + workflow.icon + '</span></div><div><h4 class="font-headline font-bold text-on-surface">' + workflow.name + '</h4><p class="text-xs text-on-surface-variant mt-0.5">' + workflow.subtitle + '</p></div></div><button class="workflow-toggle w-11 h-6 ' + (enabled ? "bg-primary" : "bg-surface-container-high") + ' rounded-full relative transition-colors shadow-inner flex items-center px-1" data-enabled="' + (enabled ? "true" : "false") + '" data-workflow-name="' + workflow.name + '"><div class="w-4 h-4 bg-white rounded-full ' + (enabled ? "translate-x-5" : "translate-x-0") + ' transition-transform shadow-sm"></div></button></div><div class="bg-surface-container-low rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-6"><div class="flex items-center gap-2 flex-1"><span class="font-headline font-black text-xs text-primary uppercase tracking-widest bg-white px-2 py-1 rounded-lg shadow-sm">If</span><span class="font-body text-sm font-medium text-on-surface">' + workflow.trigger + '</span></div><span class="material-symbols-outlined text-outline-variant hidden sm:block">arrow_right_alt</span><div class="flex items-center gap-2 flex-1"><span class="font-headline font-black text-xs text-tertiary uppercase tracking-widest bg-white px-2 py-1 rounded-lg shadow-sm">Then</span><span class="font-body text-sm font-medium text-on-surface">' + workflow.action + '</span></div></div><div class="grid grid-cols-3 gap-4"><div class="bg-surface px-4 py-3 rounded-xl flex flex-col"><span class="text-xs text-on-surface-variant font-medium mb-1">Sent (30d)</span><span class="font-headline font-extrabold text-xl text-on-surface">' + workflow.sent + '</span></div><div class="bg-surface px-4 py-3 rounded-xl flex flex-col"><span class="text-xs text-on-surface-variant font-medium mb-1">Converted</span><div class="flex items-baseline gap-2"><span class="font-headline font-extrabold text-xl text-on-surface">' + workflow.converted + '</span><span class="text-xs font-bold text-secondary">' + workflow.conversionRate + '</span></div></div><div class="bg-surface px-4 py-3 rounded-xl flex flex-col"><span class="text-xs text-on-surface-variant font-medium mb-1">Revenue Recovered</span><span class="font-headline font-extrabold text-xl text-secondary">' + workflow.revenue + '</span></div></div></div>';
               })
               .join("")
           : '<div class="aibeaty-empty">No workflows match this search.</div>');
       qsa(".workflow-toggle").forEach(function (button) {
         button.addEventListener("click", function () {
           var enabled = button.dataset.enabled === "true";
-          button.dataset.enabled = enabled ? "false" : "true";
-          button.className =
-            "workflow-toggle w-11 h-6 rounded-full relative transition-colors shadow-inner flex items-center px-1 " +
-            (enabled ? "bg-surface-container-high" : "bg-primary");
-          var knob = qs("div", button);
-          if (knob) knob.className = "w-4 h-4 bg-white rounded-full " + (enabled ? "translate-x-0" : "translate-x-5") + " transition-transform shadow-sm";
-          notify("Workflow " + (enabled ? "paused" : "enabled") + " locally. Persist on backend next.");
+          mutateJson(apiBase.replace(/\/$/, "") + "/automations/workflows/" + encodeURIComponent(button.dataset.workflowName), "PATCH", {
+            enabled: !enabled
+          }).then(function (payload) {
+            notify("Workflow " + (enabled ? "paused" : "enabled") + " on live backend.");
+            syncPage(payload.page);
+          }).catch(function () {
+            notify("Workflow update failed.", "error");
+          });
         });
       });
     }
@@ -1024,6 +1095,40 @@
       if (controls[0]) controls[0].value = page.builder.trigger;
       if (controls[1]) controls[1].value = page.builder.action;
       if (controls[2]) controls[2].value = page.builder.message;
+      var actionButtons = qsa("button[type='button']", form);
+      var payloadForBuilder = function () {
+        return {
+          trigger: controls[0] ? controls[0].value : "",
+          action: controls[1] ? controls[1].value : "",
+          message: controls[2] ? controls[2].value : ""
+        };
+      };
+      if (actionButtons[0]) {
+        actionButtons[0].dataset.actionBound = "true";
+        actionButtons[0].addEventListener("click", function () {
+          mutateJson(apiBase.replace(/\/$/, "") + "/automations/builder/test-run", "POST", payloadForBuilder())
+            .then(function (payload) {
+              notify(payload.preview || "Automation preview created.");
+              syncPage(payload.page);
+            })
+            .catch(function () {
+              notify("Automation test run failed.", "error");
+            });
+        });
+      }
+      if (actionButtons[1]) {
+        actionButtons[1].dataset.actionBound = "true";
+        actionButtons[1].addEventListener("click", function () {
+          mutateJson(apiBase.replace(/\/$/, "") + "/automations/builder/activate", "POST", payloadForBuilder())
+            .then(function (payload) {
+              notify("Automation activated on live backend.");
+              syncPage(payload.page);
+            })
+            .catch(function () {
+              notify("Automation activation failed.", "error");
+            });
+        });
+      }
     }
     var search = qs("header input[type='text']");
     if (search) {
@@ -1048,16 +1153,8 @@
     "automations-marketing-luminous-core.html": renderAutomations
   };
 
-  function fetchJson(url) {
-    return fetch(url, { headers: { Accept: "application/json" } }).then(function (response) {
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      return response.json();
-    });
-  }
-
   function loadData() {
-    var liveUrl = apiBase.replace(/\/$/, "") + "/" + pageFile.replace(".html", "");
-    return fetchJson(liveUrl)
+    return fetchJson(screenApiUrl())
       .then(function (payload) {
         return {
           mode: "live",

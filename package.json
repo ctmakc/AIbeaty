@@ -13,7 +13,8 @@
     "preplatform:serve": "npm run platform:build-css",
     "landing:serve": "python3 -m http.server 4173 -d apps/landing",
     "platform:serve": "node apps/platform/server.js",
-    "platform:api:check": "node apps/platform/server.js --check"
+    "platform:api:check": "node apps/platform/server.js --check",
+    "platform:state:reset": "node apps/platform/server.js --reset-state"
   },
   "devDependencies": {
     "@tailwindcss/container-queries": "^0.1.1",

@@ -66,3 +66,17 @@ Validation:
 ```bash
 npm run platform:api:check
 ```
+
+State reset:
+
+```bash
+npm run platform:state:reset
+```
+
+Current live mutations:
+
+- `PATCH /api/platform/inventory/items/:sku`
+- `POST /api/platform/inventory/restock-orders`
+- `PATCH /api/platform/automations/workflows/:name`
+- `POST /api/platform/automations/builder/test-run`
+- `POST /api/platform/automations/builder/activate`
