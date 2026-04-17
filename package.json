@@ -1,0 +1,15 @@
+{
+  "name": "aibeaty",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Monorepo for the AIbeaty landing site and beauty salon operations platform.",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "status": "printf 'AIbeaty repo scaffold is ready.\\n'",
+    "notes": "printf 'See docs/ for briefs and structure.\\n'",
+    "landing:serve": "python3 -m http.server 4173 -d apps/landing",
+    "platform:serve": "python3 -m http.server 4174 -d apps/platform"
+  }
+}

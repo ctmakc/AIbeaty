@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Salon OS - High-Density Schedule</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-secondary-container": "#004d68",
+                        "surface-dim": "#d1d5d7",
+                        "primary-fixed": "#9c93ff",
+                        "secondary-container": "#97daff",
+                        "tertiary-container": "#c79eff",
+                        "on-primary-fixed": "#000000",
+                        "tertiary-fixed-dim": "#bc8cff",
+                        "on-surface-variant": "#595c5d",
+                        "on-secondary-fixed-variant": "#005775",
+                        "surface-variant": "#dadddf",
+                        "outline": "#757778",
+                        "background": "#f5f6f7",
+                        "error": "#b41340",
+                        "on-tertiary-container": "#450087",
+                        "inverse-on-surface": "#9b9d9e",
+                        "on-primary-container": "#1b007a",
+                        "on-primary": "#f2edff",
+                        "on-primary-fixed-variant": "#230095",
+                        "primary": "#4d2afa",
+                        "on-error": "#ffefef",
+                        "surface-container-highest": "#dadddf",
+                        "tertiary-fixed": "#c79eff",
+                        "primary-container": "#9c93ff",
+                        "inverse-primary": "#8b80ff",
+                        "tertiary": "#7a25db",
+                        "on-tertiary-fixed-variant": "#50009c",
+                        "error-dim": "#a70138",
+                        "tertiary-dim": "#6d09ce",
+                        "surface-container": "#e6e8ea",
+                        "secondary": "#006384",
+                        "primary-fixed-dim": "#8e83ff",
+                        "on-background": "#2c2f30",
+                        "inverse-surface": "#0c0f10",
+                        "surface": "#f5f6f7",
+                        "on-tertiary": "#f9efff",
+                        "on-tertiary-fixed": "#24004c",
+                        "secondary-fixed": "#97daff",
+                        "on-secondary-fixed": "#00394d",
+                        "on-error-container": "#510017",
+                        "secondary-dim": "#005673",
+                        "surface-container-high": "#e0e3e4",
+                        "surface-bright": "#f5f6f7",
+                        "surface-container-low": "#eff1f2",
+                        "outline-variant": "#abadae",
+                        "on-secondary": "#e6f5ff",
+                        "on-surface": "#2c2f30",
+                        "error-container": "#f74b6d",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-tint": "#4d2afa",
+                        "primary-dim": "#400aef",
+                        "secondary-fixed-dim": "#6bcfff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Manrope", "sans-serif"],
+                        "body": ["Inter", "sans-serif"],
+                        "label": ["Inter", "sans-serif"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3, h4, h5, h6, .font-headline { font-family: 'Manrope', sans-serif; }
+        .glass-panel {
+            background-color: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+        }
+        .ghost-border { border: 1px solid rgba(171, 173, 174, 0.2); }
+        .tonal-lift { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03); }
+        
+        /* Custom scrollbar for schedule */
+        .schedule-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .schedule-scroll::-webkit-scrollbar-track { background: transparent; }
+        .schedule-scroll::-webkit-scrollbar-thumb { background: #dadddf; border-radius: 4px; }
+        .schedule-scroll::-webkit-scrollbar-thumb:hover { background: #abadae; }
+    </style>
+</head>
+<body class="bg-background text-on-surface h-screen flex overflow-hidden antialiased">
+<!-- SideNavBar -->
+<nav class="h-screen w-64 border-r-0 bg-[#F5F6F7] dark:bg-slate-950 text-indigo-600 dark:text-indigo-400 font-inter text-sm font-medium flex flex-col py-4 px-3 bg-slate-200 dark:bg-slate-800 tonal-layering flat no shadows z-20 shrink-0">
+<div class="mb-8 px-3">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-on-primary font-headline font-bold text-lg shadow-sm">
+                    PS
+                </div>
+<div>
+<h1 class="text-lg font-black text-slate-900 dark:text-white font-headline leading-tight">Precision Studio</h1>
+<p class="text-xs text-on-surface-variant">Premium Salon Management</p>
+</div>
+</div>
+</div>
+<button class="mb-6 w-full bg-gradient-to-r from-primary to-primary-dim text-on-primary rounded-md py-2.5 px-4 font-semibold flex items-center justify-center gap-2 tonal-lift hover:opacity-95 transition-opacity">
+<span class="material-symbols-outlined text-[20px]">add</span>
+            New Appointment
+        </button>
+<ul class="flex-1 space-y-1">
+<li>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-md text-slate-600 dark:text-slate-400 hover:text-indigo-500 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+                    Dashboard
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-md bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm transition-all duration-200 ease-in-out font-bold" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">calendar_month</span>
+                    Schedule
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-md text-slate-600 dark:text-slate-400 hover:text-indigo-500 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">chat_bubble</span>
+                    Inbox
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-md text-slate-600 dark:text-slate-400 hover:text-indigo-500 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">group</span>
+                    Clients
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-md text-slate-600 dark:text-slate-400 hover:text-indigo-500 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">inventory_2</span>
+                    Inventory
+                </a>
+</li>
+</ul>
+<ul class="mt-auto space-y-1 pt-4 border-t ghost-border">
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-md text-slate-600 dark:text-slate-400 hover:text-indigo-500 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">help</span>
+                    Support
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-md text-slate-600 dark:text-slate-400 hover:text-indigo-500 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">logout</span>
+                    Logout
+                </a>
+</li>
+</ul>
+</nav>
+<!-- Main Content Area -->
+<div class="flex-1 flex flex-col h-full overflow-hidden bg-surface-container-low">
+<!-- TopNavBar -->
+<header class="docked full-width top-0 bg-[#F5F6F7] dark:bg-slate-900 flex justify-between items-center px-6 h-16 w-full max-w-full bg-slate-200/50 dark:bg-slate-800/50 h-px w-full flat no shadows z-10 shrink-0 border-b ghost-border">
+<div class="flex items-center gap-4">
+<h2 class="font-headline font-bold text-xl text-on-surface">Tuesday, Oct 24</h2>
+<div class="flex bg-surface-container-highest rounded-lg p-1 ghost-border">
+<button class="px-3 py-1 text-sm font-medium rounded-md bg-surface-container-lowest text-primary shadow-sm">Day</button>
+<button class="px-3 py-1 text-sm font-medium rounded-md text-on-surface-variant hover:text-on-surface transition-colors">Week</button>
+</div>
+</div>
+<!-- Search Bar (on_left configuration visually, but placed in center for balance in this layout) -->
+<div class="flex-1 max-w-md mx-6">
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-3 text-outline">search</span>
+<input class="w-full bg-surface-container-lowest border border-outline/20 rounded-md py-1.5 pl-10 pr-4 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-on-surface placeholder-outline-variant" placeholder="Search clients, services..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-slate-500 dark:text-slate-400 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors scale-95 active:duration-75 p-2 rounded-full relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<button class="text-slate-500 dark:text-slate-400 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors scale-95 active:duration-75 p-2 rounded-full">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<button class="bg-surface-container-highest text-primary font-medium text-sm px-4 py-1.5 rounded-md hover:bg-surface-container transition-colors">
+                    Quick Book
+                </button>
+<div class="w-8 h-8 rounded-full bg-tertiary-container overflow-hidden border ghost-border ml-2">
+<img alt="Admin profile" class="w-full h-full object-cover" data-alt="close up headshot of a professional woman with natural makeup in soft studio lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAHWg_iUKbtmKKYIdBpSCrV3ptLz6gGg0xbtwefNB3L4Pfiky5BIcMmS62OdsYJDSKobvznZQn3BCKz9PV_EVuJ0F3EPaTXfdVp4hsGn2qCcX3KqNZZpuRb28dHExLxAX5ZoEtHXuGOvv6Emh5V_LhTlCFyaXP4o4COcV7RidojRpvHByNsz2eVbvZtbPsi65zI6JTN3NSYW6U2jzBhZINYfbf7u4yBmRKcDqEkb9D7vOrr-OJdwwxqNWfGr9bnB64cTwQeF5va1EXR"/>
+</div>
+</div>
+</header>
+<!-- Schedule Canvas -->
+<main class="flex-1 overflow-hidden flex relative">
+<!-- Main Schedule Grid -->
+<div class="flex-1 overflow-x-auto overflow-y-auto schedule-scroll bg-surface">
+<div class="min-w-[800px] h-full flex flex-col">
+<!-- Stylist Headers -->
+<div class="flex sticky top-0 z-10 bg-surface/90 backdrop-blur-md border-b ghost-border">
+<!-- Time Column Header Spacer -->
+<div class="w-20 shrink-0 border-r ghost-border bg-surface-container-low/50"></div>
+<!-- Columns -->
+<div class="flex-1 grid grid-cols-3 divide-x divide-outline-variant/20">
+<!-- Stylist 1 -->
+<div class="py-3 px-4 flex flex-col items-center justify-center bg-surface-container-lowest/80">
+<div class="w-10 h-10 rounded-full bg-secondary-container overflow-hidden mb-2 ring-2 ring-surface">
+<img alt="Sarah Jenkins" class="w-full h-full object-cover" data-alt="portrait of a smiling female hair stylist in a chic salon setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBBg8KV6zVW_NVIz_AFM_04S3tzsYkBAAoyFvFbIM3sqvKf96YmAiHxPjl69QsYhlbM1pESRoMTEKuREX8saqmN-LHZCpfcis8GyXuxWNdhAo7WFxKPidTXETS9lp1DsxJYxJ-p1r_TCkILGSsDBLhxfiY1vVgUqk21BNzHKO7JOp9ho3x-SfIknkeMN3sUCSqmIPe2fg-gQztFzFmqZD_hvo6dA-VA4ZWnhcoH9Ohzk0LfYDXbJgL1FsBWzHMKQSb7w50tw4grA7MF"/>
+</div>
+<h3 class="font-headline font-bold text-sm text-on-surface">Sarah Jenkins</h3>
+<p class="text-xs text-on-surface-variant">Senior Colorist</p>
+</div>
+<!-- Stylist 2 -->
+<div class="py-3 px-4 flex flex-col items-center justify-center bg-surface-container-lowest/80 relative">
+<div class="absolute inset-0 border-t-2 border-primary"></div>
+<div class="w-10 h-10 rounded-full bg-tertiary-container overflow-hidden mb-2 ring-2 ring-surface">
+<img alt="Michael Chang" class="w-full h-full object-cover" data-alt="professional portrait of a male stylist with neat hair looking directly at camera" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC5Xoy2eqNymX24fNhmOU1wtfwLV-KlU_3cxFoPW2tXn83LBO_f-GXmpY1tilLxMeQveGcfrSS5l7SwZ_xJmsKL7bmzH6sRzasEts_vcBQgEQXT0FI3CRY-hRRx0sqp-tZKpstRaJJPCTTURLTHw82hF5IGqK-yqWX_17655Wr-0FR1zsL7FfTt2qSDDVHcN0USIfKF__HT7whEfBKvnrbq5d60hR3gZ1pwhER-frfrv1ZUR5OV-5MBpVEwg5U2_cQazYgmLbBSkrfi"/>
+</div>
+<h3 class="font-headline font-bold text-sm text-on-surface">Michael Chang</h3>
+<p class="text-xs text-on-surface-variant">Master Stylist</p>
+</div>
+<!-- Stylist 3 -->
+<div class="py-3 px-4 flex flex-col items-center justify-center bg-surface-container-lowest/80">
+<div class="w-10 h-10 rounded-full bg-primary-container overflow-hidden mb-2 ring-2 ring-surface">
+<img alt="Elena Rostova" class="w-full h-full object-cover" data-alt="confident female esthetician in a clean bright studio environment" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCTY-xz_dQXBufBIWg7dcDaTRVXN_btIWMTsMFPG7lx5QvEe6LqM3kPAAg5AY0waBY0uq3OwnYxN9ETraVeKWRulgn3OiKTzhz1ME43RfPmAXk63PlVACJohsdQBmrcnA_kHSbt93uKI0g4LX8GADljlMI7ytVVElRw5bkkVVTLqUIPdf4OX5LjDZVPj6xZHOUs1-cFSppzco4-HsMNnPzYSRT7mRqlBW0LNdZMcniS2blGpph75zke3YFZ7ywCyfGpdSv_p123F4oa"/>
+</div>
+<h3 class="font-headline font-bold text-sm text-on-surface">Elena Rostova</h3>
+<p class="text-xs text-on-surface-variant">Esthetician</p>
+</div>
+</div>
+</div>
+<!-- Time Grid Body -->
+<div class="flex flex-1 relative bg-surface-container-lowest">
+<!-- Time Scale -->
+<div class="w-20 shrink-0 border-r ghost-border bg-surface-container-low text-xs text-on-surface-variant font-medium flex flex-col pt-4">
+<!-- Generating hours 9 AM to 2 PM for demonstration -->
+<div class="h-24 border-b border-outline-variant/10 flex justify-end pr-3 pt-2 relative"><span class="bg-surface-container-low px-1 -mt-3 absolute right-2">9 AM</span></div>
+<div class="h-24 border-b border-outline-variant/10 flex justify-end pr-3 pt-2 relative"><span class="bg-surface-container-low px-1 -mt-3 absolute right-2">10 AM</span></div>
+<div class="h-24 border-b border-outline-variant/10 flex justify-end pr-3 pt-2 relative"><span class="bg-surface-container-low px-1 -mt-3 absolute right-2">11 AM</span></div>
+<div class="h-24 border-b border-outline-variant/10 flex justify-end pr-3 pt-2 relative"><span class="bg-surface-container-low px-1 -mt-3 absolute right-2 text-primary font-bold">12 PM</span></div>
+<div class="h-24 border-b border-outline-variant/10 flex justify-end pr-3 pt-2 relative"><span class="bg-surface-container-low px-1 -mt-3 absolute right-2">1 PM</span></div>
+<div class="h-24 border-b border-outline-variant/10 flex justify-end pr-3 pt-2 relative"><span class="bg-surface-container-low px-1 -mt-3 absolute right-2">2 PM</span></div>
+</div>
+<!-- Schedule Columns Container -->
+<div class="flex-1 grid grid-cols-3 divide-x divide-outline-variant/20 relative pt-4 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxkZWZzPjxwYXR0ZXJuIGlkPSJncmlkIiB3aWR0aD0iMTAwIiBoZWlnaHQ9Ijk2IiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cGF0aCBkPSJNMTAwIDBMMCAwaDB2OTZoMTAwVjB6IiBmaWxsPSJub25lIi8+PHBhdGggZD0iTTAgOTZoMTAwIiBzdHJva2U9InJnYmEoMTcxLCAxNzMsIDE3NCwgMC4xKSIgc3Ryb2tlLXdpZHRoPSIxIi8+PHBhdGggZD0iTTAgNDhoMTAwIiBzdHJva2U9InJnYmEoMTcxLCAxNzMsIDE3NCwgMC4wNSkiIHN0cm9rZS13aWR0aD0iMSIgc3Ryb2tlLWRhc2hhcnJheT0iMiAyIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')]">
+<!-- Current Time Indicator Line -->
+<div class="absolute w-full h-[2px] bg-primary top-[330px] z-20 pointer-events-none flex items-center shadow-sm">
+<div class="w-2 h-2 rounded-full bg-primary -ml-1"></div>
+</div>
+<!-- Column 1 (Sarah) Blocks -->
+<div class="relative px-2">
+<!-- Block: 9:00 - 11:30 -->
+<div class="absolute top-0 w-[calc(100%-1rem)] h-[240px] bg-secondary-container/30 border-l-4 border-secondary rounded-r-md p-3 flex flex-col hover:shadow-md transition-shadow cursor-pointer">
+<div class="flex justify-between items-start mb-1">
+<h4 class="font-headline font-bold text-on-surface text-sm">Balayage &amp; Tone</h4>
+<span class="text-xs font-semibold text-secondary bg-surface-container-lowest px-1.5 py-0.5 rounded ghost-border">$240</span>
+</div>
+<p class="text-xs font-medium text-on-surface-variant mb-2">9:00 AM - 11:30 AM</p>
+<div class="flex items-center gap-2 mt-auto">
+<div class="w-5 h-5 rounded-full bg-outline-variant overflow-hidden">
+<img alt="Client" class="w-full h-full object-cover" data-alt="close up of a young female client with blonde hair" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB41RGTWx8EPJp__dwP35ynXMgqAzlnnfWoxb3DOAP3q9YwXxwb85IoFMczLs3F0dCC5LmLNIqBlf3QblUNV8S1pfZKuuDtLYaMgetEuzSxk84dg3OTJqqbSN82pKxJ2AVoUyVyU3YT-rL7Acnx5UT54c0mFM6n7QrzwcbicvCQja2mF6wt8uL8CHB13bnmTzCxwuXC7WHbZnSGGO60_FOAYQT-KF7qDrUyUvMq40N9y9Bu3uyp4e5-50mClqg4kaOlL35_oWIll0Y4"/>
+</div>
+<span class="text-xs font-medium text-on-surface">Jessica Weaver</span>
+</div>
+</div>
+<!-- Block: 12:30 - 1:30 -->
+<div class="absolute top-[336px] w-[calc(100%-1rem)] h-[96px] bg-tertiary-container/30 border-l-4 border-tertiary rounded-r-md p-2 flex flex-col hover:shadow-md transition-shadow cursor-pointer">
+<div class="flex justify-between items-start mb-0.5">
+<h4 class="font-headline font-bold text-on-surface text-sm truncate">Women's Haircut</h4>
+</div>
+<p class="text-[10px] font-medium text-on-surface-variant mb-1">12:30 PM - 1:30 PM</p>
+<div class="flex items-center gap-1.5 mt-auto">
+<span class="material-symbols-outlined text-[14px] text-tertiary">person</span>
+<span class="text-xs font-medium text-on-surface truncate">Amanda C.</span>
+</div>
+</div>
+</div>
+<!-- Column 2 (Michael) Blocks -->
+<div class="relative px-2">
+<!-- Block: 9:30 - 10:30 -->
+<div class="absolute top-[48px] w-[calc(100%-1rem)] h-[96px] bg-surface-container-high border-l-4 border-outline rounded-r-md p-2 flex flex-col hover:shadow-md transition-shadow cursor-pointer opacity-70">
+<div class="flex justify-between items-start mb-0.5">
+<h4 class="font-headline font-bold text-on-surface text-sm line-through">Men's Fade</h4>
+<span class="text-[10px] uppercase font-bold text-error bg-error-container/20 px-1 rounded">No-Show</span>
+</div>
+<p class="text-[10px] font-medium text-on-surface-variant mb-1">9:30 AM - 10:30 AM</p>
+<div class="flex items-center gap-1.5 mt-auto">
+<span class="text-xs font-medium text-on-surface">David R.</span>
+</div>
+</div>
+<!-- ACTIVE Block: 11:00 - 1:00 -->
+<div class="absolute top-[192px] w-[calc(100%-1rem)] h-[192px] bg-primary-container/20 border-l-4 border-primary rounded-r-md p-3 flex flex-col shadow-md ring-1 ring-primary/20 cursor-pointer z-10">
+<div class="absolute top-2 right-2 flex gap-1">
+<span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+</div>
+<div class="flex justify-between items-start mb-1">
+<h4 class="font-headline font-bold text-primary text-sm pr-4">Full Highlights &amp; Cut</h4>
+</div>
+<p class="text-xs font-medium text-primary-dim mb-2">11:00 AM - 1:00 PM</p>
+<div class="mt-2 space-y-1">
+<span class="inline-block bg-primary-container/40 text-on-primary-container text-[10px] px-1.5 py-0.5 rounded font-semibold">Processing</span>
+<span class="inline-block bg-surface-container-high text-on-surface text-[10px] px-1.5 py-0.5 rounded font-medium">VIP</span>
+</div>
+<div class="flex items-center gap-2 mt-auto">
+<div class="w-6 h-6 rounded-full bg-outline-variant overflow-hidden border border-primary">
+<img alt="Client" class="w-full h-full object-cover" data-alt="professional headshot of an elegant older woman with grey hair" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDLkGqZahwZ1RFN4CTphWOS9U-ZQ9OVcu_Qt46LNEpDz4uGkFvNEcLffRttJWLc6Ee3Hsp_7FiplXvRk5i7ewqWCYnjTnY4IIblKdUH2x4PZo4QkzhhTBBKPa2VAPMZNINa0nVT2EoeVWrjtQJ_pOvXiQzxlr_PryxBL4Rt52uxVV4HqiyjRrThiNmcR8fc4VbXT05BR7B0p0M2WuRBahNPv1pZu7n0kR6rrj7zjJAWLVsUQurfYlXriLOtQ8zA0tHCtut0kEGTg5dz"/>
+</div>
+<span class="text-sm font-bold text-on-surface">Eleanor Vance</span>
+</div>
+</div>
+</div>
+<!-- Column 3 (Elena) Blocks -->
+<div class="relative px-2">
+<!-- Block: 10:00 - 11:00 -->
+<div class="absolute top-[96px] w-[calc(100%-1rem)] h-[96px] bg-secondary-container/30 border-l-4 border-secondary rounded-r-md p-2 flex flex-col hover:shadow-md transition-shadow cursor-pointer">
+<div class="flex justify-between items-start mb-0.5">
+<h4 class="font-headline font-bold text-on-surface text-sm truncate">Signature Facial</h4>
+</div>
+<p class="text-[10px] font-medium text-on-surface-variant mb-1">10:00 AM - 11:00 AM</p>
+<div class="flex items-center gap-1.5 mt-auto">
+<span class="material-symbols-outlined text-[14px] text-secondary">spa</span>
+<span class="text-xs font-medium text-on-surface truncate">Maria L.</span>
+</div>
+</div>
+<!-- Block: 1:00 - 2:00 -->
+<div class="absolute top-[384px] w-[calc(100%-1rem)] h-[96px] bg-secondary-container/30 border-l-4 border-secondary rounded-r-md p-2 flex flex-col hover:shadow-md transition-shadow cursor-pointer">
+<div class="flex justify-between items-start mb-0.5">
+<h4 class="font-headline font-bold text-on-surface text-sm truncate">Brow Lamination</h4>
+</div>
+<p class="text-[10px] font-medium text-on-surface-variant mb-1">1:00 PM - 2:00 PM</p>
+<div class="flex items-center gap-1.5 mt-auto">
+<span class="material-symbols-outlined text-[14px] text-secondary">face</span>
+<span class="text-xs font-medium text-on-surface truncate">Chloe T.</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Client Details Sidebar (Quick-Slot Drawer pattern) -->
+<aside class="w-[320px] shrink-0 border-l ghost-border glass-panel flex flex-col shadow-[-4px_0_24px_-10px_rgba(0,0,0,0.05)] z-20">
+<!-- Drawer Header -->
+<div class="p-5 border-b ghost-border flex justify-between items-start bg-surface-container-lowest/50">
+<div>
+<span class="text-[10px] font-bold tracking-wider uppercase text-primary mb-1 block">Active Appointment</span>
+<h2 class="font-headline font-bold text-xl text-on-surface">Eleanor Vance</h2>
+<p class="text-sm text-on-surface-variant mt-0.5">Since Oct 2021 • VIP</p>
+</div>
+<button class="text-outline-variant hover:text-on-surface transition-colors p-1 rounded-full hover:bg-surface-container-low">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+<!-- Scrollable Content -->
+<div class="flex-1 overflow-y-auto schedule-scroll p-5 space-y-6">
+<!-- Current Booking Info -->
+<div class="bg-surface-container-lowest p-4 rounded-xl ghost-border tonal-lift">
+<h3 class="font-headline font-bold text-sm text-on-surface mb-3 flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] text-primary">content_cut</span>
+                            Current Service
+                        </h3>
+<div class="space-y-2">
+<div class="flex justify-between text-sm">
+<span class="text-on-surface-variant">Service</span>
+<span class="font-medium text-on-surface text-right">Full Highlights &amp; Cut</span>
+</div>
+<div class="flex justify-between text-sm">
+<span class="text-on-surface-variant">Time</span>
+<span class="font-medium text-on-surface text-right">11:00 AM - 1:00 PM</span>
+</div>
+<div class="flex justify-between text-sm">
+<span class="text-on-surface-variant">Stylist</span>
+<span class="font-medium text-on-surface text-right">Michael Chang</span>
+</div>
+<div class="pt-2 mt-2 border-t border-dashed border-outline-variant/30 flex justify-between text-sm font-bold">
+<span>Total Est.</span>
+<span>$320.00</span>
+</div>
+</div>
+<button class="mt-4 w-full py-2 bg-surface-container-highest text-primary font-medium text-sm rounded-lg hover:bg-surface-container transition-colors">
+                            Check Out
+                        </button>
+</div>
+<!-- Client Notes (Textured Card) -->
+<div class="bg-tertiary-container/10 p-4 rounded-xl border border-tertiary/20">
+<div class="flex justify-between items-center mb-2">
+<h3 class="font-headline font-bold text-sm text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] text-tertiary">edit_note</span>
+                                Formula &amp; Notes
+                            </h3>
+<button class="text-tertiary text-xs font-medium hover:underline">Edit</button>
+</div>
+<p class="text-sm text-on-surface leading-relaxed">
+<span class="font-semibold text-tertiary-dim block mb-1">Color Formula:</span>
+                            Root drag with 7N + 20vol. Highlighting with lightener + 30vol focused on face-framing. Tone with 9V + 9P.<br/><br/>
+<span class="italic text-on-surface-variant text-xs">Prefers quiet appointments. Drinks sparkling water with lemon.</span>
+</p>
+</div>
+<!-- Recent History -->
+<div>
+<h3 class="font-headline font-bold text-sm text-on-surface mb-3 pl-1">Recent Visits</h3>
+<div class="space-y-3 relative before:absolute before:inset-y-0 before:left-[11px] before:w-px before:bg-outline-variant/30">
+<!-- History Item -->
+<div class="relative pl-6">
+<div class="absolute left-0 top-1.5 w-6 h-6 bg-surface-container-lowest rounded-full border-2 border-primary-container flex items-center justify-center -ml-[3px]">
+<div class="w-2 h-2 rounded-full bg-primary"></div>
+</div>
+<div class="bg-surface-container-lowest p-3 rounded-lg ghost-border">
+<div class="flex justify-between items-start mb-1">
+<span class="text-xs font-bold text-on-surface">Root Touch-up</span>
+<span class="text-[10px] text-on-surface-variant">Sep 12, 2023</span>
+</div>
+<p class="text-[11px] text-on-surface-variant">with Michael Chang</p>
+</div>
+</div>
+<!-- History Item -->
+<div class="relative pl-6">
+<div class="absolute left-0 top-1.5 w-6 h-6 bg-surface-container-lowest rounded-full border-2 border-outline-variant/30 flex items-center justify-center -ml-[3px]">
+<div class="w-1.5 h-1.5 rounded-full bg-outline-variant/50"></div>
+</div>
+<div class="bg-surface-container-lowest p-3 rounded-lg ghost-border">
+<div class="flex justify-between items-start mb-1">
+<span class="text-xs font-bold text-on-surface">Full Highlights &amp; Cut</span>
+<span class="text-[10px] text-on-surface-variant">Jul 05, 2023</span>
+</div>
+<p class="text-[11px] text-on-surface-variant">with Michael Chang</p>
+</div>
+</div>
+<!-- History Item -->
+<div class="relative pl-6">
+<div class="absolute left-0 top-1.5 w-6 h-6 bg-surface-container-lowest rounded-full border-2 border-outline-variant/30 flex items-center justify-center -ml-[3px]">
+<div class="w-1.5 h-1.5 rounded-full bg-outline-variant/50"></div>
+</div>
+<div class="bg-surface-container-lowest p-3 rounded-lg ghost-border">
+<div class="flex justify-between items-start mb-1">
+<span class="text-xs font-bold text-on-surface">Blowout</span>
+<span class="text-[10px] text-on-surface-variant">Jun 20, 2023</span>
+</div>
+<p class="text-[11px] text-on-surface-variant">with Sarah Jenkins</p>
+</div>
+</div>
+</div>
+<button class="mt-3 w-full py-1.5 text-xs font-medium text-secondary hover:bg-secondary-container/20 rounded-md transition-colors">
+                            View Full History
+                        </button>
+</div>
+</div>
+</aside>
+</main>
+</div>
+<script src="./_inventory-chrome.js"></script>
+<script src="./_platform-runtime.js"></script>
+<script src="./_router.js"></script>
+</body></html>

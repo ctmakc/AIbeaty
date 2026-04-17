@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Salon OS - Unified Inbox</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@500;700;800&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Config -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-secondary-container": "#004d68",
+                        "surface-dim": "#d1d5d7",
+                        "primary-fixed": "#9c93ff",
+                        "secondary-container": "#97daff",
+                        "tertiary-container": "#c79eff",
+                        "on-primary-fixed": "#000000",
+                        "tertiary-fixed-dim": "#bc8cff",
+                        "on-surface-variant": "#595c5d",
+                        "on-secondary-fixed-variant": "#005775",
+                        "surface-variant": "#dadddf",
+                        "outline": "#757778",
+                        "background": "#f5f6f7",
+                        "error": "#b41340",
+                        "on-tertiary-container": "#450087",
+                        "inverse-on-surface": "#9b9d9e",
+                        "on-primary-container": "#1b007a",
+                        "on-primary": "#f2edff",
+                        "on-primary-fixed-variant": "#230095",
+                        "primary": "#4d2afa",
+                        "on-error": "#ffefef",
+                        "surface-container-highest": "#dadddf",
+                        "tertiary-fixed": "#c79eff",
+                        "primary-container": "#9c93ff",
+                        "inverse-primary": "#8b80ff",
+                        "tertiary": "#7a25db",
+                        "on-tertiary-fixed-variant": "#50009c",
+                        "error-dim": "#a70138",
+                        "tertiary-dim": "#6d09ce",
+                        "surface-container": "#e6e8ea",
+                        "secondary": "#006384",
+                        "primary-fixed-dim": "#8e83ff",
+                        "on-background": "#2c2f30",
+                        "inverse-surface": "#0c0f10",
+                        "surface": "#f5f6f7",
+                        "on-tertiary": "#f9efff",
+                        "on-tertiary-fixed": "#24004c",
+                        "secondary-fixed": "#97daff",
+                        "on-secondary-fixed": "#00394d",
+                        "on-error-container": "#510017",
+                        "secondary-dim": "#005673",
+                        "surface-container-high": "#e0e3e4",
+                        "surface-bright": "#f5f6f7",
+                        "surface-container-low": "#eff1f2",
+                        "outline-variant": "#abadae",
+                        "on-secondary": "#e6f5ff",
+                        "on-surface": "#2c2f30",
+                        "error-container": "#f74b6d",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-tint": "#4d2afa",
+                        "primary-dim": "#400aef",
+                        "secondary-fixed-dim": "#6bcfff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {},
+                    "fontFamily": {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom scrollbar for webkit */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background-color: theme('colors.surface-variant');
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body antialiased h-screen w-full flex overflow-hidden">
+<!-- Shared Component: SideNavBar -->
+<nav class="bg-[#F5F6F7] dark:bg-slate-950 text-indigo-600 dark:text-indigo-400 font-inter text-sm font-medium h-screen w-64 border-r-0 bg-slate-200 dark:bg-slate-800 tonal-layering flat no shadows flex flex-col h-full py-4 px-3 flex-shrink-0 z-20">
+<!-- Header -->
+<div class="mb-8 px-3">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-primary-container flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-on-primary-container" style="font-variation-settings: 'FILL' 1;">spa</span>
+</div>
+<div>
+<h1 class="text-lg font-black text-slate-900 dark:text-white font-headline tracking-tight">Precision Studio</h1>
+<p class="text-xs text-on-surface-variant font-medium truncate">Premium Salon Management</p>
+</div>
+</div>
+</div>
+<!-- Main Nav -->
+<div class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-md text-slate-600 dark:text-slate-400 hover:text-indigo-500 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-md text-slate-600 dark:text-slate-400 hover:text-indigo-500 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="calendar_month">calendar_month</span>
+<span>Schedule</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-md bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="chat_bubble" style="font-variation-settings: 'FILL' 1;">chat_bubble</span>
+<span class="font-bold">Inbox</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-md text-slate-600 dark:text-slate-400 hover:text-indigo-500 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="group">group</span>
+<span>Clients</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-md text-slate-600 dark:text-slate-400 hover:text-indigo-500 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
+<span>Inventory</span>
+</a>
+</div>
+<!-- CTA -->
+<div class="px-3 py-4">
+<button class="w-full bg-gradient-to-r from-primary to-primary-dim text-on-primary py-2.5 rounded-md font-semibold text-sm shadow-sm transition-all duration-200 ease-in-out hover:opacity-90 flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                New Appointment
+            </button>
+</div>
+<!-- Footer Nav -->
+<div class="mt-auto space-y-1 pt-4 border-t border-outline-variant/20">
+<a class="flex items-center gap-3 px-3 py-2 rounded-md text-slate-600 dark:text-slate-400 hover:text-indigo-500 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+<span>Support</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-md text-slate-600 dark:text-slate-400 hover:text-indigo-500 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="logout">logout</span>
+<span>Logout</span>
+</a>
+</div>
+</nav>
+<!-- Main Workspace (Three Panes) -->
+<main class="flex-1 flex overflow-hidden bg-background">
+<!-- PANE 1: Conversation List (Left) -->
+<aside class="w-[320px] bg-surface-container-lowest flex flex-col border-r border-outline-variant/20 flex-shrink-0 z-10">
+<!-- Header -->
+<div class="h-16 flex items-center justify-between px-6 border-b border-outline-variant/10">
+<h2 class="font-headline font-bold text-lg text-on-surface">Messages</h2>
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">filter_list</span>
+</button>
+</div>
+<!-- Search -->
+<div class="p-4">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">search</span>
+<input class="w-full bg-surface-container-low border-outline-variant/20 text-sm rounded-md pl-9 pr-4 py-2 focus:ring-0 focus:border-primary transition-colors text-on-surface placeholder-on-surface-variant/70" placeholder="Search conversations..." type="text"/>
+</div>
+</div>
+<!-- List -->
+<div class="flex-1 overflow-y-auto">
+<!-- Active Item -->
+<div class="px-3 py-1">
+<button class="w-full text-left flex items-start gap-3 p-3 rounded-lg bg-primary-container/10 border-l-2 border-primary transition-colors">
+<div class="relative flex-shrink-0">
+<img alt="Client Avatar" class="w-10 h-10 rounded-full object-cover" data-alt="close up portrait of a young woman with natural makeup and subtle lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAc1hZPgCVWe1OVyWIvAHGh-Uw-jksEvZwBgRJj9d3Kiy1qt-qB-gl_iiKT2gGy1ZAa_Wk3Xqxx1K5APVTGIhhU_s8ygSjBSS51VbbeYFyY1VOejXC2FUQuYEhzzeF-9Fd1sR0dCxNnY_7O8hXTQ5Hd30UMzqNCDc_xOZ2FyKpNnugeCE2w6EcvWYzAW7mySy4t-O6RlPbm2UsOAlis3gC7CT8utdCWjA9EEKHEq6uff-fRxNeLtGCSZHLgqYogi7UdNBe9OAFXlgFz"/>
+<div class="absolute -bottom-1 -right-1 w-4 h-4 bg-[#25D366] rounded-full border border-surface-container-lowest flex items-center justify-center">
+<span class="material-symbols-outlined text-[10px] text-white" style="font-variation-settings: 'FILL' 1;">chat</span>
+</div>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-center mb-0.5">
+<span class="font-semibold text-sm text-on-surface truncate">Emma Thompson</span>
+<span class="text-[11px] font-medium text-primary">Now</span>
+</div>
+<p class="text-xs text-on-surface-variant truncate">I'm running about 5 mins late, is that ok?</p>
+</div>
+</button>
+</div>
+<!-- Inactive Items -->
+<div class="px-3 py-1">
+<button class="w-full text-left flex items-start gap-3 p-3 rounded-lg hover:bg-surface-container-low transition-colors group">
+<div class="relative flex-shrink-0">
+<div class="w-10 h-10 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container font-headline font-bold">
+                                JR
+                            </div>
+<div class="absolute -bottom-1 -right-1 w-4 h-4 bg-gradient-to-tr from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] rounded-full border border-surface-container-lowest flex items-center justify-center">
+<span class="material-symbols-outlined text-[10px] text-white" style="font-variation-settings: 'FILL' 1;">photo_camera</span>
+</div>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-center mb-0.5">
+<span class="font-semibold text-sm text-on-surface truncate">Jessica Rowe</span>
+<span class="text-[11px] text-on-surface-variant">10:42 AM</span>
+</div>
+<p class="text-xs text-on-surface-variant truncate group-hover:text-on-surface transition-colors">Can I add a gloss treatment to my...</p>
+</div>
+</button>
+</div>
+<div class="px-3 py-1">
+<button class="w-full text-left flex items-start gap-3 p-3 rounded-lg hover:bg-surface-container-low transition-colors group">
+<div class="relative flex-shrink-0">
+<img alt="Client Avatar" class="w-10 h-10 rounded-full object-cover" data-alt="close up portrait of a man in his thirties with a subtle smile and warm lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD8bUjACvTCsjjcG0b8kuUzOmWRTu6zbhikeKFSf-qhD-prpFPmA5vkH63IdJmZKb4Qooi4cipwokZEvrOTFK2YWGAX-zCWNH4qdk7q-XBx4p9HCalXGLZF5IcBh5jerpnJ5-v2h4-CZRKmnP-ppHOtx4VXjJOOyN8VvsDiXT2b3O03M3rss6uKCHHjuRZuLcbWYXFpU_829nrvJgGSESaOqomyWmxVfLIR7Boy-Zrozfb8s8BCeKjuml8U8-SlctUXZ-q63QdxTrQY"/>
+<div class="absolute -bottom-1 -right-1 w-4 h-4 bg-[#0084FF] rounded-full border border-surface-container-lowest flex items-center justify-center">
+<span class="material-symbols-outlined text-[10px] text-white" style="font-variation-settings: 'FILL' 1;">forum</span>
+</div>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-center mb-0.5">
+<span class="font-semibold text-sm text-on-surface truncate">Michael Chen</span>
+<span class="text-[11px] text-on-surface-variant">Yesterday</span>
+</div>
+<p class="text-xs text-on-surface-variant truncate group-hover:text-on-surface transition-colors">Thanks for fitting me in yesterday!</p>
+</div>
+</button>
+</div>
+</div>
+</aside>
+<!-- PANE 2: Active Chat Thread (Center) -->
+<section class="flex-1 flex flex-col bg-surface-container-lowest relative z-0">
+<!-- Chat Header -->
+<div class="h-16 flex items-center justify-between px-6 bg-surface-container-lowest border-b border-outline-variant/10 z-10 shadow-[0_4px_24px_-12px_rgba(0,0,0,0.05)]">
+<div class="flex items-center gap-3">
+<div class="flex flex-col">
+<h2 class="font-headline font-bold text-lg text-on-surface leading-tight">Emma Thompson</h2>
+<div class="flex items-center gap-1.5 mt-0.5">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+<span class="text-xs font-medium text-on-surface-variant">Active on WhatsApp</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<button class="w-9 h-9 flex items-center justify-center rounded-md hover:bg-surface-container-low text-on-surface-variant transition-colors">
+<span class="material-symbols-outlined text-[20px]">call</span>
+</button>
+<button class="w-9 h-9 flex items-center justify-center rounded-md hover:bg-surface-container-low text-on-surface-variant transition-colors">
+<span class="material-symbols-outlined text-[20px]">more_vert</span>
+</button>
+</div>
+</div>
+<!-- Message Area -->
+<div class="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
+<!-- Date Divider -->
+<div class="flex items-center justify-center">
+<span class="text-[11px] font-semibold tracking-wider text-on-surface-variant/60 uppercase bg-surface-container-low px-3 py-1 rounded-full">Today</span>
+</div>
+<!-- System Message -->
+<div class="flex justify-center">
+<div class="bg-surface-container-low text-xs text-on-surface-variant px-4 py-2 rounded-lg text-center max-w-sm">
+                        Appointment confirmed for Partial Balayage &amp; Cut at 2:00 PM.
+                    </div>
+</div>
+<!-- Salon Message (Outgoing) -->
+<div class="flex justify-end gap-3">
+<div class="flex flex-col items-end gap-1 max-w-[70%]">
+<div class="bg-surface text-on-surface px-4 py-3 rounded-2xl rounded-tr-sm text-sm border border-outline-variant/10">
+                            Hi Emma! Just a reminder about your appointment today at 2:00 PM. See you soon!
+                        </div>
+<span class="text-[10px] text-on-surface-variant font-medium">10:00 AM • Read</span>
+</div>
+</div>
+<!-- Client Message (Incoming) -->
+<div class="flex justify-start gap-3">
+<img alt="Emma" class="w-8 h-8 rounded-full object-cover mt-1" data-alt="close up portrait of a young woman with natural makeup and subtle lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCN61CzMotH3HVwjw2jLB5eIlEAkdDvjqi4GzwNkLnzG5fvSuKrltZeXg9RwiXTQ8fJc75LLSdRgHtVjpcf41SDMgxJp8kH0lQgvYjgY6tfx3pfBR3yXR5DfZA1XPTrLL0D-aWPUvJ_IIbczaIl27UjvIK8-pTDbQT8sPG2vHeyouYYHgjL88ezoQ_pP4FMJf_tbP3K9a2ighAz2-aybo2A0T-jqUo8Lp-Rk1TWmqkRjt8PX5Cpk0RcLzv-mUAvASQqZgQc7DdPm_fd"/>
+<div class="flex flex-col items-start gap-1 max-w-[70%]">
+<div class="bg-surface-container-low text-on-surface px-4 py-3 rounded-2xl rounded-tl-sm text-sm">
+                            I'm running about 5 mins late, is that ok? Traffic on 4th is awful.
+                        </div>
+<span class="text-[10px] text-on-surface-variant font-medium">1:54 PM</span>
+</div>
+</div>
+</div>
+<!-- Input Area -->
+<div class="p-4 bg-surface-container-lowest border-t border-outline-variant/10">
+<!-- AI Suggestions (Glassmorphic) -->
+<div class="flex gap-2 mb-3 overflow-x-auto pb-1 no-scrollbar">
+<span class="material-symbols-outlined text-tertiary text-[18px] flex-shrink-0 mt-0.5">auto_awesome</span>
+<button class="flex-shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-tertiary-container/30 text-on-tertiary-container border border-tertiary-container/50 hover:bg-tertiary-container/50 transition-colors">
+                        "No problem, drive safe!"
+                    </button>
+<button class="flex-shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-tertiary-container/30 text-on-tertiary-container border border-tertiary-container/50 hover:bg-tertiary-container/50 transition-colors">
+                        "Thanks for letting us know."
+                    </button>
+<button class="flex-shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-tertiary-container/30 text-on-tertiary-container border border-tertiary-container/50 hover:bg-tertiary-container/50 transition-colors">
+                        "We'll see you when you get here."
+                    </button>
+</div>
+<!-- Input Field -->
+<div class="flex items-end gap-2 bg-surface-container-low rounded-xl p-2 border border-outline-variant/20 focus-within:border-primary focus-within:bg-surface-container-lowest transition-all">
+<button class="p-2 text-on-surface-variant hover:text-primary transition-colors flex-shrink-0">
+<span class="material-symbols-outlined">attach_file</span>
+</button>
+<textarea class="w-full bg-transparent border-none focus:ring-0 resize-none text-sm py-2 max-h-32 text-on-surface placeholder-on-surface-variant/70" placeholder="Type a message..." rows="1"></textarea>
+<button class="p-2 bg-gradient-to-r from-primary to-primary-dim text-on-primary rounded-lg hover:shadow-[0_4px_14px_-4px_rgba(77,42,250,0.4)] transition-all flex-shrink-0 mb-0.5">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">send</span>
+</button>
+</div>
+</div>
+</section>
+<!-- PANE 3: Client Profile (Right) -->
+<aside class="w-[340px] bg-surface-container-low flex flex-col flex-shrink-0 overflow-y-auto">
+<!-- Profile Header -->
+<div class="p-6 pb-4 flex flex-col items-center text-center border-b border-outline-variant/10">
+<div class="relative mb-4">
+<img alt="Emma Thompson" class="w-24 h-24 rounded-full object-cover ring-4 ring-surface-container-lowest shadow-sm" data-alt="close up portrait of a young woman with natural makeup and subtle lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCkq4LcR-fy7GMjSuNSTpf3KWrrE0b0P1JyF8_RO2tcIrmnAAkRiQhfTPb4rlTUSKV9TmiHyE1ezoUH6ZG1BrdGPblJnEbYhSnjxCClLI2Oshz82SRTWYF0REYz3A1j8V01xBOU6-mzMjnCL4hB3fCIM_lr25b_Dt_M4OHJO6twx4NaOrtyn7asZ0qehvihg05ykMNKXBo4qDBQwBDxH3bxbC358G5E3gLYEi-0JB7IxYMyHx9xf75A2ap0Ce-raDFWI2KiZEdcha-n"/>
+<div class="absolute bottom-0 right-0 bg-tertiary text-on-tertiary text-[10px] font-bold px-2 py-0.5 rounded-full border-2 border-surface-container-lowest uppercase tracking-wider">
+                        VIP
+                    </div>
+</div>
+<h2 class="font-headline font-extrabold text-xl text-on-surface">Emma Thompson</h2>
+<p class="text-sm text-on-surface-variant mt-1">Client since Mar 2022</p>
+<div class="flex gap-2 mt-4">
+<button class="px-4 py-1.5 bg-surface-container-lowest border border-outline-variant/20 rounded-md text-xs font-semibold text-on-surface hover:bg-surface-container-high transition-colors shadow-sm">
+                        View Profile
+                    </button>
+<button class="px-4 py-1.5 bg-surface-container-lowest border border-outline-variant/20 rounded-md text-xs font-semibold text-on-surface hover:bg-surface-container-high transition-colors shadow-sm">
+                        Edit Notes
+                    </button>
+</div>
+</div>
+<div class="p-4 space-y-4">
+<!-- High-Performance Stats (Bento Grid Style) -->
+<div class="grid grid-cols-2 gap-3">
+<div class="bg-surface-container-lowest p-4 rounded-xl flex flex-col justify-between">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-secondary text-[16px]">monitoring</span>
+<span class="text-xs font-medium text-on-surface-variant">Total LTV</span>
+</div>
+<div class="font-headline font-extrabold text-2xl text-on-surface">$2,450</div>
+</div>
+<div class="bg-surface-container-lowest p-4 rounded-xl flex flex-col justify-between">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-secondary text-[16px]">sync</span>
+<span class="text-xs font-medium text-on-surface-variant">Visits</span>
+</div>
+<div class="font-headline font-extrabold text-2xl text-on-surface">14</div>
+<div class="text-[10px] text-on-surface-variant mt-1">Avg 6 weeks</div>
+</div>
+</div>
+<!-- Current Appointment -->
+<div class="bg-surface-container-lowest rounded-xl p-4 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.02)]">
+<h3 class="text-xs font-bold text-on-surface uppercase tracking-wider mb-3 flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                        Today's Visit
+                    </h3>
+<div class="flex flex-col gap-1">
+<span class="font-headline font-bold text-sm text-on-surface">Partial Balayage &amp; Cut</span>
+<div class="flex justify-between items-center text-sm">
+<span class="text-on-surface-variant">2:00 PM - 4:30 PM</span>
+<span class="font-semibold text-on-surface">$220</span>
+</div>
+<div class="flex items-center gap-2 mt-2">
+<div class="w-6 h-6 rounded-full bg-secondary-container flex items-center justify-center text-xs font-bold text-on-secondary-container">S</div>
+<span class="text-xs text-on-surface-variant">with Sarah J.</span>
+</div>
+</div>
+</div>
+<!-- Contact & Preferences -->
+<div class="bg-surface-container-lowest rounded-xl p-4">
+<h3 class="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3">Details</h3>
+<div class="space-y-3">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-on-surface-variant text-[18px]">phone_iphone</span>
+<span class="text-sm text-on-surface">(555) 123-4567</span>
+</div>
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-on-surface-variant text-[18px]">mail</span>
+<span class="text-sm text-on-surface">emma.t@example.com</span>
+</div>
+<div class="pt-2 border-t border-outline-variant/10">
+<span class="text-xs font-medium text-on-surface-variant block mb-1.5">Drink Preference</span>
+<span class="inline-flex items-center px-2 py-1 rounded bg-surface-container text-xs font-medium text-on-surface">Sparkling Water</span>
+</div>
+</div>
+</div>
+<!-- Past History -->
+<div class="bg-surface-container-lowest rounded-xl p-4">
+<div class="flex items-center justify-between mb-3">
+<h3 class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Recent History</h3>
+<a class="text-xs font-semibold text-primary hover:underline" href="#">View All</a>
+</div>
+<div class="space-y-3">
+<div class="flex gap-3 items-start">
+<div class="w-8 h-8 rounded bg-surface-container flex flex-col items-center justify-center flex-shrink-0">
+<span class="text-[10px] font-bold text-on-surface-variant uppercase">Oct</span>
+<span class="text-sm font-headline font-bold text-on-surface leading-none">12</span>
+</div>
+<div>
+<h4 class="text-sm font-semibold text-on-surface">Root Touch-up</h4>
+<p class="text-xs text-on-surface-variant mt-0.5">Notes: Used 6N + 20vol. Client loved the warmth.</p>
+</div>
+</div>
+<div class="flex gap-3 items-start">
+<div class="w-8 h-8 rounded bg-surface-container flex flex-col items-center justify-center flex-shrink-0">
+<span class="text-[10px] font-bold text-on-surface-variant uppercase">Aug</span>
+<span class="text-sm font-headline font-bold text-on-surface leading-none">05</span>
+</div>
+<div>
+<h4 class="text-sm font-semibold text-on-surface">Full Balayage</h4>
+<p class="text-xs text-on-surface-variant mt-0.5">Notes: Lifted perfectly to pale yellow.</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</aside>
+</main>
+<script src="./_inventory-chrome.js"></script>
+<script src="./_platform-runtime.js"></script>
+<script src="./_router.js"></script>
+</body></html>

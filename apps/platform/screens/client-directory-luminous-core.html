@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Salon OS - Client Directory</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-secondary": "#e6f5ff",
+                        "on-primary-fixed": "#000000",
+                        "error-dim": "#a70138",
+                        "on-tertiary-container": "#450087",
+                        "secondary-fixed": "#97daff",
+                        "surface-container": "#e6e8ea",
+                        "surface-container-high": "#e0e3e4",
+                        "on-primary-fixed-variant": "#230095",
+                        "tertiary-fixed-dim": "#bc8cff",
+                        "error": "#b41340",
+                        "primary-fixed-dim": "#8e83ff",
+                        "inverse-surface": "#0c0f10",
+                        "on-primary-container": "#1b007a",
+                        "error-container": "#f74b6d",
+                        "surface-container-highest": "#dadddf",
+                        "on-background": "#2c2f30",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary-fixed": "#24004c",
+                        "surface-tint": "#4d2afa",
+                        "on-surface-variant": "#595c5d",
+                        "tertiary": "#7a25db",
+                        "tertiary-container": "#c79eff",
+                        "surface-variant": "#dadddf",
+                        "surface-dim": "#d1d5d7",
+                        "on-surface": "#2c2f30",
+                        "primary-fixed": "#9c93ff",
+                        "tertiary-dim": "#6d09ce",
+                        "on-error": "#ffefef",
+                        "secondary-fixed-dim": "#6bcfff",
+                        "primary-dim": "#400aef",
+                        "primary": "#4d2afa",
+                        "on-tertiary-fixed-variant": "#50009c",
+                        "outline": "#757778",
+                        "on-secondary-container": "#004d68",
+                        "secondary-dim": "#005673",
+                        "inverse-on-surface": "#9b9d9e",
+                        "on-secondary-fixed": "#00394d",
+                        "on-tertiary": "#f9efff",
+                        "surface-bright": "#f5f6f7",
+                        "secondary": "#006384",
+                        "secondary-container": "#97daff",
+                        "background": "#f5f6f7",
+                        "on-secondary-fixed-variant": "#005775",
+                        "surface-container-low": "#eff1f2",
+                        "tertiary-fixed": "#c79eff",
+                        "outline-variant": "#abadae",
+                        "primary-container": "#9c93ff",
+                        "on-error-container": "#510017",
+                        "on-primary": "#f2edff",
+                        "surface": "#f5f6f7",
+                        "inverse-primary": "#8b80ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3, h4, h5, h6, .font-headline { font-family: 'Manrope', sans-serif; }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen flex overflow-hidden">
+<!-- SideNavBar -->
+<nav class="bg-slate-50 dark:bg-slate-900 h-screen w-64 border-r-0 flex flex-col py-6 px-4 shrink-0 hidden md:flex">
+<div class="mb-8 px-2">
+<div class="text-2xl font-black tracking-tighter text-[#4D2AFA] dark:text-[#7A61FF]">Luminous Core</div>
+<div class="text-xs text-slate-500 font-medium tracking-wide uppercase mt-1">Precision OS</div>
+</div>
+<button class="bg-gradient-to-r from-primary to-primary-dim text-on-primary rounded-md py-3 px-4 flex items-center justify-center gap-2 font-medium mb-8 hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined text-lg" style="font-variation-settings: 'FILL' 1;">add</span>
+            New Booking
+        </button>
+<ul class="flex-1 space-y-1">
+<li>
+<a class="text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors flex items-center gap-3 px-3 py-2.5 rounded-lg font-manrope text-sm font-medium tracking-tight active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-xl">dashboard</span>
+                    Dashboard
+                </a>
+</li>
+<li>
+<a class="text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors flex items-center gap-3 px-3 py-2.5 rounded-lg font-manrope text-sm font-medium tracking-tight active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-xl">calendar_month</span>
+                    Schedule
+                </a>
+</li>
+<li>
+<a class="text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors flex items-center gap-3 px-3 py-2.5 rounded-lg font-manrope text-sm font-medium tracking-tight active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-xl">inbox</span>
+                    Inbox
+                </a>
+</li>
+<li>
+<a class="bg-white dark:bg-slate-950 text-[#4D2AFA] font-bold shadow-sm rounded-lg flex items-center gap-3 px-3 py-2.5 font-manrope text-sm tracking-tight active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-xl" style="font-variation-settings: 'FILL' 1;">group</span>
+                    Clients
+                </a>
+</li>
+<li>
+<a class="text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors flex items-center gap-3 px-3 py-2.5 rounded-lg font-manrope text-sm font-medium tracking-tight active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-xl">spa</span>
+                    Services
+                </a>
+</li>
+<li>
+<a class="text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors flex items-center gap-3 px-3 py-2.5 rounded-lg font-manrope text-sm font-medium tracking-tight active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-xl">inventory_2</span>
+                    Inventory
+                </a>
+</li>
+<li>
+<a class="text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors flex items-center gap-3 px-3 py-2.5 rounded-lg font-manrope text-sm font-medium tracking-tight active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-xl">auto_awesome</span>
+                    Automations
+                </a>
+</li>
+</ul>
+<div class="mt-auto border-t border-slate-200 dark:border-slate-800 pt-4">
+<div class="flex items-center gap-3 px-2 mb-4">
+<img alt="Salon Manager Profile" class="w-8 h-8 rounded-full object-cover" data-alt="Close-up portrait of a professional salon manager with a neat updo, soft studio lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAk5w_qSNEFaG3DQtDGjZy4d5GFUxyEPlY5TgZjYruWnlUssA0Wm1UwgXVIrZrZj4oiX1TrgWAnxY_gvBw9CLo822o8e98NW_p3av5f4lawjrca5NdwGOnkxlR36d_kvv6EFvEWmu8FA1RRzGF57jVw87-lclIEfWCDx0S8lBX1teB9V7_-_0WgDe81Lfa4EEWeGVYKWgq7aH_-gynywfnqvO2DhrmYNZWMgJJMzEaAT8zKEZQ7_diFYd9988l5PPC04rY-Lox2bLwU"/>
+<div class="flex-1 min-w-0">
+<p class="text-sm font-medium text-slate-900 truncate">Sarah J.</p>
+<p class="text-xs text-slate-500 truncate">Manager</p>
+</div>
+</div>
+<ul class="space-y-1">
+<li>
+<a class="text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors flex items-center gap-3 px-3 py-2 rounded-lg font-manrope text-sm font-medium tracking-tight" href="#">
+<span class="material-symbols-outlined text-xl">settings</span>
+                        Settings
+                    </a>
+</li>
+<li>
+<a class="text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors flex items-center gap-3 px-3 py-2 rounded-lg font-manrope text-sm font-medium tracking-tight" href="#">
+<span class="material-symbols-outlined text-xl">help_outline</span>
+                        Help
+                    </a>
+</li>
+</ul>
+</div>
+</nav>
+<!-- Main Content Area -->
+<div class="flex-1 flex flex-col h-screen overflow-hidden bg-surface-container-low">
+<!-- TopAppBar -->
+<header class="bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl full-width top-0 sticky shadow-sm dark:shadow-none flex items-center justify-between px-8 h-16 w-full z-10">
+<div class="flex items-center gap-4">
+<div class="relative focus-within:ring-2 focus-within:ring-[#4D2AFA]/20 rounded-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
+<input class="pl-10 pr-4 py-2 bg-surface-container-lowest border border-outline-variant/20 rounded-md text-sm focus:outline-none focus:border-primary w-64 text-on-surface placeholder:text-outline transition-colors" placeholder="Search clients..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-slate-400 dark:text-slate-500 hover:text-[#4D2AFA] dark:hover:text-[#7A61FF] transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="text-slate-400 dark:text-slate-500 hover:text-[#4D2AFA] dark:hover:text-[#7A61FF] transition-colors">
+<span class="material-symbols-outlined">dark_mode</span>
+</button>
+<button class="text-slate-400 dark:text-slate-500 hover:text-[#4D2AFA] dark:hover:text-[#7A61FF] transition-colors">
+<span class="material-symbols-outlined">account_circle</span>
+</button>
+</div>
+</header>
+<!-- Canvas -->
+<main class="flex-1 overflow-hidden p-6 lg:p-8 flex gap-6 lg:gap-8">
+<!-- Left Column: Client List (60%) -->
+<div class="w-full lg:w-[45%] xl:w-[40%] flex flex-col h-full">
+<div class="flex justify-between items-end mb-6 shrink-0">
+<div>
+<h1 class="text-3xl font-headline font-bold text-on-surface tracking-tight">Directory</h1>
+<p class="text-on-surface-variant text-sm mt-1">Manage your 1,248 active clients.</p>
+</div>
+<button class="text-primary text-sm font-medium flex items-center gap-1 hover:text-primary-dim transition-colors">
+<span class="material-symbols-outlined text-sm">filter_list</span>
+                        Filter
+                    </button>
+</div>
+<!-- Client List Container -->
+<div class="flex-1 overflow-y-auto pr-2 space-y-3 pb-8">
+<!-- Client Card 1 (Active) -->
+<div class="bg-surface-container-lowest p-4 rounded-xl cursor-pointer shadow-[0_2px_8px_rgba(44,47,48,0.04)] border border-primary/20 relative overflow-hidden group">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-4">
+<img alt="Client" class="w-12 h-12 rounded-full object-cover" data-alt="Portrait of a young woman with styled blonde hair, smiling slightly" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCDShOtKFjjz5mJERyKw2nJNzbHLCrGROLIc03rNgvz3YZrIfNia00hGsHIapJo2LR7ntCU7HkA2FnGojcl8Lkp2FidteIR_UJhpHr_Cy-LrAMOqMwaCWPCUTB54ddqCOSuBqF2iFkNlmXCSxJ3Sgdpw3AzTeT9DzOWDUk8d7T2hWScUgd9wUfAcvXJlpLpa52ECgcdD3lnsW4sSbYVxEx_9GF3GTj92Qzf6UpNfiou-nJp1RRd9yMuB7obvnB1_oCm_E7ueK4MtcTH"/>
+<div>
+<h3 class="font-headline font-semibold text-base text-on-surface">Elena Rodriguez</h3>
+<p class="text-sm text-on-surface-variant">Last visit: Oct 12, 2023</p>
+</div>
+</div>
+<div class="flex flex-col items-end gap-2">
+<span class="px-2 py-1 bg-tertiary-container/30 text-tertiary-dim text-xs font-semibold rounded-md tracking-wide">VIP</span>
+</div>
+</div>
+</div>
+<!-- Client Card 2 -->
+<div class="bg-surface-container-lowest p-4 rounded-xl cursor-pointer hover:bg-surface-bright transition-colors border border-outline-variant/10 group">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-4">
+<img alt="Client" class="w-12 h-12 rounded-full object-cover" data-alt="Portrait of a mature man with a neat beard, looking directly at the camera" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCYEot-bht39uTss1MpTvTOzd-R2fkfnPpY4E5yMfmmZTCMYI26KfrXaCnTygzbf2Zsv-ZHuiy9oIzXpxltN3_WWC91T27Cp6pKITsisVYCpYCZRZ7PFNwUy21O6Xznl0x2Tyo5dRzzY1X1_6bK0rXs2rbIOveJ5xEjAxFmF80jbueunyslRAQL9NNlSQ2dA3KZ6rz8TJ2wHB20JX6kPNaJHBm4UiCahEtFs1DgJ38bxpuewESxr_2JyNM1uNXX9zx8Khhnze2d8qPo"/>
+<div>
+<h3 class="font-headline font-semibold text-base text-on-surface">Marcus Chen</h3>
+<p class="text-sm text-on-surface-variant">Last visit: Sep 28, 2023</p>
+</div>
+</div>
+<div class="flex flex-col items-end gap-2">
+<span class="px-2 py-1 bg-secondary-container/50 text-secondary-dim text-xs font-semibold rounded-md tracking-wide">REGULAR</span>
+</div>
+</div>
+</div>
+<!-- Client Card 3 -->
+<div class="bg-surface-container-lowest p-4 rounded-xl cursor-pointer hover:bg-surface-bright transition-colors border border-outline-variant/10 group">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center text-on-surface-variant font-headline font-bold text-lg">SJ</div>
+<div>
+<h3 class="font-headline font-semibold text-base text-on-surface">Sarah Jenkins</h3>
+<p class="text-sm text-on-surface-variant">Last visit: Nov 01, 2023</p>
+</div>
+</div>
+<div class="flex flex-col items-end gap-2">
+<span class="px-2 py-1 bg-error-container/20 text-error-dim text-xs font-semibold rounded-md tracking-wide">AT-RISK</span>
+</div>
+</div>
+</div>
+<!-- Client Card 4 -->
+<div class="bg-surface-container-lowest p-4 rounded-xl cursor-pointer hover:bg-surface-bright transition-colors border border-outline-variant/10 group">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-4">
+<img alt="Client" class="w-12 h-12 rounded-full object-cover" data-alt="Portrait of a young woman looking away with natural makeup" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAdPQ6h9rXNjCP2tDBYzrwPAFKNnvVAXWYkOxpbD83tTol0MxAOfTdA3m0EkEBW9k6VvptZYSeQfmllUuQqsdjMF5sO2-7ZhMCrUfKk70P9_Jtm7pSq7hPIEQ5r5dGL-VLimBMIVbQyApb5dsSaUskX4PI-Yh02T_NjAnWazC3xz_L3y31Ii_eA2ZaNFDHFRdulzP7ulLFMg_MHKO9trvyPss6v1MdAZWVmNaq7AWSpK_AaTYctkTk7sW3OfOzlo7lXzh1Y5iTo8Xhm"/>
+<div>
+<h3 class="font-headline font-semibold text-base text-on-surface">Aisha Patel</h3>
+<p class="text-sm text-on-surface-variant">First visit scheduled</p>
+</div>
+</div>
+<div class="flex flex-col items-end gap-2">
+<span class="px-2 py-1 bg-primary/10 text-primary-dim text-xs font-semibold rounded-md tracking-wide">NEW</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Column: Client Detail (60%) -->
+<div class="hidden lg:flex flex-1 flex-col h-full bg-surface-container-lowest rounded-2xl shadow-[0_4px_24px_rgba(44,47,48,0.06)] border border-outline-variant/10 overflow-hidden relative">
+<!-- Detail Header -->
+<div class="p-8 border-b border-outline-variant/10 flex justify-between items-start shrink-0">
+<div class="flex gap-6 items-center">
+<img alt="Client Detail" class="w-24 h-24 rounded-full object-cover shadow-sm" data-alt="Portrait of Elena Rodriguez with styled blonde hair, smiling slightly" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB_8n2rqI_YBbb01_uGdp7wJYQI1thYAteEmmbz-8Q4rYcR0VUbBF1ysI1pkGQmDYZxpXyPwBOhXOz3mq8Etcl3I4ADTWhgwtIE7t9pBWpWxnwtPD_PdeCBfV4SuJiSoVMCPu-G6HNDL1mCUxcO0QQncnssRIgUiv9z4wmRTIXZA29s5gmhX_JHWwEp3j3gDGIXnRZV3Na1f24cjMrk3NxaNyUHQIGAiEr8vDAY3RakhJHBJ-fIZw4r-BKGzK807WjSdeUFDkaHhLE8"/>
+<div>
+<div class="flex items-center gap-3 mb-1">
+<h2 class="text-3xl font-headline font-bold text-on-surface tracking-tight">Elena Rodriguez</h2>
+<span class="px-2.5 py-1 bg-tertiary-container/30 text-tertiary-dim text-xs font-semibold rounded-md tracking-wide">VIP</span>
+</div>
+<p class="text-on-surface-variant flex items-center gap-2 text-sm">
+<span class="material-symbols-outlined text-sm">phone_iphone</span> (555) 123-4567
+                                <span class="text-outline-variant">•</span>
+<span class="material-symbols-outlined text-sm">mail</span> elena.r@email.com
+                            </p>
+</div>
+</div>
+<div class="flex gap-3">
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined">edit</span>
+</button>
+<button class="px-4 py-2 bg-gradient-to-r from-primary to-primary-dim text-on-primary rounded-md font-medium text-sm hover:opacity-90 transition-opacity shadow-sm flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">calendar_add_on</span>
+                            Book
+                        </button>
+</div>
+</div>
+<!-- Detail Body -->
+<div class="flex-1 overflow-y-auto p-8 bg-background">
+<!-- Stats Grid -->
+<div class="grid grid-cols-3 gap-4 mb-8">
+<div class="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant/10 flex flex-col justify-center">
+<p class="text-xs text-on-surface-variant font-medium uppercase tracking-wider mb-1">Lifetime Value</p>
+<p class="text-2xl font-headline font-bold text-on-surface">$3,450</p>
+</div>
+<div class="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant/10 flex flex-col justify-center">
+<p class="text-xs text-on-surface-variant font-medium uppercase tracking-wider mb-1">Visits YTD</p>
+<p class="text-2xl font-headline font-bold text-on-surface">8</p>
+</div>
+<div class="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant/10 flex flex-col justify-center">
+<p class="text-xs text-on-surface-variant font-medium uppercase tracking-wider mb-1">Avg. Ticket</p>
+<p class="text-2xl font-headline font-bold text-on-surface">$245</p>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-8">
+<!-- Left Column in Body -->
+<div class="space-y-8">
+<!-- Technical Notes -->
+<section>
+<div class="flex justify-between items-center mb-4">
+<h3 class="font-headline font-bold text-lg text-on-surface">Formula Notes</h3>
+<button class="text-primary text-sm font-medium hover:text-primary-dim">Edit</button>
+</div>
+<div class="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant/10 shadow-[0_2px_8px_rgba(44,47,48,0.02)]">
+<div class="mb-4 pb-4 border-b border-outline-variant/10">
+<p class="text-xs text-on-surface-variant mb-1">Current Base (Oct 12)</p>
+<p class="font-mono text-sm text-on-surface bg-surface-container p-2 rounded-md">6N (30g) + 7G (10g) + 20vol</p>
+</div>
+<div>
+<p class="text-xs text-on-surface-variant mb-1">Highlights</p>
+<p class="font-mono text-sm text-on-surface bg-surface-container p-2 rounded-md">Lightener + 30vol, Toned with 9V + 9P</p>
+</div>
+</div>
+</section>
+<!-- Preferences -->
+<section>
+<h3 class="font-headline font-bold text-lg text-on-surface mb-4">Preferences</h3>
+<div class="flex flex-wrap gap-2">
+<span class="px-3 py-1.5 bg-surface-container text-on-surface text-sm rounded-full border border-outline-variant/20">Quiet Chair</span>
+<span class="px-3 py-1.5 bg-surface-container text-on-surface text-sm rounded-full border border-outline-variant/20">Sparkling Water</span>
+<span class="px-3 py-1.5 bg-surface-container text-on-surface text-sm rounded-full border border-outline-variant/20">Sens. Scalp</span>
+</div>
+</section>
+</div>
+<!-- Right Column in Body: History -->
+<div>
+<div class="flex justify-between items-center mb-4">
+<h3 class="font-headline font-bold text-lg text-on-surface">Recent History</h3>
+<button class="text-primary text-sm font-medium hover:text-primary-dim">View All</button>
+</div>
+<div class="relative border-l border-outline-variant/20 ml-3 space-y-6">
+<!-- History Item 1 -->
+<div class="relative pl-6">
+<div class="absolute w-3 h-3 bg-primary rounded-full -left-[6.5px] top-1.5 ring-4 ring-background"></div>
+<div class="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/10 shadow-[0_2px_8px_rgba(44,47,48,0.02)]">
+<div class="flex justify-between items-start mb-2">
+<p class="font-medium text-on-surface text-sm">Balayage &amp; Cut</p>
+<p class="text-xs text-on-surface-variant">Oct 12, 2023</p>
+</div>
+<p class="text-xs text-on-surface-variant mb-3">Stylist: Michael T.</p>
+<div class="flex justify-between items-center mt-3 pt-3 border-t border-outline-variant/10">
+<span class="text-sm font-semibold text-on-surface">$310</span>
+<span class="text-xs text-primary font-medium flex items-center gap-1 cursor-pointer hover:underline"><span class="material-symbols-outlined text-[14px]">receipt_long</span> Receipt</span>
+</div>
+</div>
+</div>
+<!-- History Item 2 -->
+<div class="relative pl-6">
+<div class="absolute w-3 h-3 bg-surface-container-high rounded-full -left-[6.5px] top-1.5 ring-4 ring-background"></div>
+<div class="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/10">
+<div class="flex justify-between items-start mb-2">
+<p class="font-medium text-on-surface text-sm">Gloss &amp; Blowout</p>
+<p class="text-xs text-on-surface-variant">Sep 05, 2023</p>
+</div>
+<p class="text-xs text-on-surface-variant mb-3">Stylist: Sarah J.</p>
+<div class="flex justify-between items-center mt-3 pt-3 border-t border-outline-variant/10">
+<span class="text-sm font-semibold text-on-surface">$120</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<script src="./_inventory-chrome.js"></script>
+<script src="./_platform-runtime.js"></script>
+<script src="./_router.js"></script>
+</body></html>

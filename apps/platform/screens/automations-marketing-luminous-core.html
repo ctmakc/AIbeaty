@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Luminous Core - Automations</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-secondary": "#e6f5ff",
+                      "on-primary-fixed": "#000000",
+                      "error-dim": "#a70138",
+                      "on-tertiary-container": "#450087",
+                      "secondary-fixed": "#97daff",
+                      "surface-container": "#e6e8ea",
+                      "surface-container-high": "#e0e3e4",
+                      "on-primary-fixed-variant": "#230095",
+                      "tertiary-fixed-dim": "#bc8cff",
+                      "error": "#b41340",
+                      "primary-fixed-dim": "#8e83ff",
+                      "inverse-surface": "#0c0f10",
+                      "on-primary-container": "#1b007a",
+                      "error-container": "#f74b6d",
+                      "surface-container-highest": "#dadddf",
+                      "on-background": "#2c2f30",
+                      "surface-container-lowest": "#ffffff",
+                      "on-tertiary-fixed": "#24004c",
+                      "surface-tint": "#4d2afa",
+                      "on-surface-variant": "#595c5d",
+                      "tertiary": "#7a25db",
+                      "tertiary-container": "#c79eff",
+                      "surface-variant": "#dadddf",
+                      "surface-dim": "#d1d5d7",
+                      "on-surface": "#2c2f30",
+                      "primary-fixed": "#9c93ff",
+                      "tertiary-dim": "#6d09ce",
+                      "on-error": "#ffefef",
+                      "secondary-fixed-dim": "#6bcfff",
+                      "primary-dim": "#400aef",
+                      "primary": "#4d2afa",
+                      "on-tertiary-fixed-variant": "#50009c",
+                      "outline": "#757778",
+                      "on-secondary-container": "#004d68",
+                      "secondary-dim": "#005673",
+                      "inverse-on-surface": "#9b9d9e",
+                      "on-secondary-fixed": "#00394d",
+                      "on-tertiary": "#f9efff",
+                      "surface-bright": "#f5f6f7",
+                      "secondary": "#006384",
+                      "secondary-container": "#97daff",
+                      "background": "#f5f6f7",
+                      "on-secondary-fixed-variant": "#005775",
+                      "surface-container-low": "#eff1f2",
+                      "tertiary-fixed": "#c79eff",
+                      "outline-variant": "#abadae",
+                      "primary-container": "#9c93ff",
+                      "on-error-container": "#510017",
+                      "on-primary": "#f2edff",
+                      "surface": "#f5f6f7",
+                      "inverse-primary": "#8b80ff"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {},
+              "fontFamily": {
+                      "headline": [
+                              "Manrope"
+                      ],
+                      "body": [
+                              "Inter"
+                      ],
+                      "label": [
+                              "Inter"
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+        .material-symbols-outlined {
+          font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        /* Custom scrollbar for high-end feel */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #dadddf; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #abadae; }
+      </style>
+</head>
+<body class="bg-background text-on-surface font-body overflow-hidden flex h-screen">
+<!-- SideNavBar (Predicted Component) -->
+<nav class="bg-slate-50 dark:bg-slate-900 h-screen w-64 border-r-0 fixed top-0 left-0 flex flex-col py-6 px-4 z-20">
+<!-- Brand Header -->
+<div class="px-4 mb-8">
+<h1 class="font-headline text-2xl font-black tracking-tighter text-[#4D2AFA] dark:text-[#7A61FF]">Luminous Core</h1>
+<p class="font-body text-xs text-slate-500 font-medium tracking-wide uppercase mt-1">Precision OS</p>
+</div>
+<!-- CTA -->
+<div class="px-2 mb-8">
+<button class="w-full bg-gradient-to-r from-primary to-primary-dim text-on-primary font-headline font-bold text-sm py-3 px-4 rounded-xl shadow-[0_4px_12px_rgba(77,42,250,0.2)] hover:shadow-[0_6px_16px_rgba(77,42,250,0.3)] transition-all active:scale-[0.98] duration-150 ease-in-out flex items-center justify-center gap-2">
+<span class="material-symbols-outlined" style="font-size: 18px;">add</span>
+                New Booking
+            </button>
+</div>
+<!-- Main Nav -->
+<div class="flex-1 overflow-y-auto">
+<ul class="space-y-1">
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg font-manrope text-sm font-medium tracking-tight text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined" style="font-size: 20px;">dashboard</span>
+                        Dashboard
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg font-manrope text-sm font-medium tracking-tight text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined" style="font-size: 20px;">calendar_month</span>
+                        Schedule
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg font-manrope text-sm font-medium tracking-tight text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined" style="font-size: 20px;">inbox</span>
+                        Inbox
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg font-manrope text-sm font-medium tracking-tight text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined" style="font-size: 20px;">group</span>
+                        Clients
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg font-manrope text-sm font-medium tracking-tight text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined" style="font-size: 20px;">spa</span>
+                        Services
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg font-manrope text-sm font-medium tracking-tight text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined" style="font-size: 20px;">inventory_2</span>
+                        Inventory
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-950 text-[#4D2AFA] font-bold shadow-sm rounded-lg font-manrope text-sm tracking-tight active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined" style="font-size: 20px; font-variation-settings: 'FILL' 1;">auto_awesome</span>
+                        Automations
+                    </a>
+</li>
+</ul>
+</div>
+<!-- Footer Nav -->
+<div class="mt-auto pt-6 border-t border-slate-100 dark:border-slate-800">
+<ul class="space-y-1">
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg font-manrope text-sm font-medium tracking-tight text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined" style="font-size: 20px;">settings</span>
+                        Settings
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg font-manrope text-sm font-medium tracking-tight text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined" style="font-size: 20px;">help_outline</span>
+                        Help
+                    </a>
+</li>
+</ul>
+<div class="mt-4 px-4 flex items-center gap-3">
+<img alt="Salon Manager Profile" class="w-8 h-8 rounded-full object-cover shadow-sm" data-alt="professional headshot of a female salon manager with natural lighting and a clean background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC2CgqCvuongruPP_XxI8ICqWQW_UDJNzkJuo6MdUGAUOqQ_jss5r-Xromm1Xs9fZJWLRsecnS--kS9jeDg796XRVJES8UXNrKYsJt5v4ohbQzfsbo2fMlYboRGj8lnaCaWQODwCM6PJxBoJdGQQRy1_PJLk5wnaFHiaV2lLC85n_nJv_36MZGCET_ExhQ47SteiEtKJTHkv1-EyAxeHgZTyEZRIu0d0k8mRffhfRmeRwCchjWSNkwwBJI_dQt5aePDuNl1qbhG0K4c"/>
+<div class="flex-1 min-w-0">
+<p class="text-sm font-bold text-on-surface truncate font-headline">Sarah J.</p>
+<p class="text-xs text-on-surface-variant truncate">Manager</p>
+</div>
+</div>
+</div>
+</nav>
+<!-- Main Content Wrapper -->
+<div class="ml-64 flex-1 flex flex-col h-screen w-[calc(100%-16rem)]">
+<!-- TopAppBar (Predicted Component) -->
+<header class="bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl shadow-sm dark:shadow-none border-b border-slate-100 dark:border-slate-800 sticky top-0 z-10 flex items-center justify-between px-8 h-16 w-full">
+<!-- Search Bar (on_left) -->
+<div class="flex-1 max-w-md">
+<div class="relative flex items-center focus-within:ring-2 focus-within:ring-[#4D2AFA]/20 rounded-xl bg-surface-container-low transition-all">
+<span class="material-symbols-outlined absolute left-3 text-slate-400" style="font-size: 20px;">search</span>
+<input class="w-full bg-transparent border-none py-2 pl-10 pr-4 text-sm font-body text-on-surface placeholder:text-slate-400 focus:ring-0 rounded-xl" placeholder="Search automations, clients, services..." type="text"/>
+</div>
+</div>
+<!-- Product Name (Hidden per style, but keeping structure if needed later) -->
+<div class="hidden font-manrope font-semibold text-[#4D2AFA] dark:text-[#7A61FF]">Salon Workspace</div>
+<!-- Trailing Icons -->
+<div class="flex items-center gap-4">
+<button class="text-slate-400 dark:text-slate-500 hover:text-[#4D2AFA] dark:hover:text-[#7A61FF] transition-colors p-2 rounded-full hover:bg-slate-50">
+<span class="material-symbols-outlined" style="font-size: 22px;">notifications</span>
+</button>
+<button class="text-slate-400 dark:text-slate-500 hover:text-[#4D2AFA] dark:hover:text-[#7A61FF] transition-colors p-2 rounded-full hover:bg-slate-50">
+<span class="material-symbols-outlined" style="font-size: 22px;">dark_mode</span>
+</button>
+<button class="text-slate-400 dark:text-slate-500 hover:text-[#4D2AFA] dark:hover:text-[#7A61FF] transition-colors p-2 rounded-full hover:bg-slate-50">
+<span class="material-symbols-outlined" style="font-size: 22px;">account_circle</span>
+</button>
+</div>
+</header>
+<!-- Canvas Area -->
+<main class="flex-1 overflow-y-auto p-8 lg:p-10 bg-surface">
+<!-- Page Header -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+<div>
+<h2 class="font-headline text-3xl font-extrabold text-on-surface tracking-tight">Marketing Automations</h2>
+<p class="font-body text-on-surface-variant mt-2 max-w-2xl text-sm">Design intelligent workflows to engage clients, recover missed appointments, and drive revenue silently.</p>
+</div>
+<button class="bg-gradient-to-r from-primary to-primary-dim text-on-primary font-headline font-bold text-sm py-3 px-6 rounded-xl shadow-[0_4px_12px_rgba(77,42,250,0.2)] hover:shadow-[0_6px_16px_rgba(77,42,250,0.3)] transition-all active:scale-[0.98] duration-150 flex items-center gap-2 whitespace-nowrap">
+<span class="material-symbols-outlined" style="font-size: 20px;">add_circle</span>
+                    Create New Workflow
+                </button>
+</div>
+<!-- Asymmetric Bento Grid -->
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
+<!-- Left Column: Active Workflows (Span 8) -->
+<div class="xl:col-span-8 space-y-6">
+<div class="flex items-center justify-between mb-2">
+<h3 class="font-headline font-bold text-lg text-on-surface">Active Workflows</h3>
+<span class="text-xs font-bold text-primary bg-primary/10 px-3 py-1 rounded-full">3 Running</span>
+</div>
+<!-- Card 1: No-Show Recovery -->
+<div class="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-transparent hover:border-outline-variant/10 transition-colors group">
+<div class="flex items-center justify-between mb-5">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-xl bg-error/10 flex items-center justify-center text-error">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">event_busy</span>
+</div>
+<div>
+<h4 class="font-headline font-bold text-on-surface">No-Show Recovery</h4>
+<p class="text-xs text-on-surface-variant mt-0.5">Automated SMS Campaign</p>
+</div>
+</div>
+<!-- Toggle -->
+<button class="w-11 h-6 bg-primary rounded-full relative transition-colors shadow-inner flex items-center px-1">
+<div class="w-4 h-4 bg-white rounded-full translate-x-5 transition-transform shadow-sm"></div>
+</button>
+</div>
+<!-- If/Then Logic Block -->
+<div class="bg-surface-container-low rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-6">
+<div class="flex items-center gap-2 flex-1">
+<span class="font-headline font-black text-xs text-primary uppercase tracking-widest bg-white px-2 py-1 rounded-lg shadow-sm">If</span>
+<span class="font-body text-sm font-medium text-on-surface">Client marked as No-Show</span>
+</div>
+<span class="material-symbols-outlined text-outline-variant hidden sm:block">arrow_right_alt</span>
+<div class="flex items-center gap-2 flex-1">
+<span class="font-headline font-black text-xs text-tertiary uppercase tracking-widest bg-white px-2 py-1 rounded-lg shadow-sm">Then</span>
+<span class="font-body text-sm font-medium text-on-surface">Send SMS with 10% discount</span>
+</div>
+</div>
+<!-- Metrics -->
+<div class="grid grid-cols-3 gap-4">
+<div class="bg-surface px-4 py-3 rounded-xl flex flex-col">
+<span class="text-xs text-on-surface-variant font-medium mb-1">Sent (30d)</span>
+<span class="font-headline font-extrabold text-xl text-on-surface">45</span>
+</div>
+<div class="bg-surface px-4 py-3 rounded-xl flex flex-col">
+<span class="text-xs text-on-surface-variant font-medium mb-1">Converted</span>
+<div class="flex items-baseline gap-2">
+<span class="font-headline font-extrabold text-xl text-on-surface">12</span>
+<span class="text-xs font-bold text-secondary">26%</span>
+</div>
+</div>
+<div class="bg-surface px-4 py-3 rounded-xl flex flex-col">
+<span class="text-xs text-on-surface-variant font-medium mb-1">Revenue Recovered</span>
+<span class="font-headline font-extrabold text-xl text-secondary">+$850</span>
+</div>
+</div>
+</div>
+<!-- Card 2: Birthday Treat -->
+<div class="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-transparent hover:border-outline-variant/10 transition-colors group">
+<div class="flex items-center justify-between mb-5">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-xl bg-tertiary/10 flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">cake</span>
+</div>
+<div>
+<h4 class="font-headline font-bold text-on-surface">Birthday Treat</h4>
+<p class="text-xs text-on-surface-variant mt-0.5">Email + Add-on Offer</p>
+</div>
+</div>
+<!-- Toggle -->
+<button class="w-11 h-6 bg-primary rounded-full relative transition-colors shadow-inner flex items-center px-1">
+<div class="w-4 h-4 bg-white rounded-full translate-x-5 transition-transform shadow-sm"></div>
+</button>
+</div>
+<!-- If/Then Logic Block -->
+<div class="bg-surface-container-low rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-6">
+<div class="flex items-center gap-2 flex-1">
+<span class="font-headline font-black text-xs text-primary uppercase tracking-widest bg-white px-2 py-1 rounded-lg shadow-sm">If</span>
+<span class="font-body text-sm font-medium text-on-surface">Client Birthday is 7 days away</span>
+</div>
+<span class="material-symbols-outlined text-outline-variant hidden sm:block">arrow_right_alt</span>
+<div class="flex items-center gap-2 flex-1">
+<span class="font-headline font-black text-xs text-tertiary uppercase tracking-widest bg-white px-2 py-1 rounded-lg shadow-sm">Then</span>
+<span class="font-body text-sm font-medium text-on-surface">Email Free Deep Conditioning offer</span>
+</div>
+</div>
+<!-- Metrics -->
+<div class="grid grid-cols-3 gap-4">
+<div class="bg-surface px-4 py-3 rounded-xl flex flex-col">
+<span class="text-xs text-on-surface-variant font-medium mb-1">Sent (30d)</span>
+<span class="font-headline font-extrabold text-xl text-on-surface">120</span>
+</div>
+<div class="bg-surface px-4 py-3 rounded-xl flex flex-col">
+<span class="text-xs text-on-surface-variant font-medium mb-1">Converted</span>
+<div class="flex items-baseline gap-2">
+<span class="font-headline font-extrabold text-xl text-on-surface">34</span>
+<span class="text-xs font-bold text-secondary">28%</span>
+</div>
+</div>
+<div class="bg-surface px-4 py-3 rounded-xl flex flex-col">
+<span class="text-xs text-on-surface-variant font-medium mb-1">Upsell Revenue</span>
+<span class="font-headline font-extrabold text-xl text-secondary">+$1,020</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Column: Quick Editor Drawer / Glassmorphic Panel (Span 4) -->
+<div class="xl:col-span-4 sticky top-8">
+<!-- The "Precision Build" Glass Panel -->
+<div class="bg-surface-container-lowest/80 backdrop-blur-2xl rounded-2xl p-6 shadow-[0_32px_64px_rgba(44,47,48,0.06)] border border-white/40">
+<div class="flex items-center justify-between mb-6">
+<h3 class="font-headline font-extrabold text-lg text-primary">Workflow Builder</h3>
+<button class="text-outline hover:text-on-surface transition-colors">
+<span class="material-symbols-outlined" style="font-size: 20px;">close</span>
+</button>
+</div>
+<form class="space-y-6">
+<!-- Step 1: Trigger -->
+<div class="space-y-3">
+<div class="flex items-center gap-2">
+<div class="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center font-headline font-bold text-xs">1</div>
+<label class="font-headline font-bold text-sm text-on-surface">Set Trigger</label>
+</div>
+<div class="relative">
+<select class="w-full appearance-none bg-surface-container-lowest border border-outline-variant/20 rounded-xl px-4 py-3 text-sm font-body text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all">
+<option>Client No-Show</option>
+<option>Post-Appointment (24h)</option>
+<option>Client Birthday</option>
+<option>Lapsed Client (90 days)</option>
+</select>
+<span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-outline-variant pointer-events-none">expand_more</span>
+</div>
+</div>
+<!-- Step 2: Action -->
+<div class="space-y-3">
+<div class="flex items-center gap-2">
+<div class="w-6 h-6 rounded-full bg-tertiary/10 text-tertiary flex items-center justify-center font-headline font-bold text-xs">2</div>
+<label class="font-headline font-bold text-sm text-on-surface">Define Action</label>
+</div>
+<div class="relative">
+<select class="w-full appearance-none bg-surface-container-lowest border border-outline-variant/20 rounded-xl px-4 py-3 text-sm font-body text-on-surface focus:outline-none focus:ring-2 focus:ring-tertiary focus:border-tertiary transition-all">
+<option>Send SMS</option>
+<option>Send Email</option>
+<option>Add Internal Note</option>
+<option>Assign Task to Staff</option>
+</select>
+<span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-outline-variant pointer-events-none">expand_more</span>
+</div>
+<!-- Sub-action Input -->
+<div class="mt-2 relative">
+<textarea class="w-full bg-surface-container-lowest border border-outline-variant/20 rounded-xl px-4 py-3 text-sm font-body text-on-surface placeholder:text-outline focus:outline-none focus:ring-2 focus:ring-tertiary focus:border-tertiary transition-all resize-none" placeholder="Enter message template..." rows="3">Hi [First Name], we missed you today! Rebook within 24h and get 10% off your next visit: [Booking Link]</textarea>
+</div>
+</div>
+<!-- Actions -->
+<div class="pt-4 flex items-center gap-3">
+<button class="flex-1 bg-surface-container-highest text-primary font-headline font-bold text-sm py-3 px-4 rounded-xl hover:bg-surface-variant transition-colors" type="button">
+                                    Test Run
+                                </button>
+<button class="flex-1 bg-primary text-on-primary font-headline font-bold text-sm py-3 px-4 rounded-xl shadow-sm hover:bg-primary-dim transition-colors" type="button">
+                                    Activate
+                                </button>
+</div>
+</form>
+</div>
+</div>
+</div>
+</main>
+</div>
+<script src="./_inventory-chrome.js"></script>
+<script src="./_platform-runtime.js"></script>
+<script src="./_router.js"></script>
+</body></html>

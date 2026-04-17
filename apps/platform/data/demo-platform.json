@@ -1,0 +1,275 @@
+{
+  "salon": {
+    "name": "Luminous Core",
+    "workspaceLabel": "Salon Workspace",
+    "location": "Ottawa Downtown",
+    "lastUpdated": "2026-04-17T20:40:00Z"
+  },
+  "pages": {
+    "salon-performance-luminous-core.html": {
+      "title": "Performance Overview",
+      "subtitle": "Friday, Apr 17",
+      "searchPlaceholder": "Search performance...",
+      "kpis": [
+        { "label": "Total Revenue", "value": "$48,920", "trend": "+9.4% vs last month", "trendTone": "positive" },
+        { "label": "Appointments", "value": "386", "trend": "+6.1% vs last month", "trendTone": "positive" },
+        { "label": "Booking Conversion", "value": "71.8%", "trend": "+2.0 pts vs last month", "trendTone": "positive" },
+        { "label": "Average Ticket", "value": "$126.70", "trend": "+1.1% vs last month", "trendTone": "positive" }
+      ],
+      "stylists": [
+        { "name": "Sarah Jenkins", "role": "Senior Colorist", "revenue": "$14,260", "appointments": "88 appts", "avatar": "https://lh3.googleusercontent.com/aida-public/AB6AXuAAxrMF0lORgNxA8PQg5WsqofzMLdf9QOnOTuGDj6drP2C5W3WeXdXMr2satu8F4_q1u9E-YMT6INPSz5eFPwdhXXcolHmC-vs6SUHQCPMajSwpefyklHKazRwZR9l2L2I8T-MObSIclafdWuKYvdQyaxPm9Dlz0nWjDlmY-BEbFu5p-4KTG6VlcVsILZz1jvHIIiGG0BXZq82pwKckFv-zxV0c-Mz495g08eyiEMggV1ms6Zo6APtZHhfw91QjprZlM8rgW79BXIaH" },
+        { "name": "Michael Chang", "role": "Master Stylist", "revenue": "$11,320", "appointments": "67 appts", "avatar": "https://lh3.googleusercontent.com/aida-public/AB6AXuBwztElDVbO7tdpCmHsVm259TeFqrce6NDB4sTTZ-SBgwxUdSKVRcU5fP-rn1UHwkc6UcPv52pr6nM8A0SRTZDF1Z0prn76Fp9QbD6LBSJAkzIRJW09srE0sWF9e35sRWb7OdIlqElsmuxsEeowIK1vNOv02W-AeW_N9SNbUHdf7AdfmNtfejg7_FPbLhL4L6NU6vH61mrRSOtOD8xUhBO9VvWVXSXTPbuaksGjiXx0ozDXGEaYJ2nxyiL3aX65-It6WkdUp19knJhk" },
+        { "name": "Elena Rostova", "role": "Esthetician", "revenue": "$9,480", "appointments": "61 appts", "avatar": "https://lh3.googleusercontent.com/aida-public/AB6AXuAPrPQOSEki71FbnJkWuxNbpgMGeIbCtZVU6FbycfrBy_3idAASIoIQyMouTQBeVec0STGF0bC7D-vr28pc7yQo2SfFSndORUH1i4A8oBRBWh4k43IDj8b6ykJjrRj0mJ3-qB3RecSGMDAXmfYC8oJch8nHXZ8swixPm3DdfbJr2VqCa6xD9V8LCQ_8eL7Ollcs3Av3ciEKo0tHLUlLygJzAepn-mO6RY1Pvk1Xo3szKROTU7_9e-DVB9wir0u8WPx9OhoD2BXbU4b3" }
+      ],
+      "activity": [
+        { "title": "New Booking: Signature Balayage", "meta": "Client: Nina K. • with Sarah", "time": "4 mins ago", "icon": "bookmark", "tone": "secondary" },
+        { "title": "Inventory Alert", "meta": "K18 Mask below safety stock (3 left)", "time": "22 mins ago", "icon": "warning", "tone": "tertiary" },
+        { "title": "Checkout Completed", "meta": "Ticket #4591 closed by Michael", "time": "39 mins ago", "icon": "check_circle", "tone": "neutral" }
+      ]
+    },
+    "inventory-management-luminous-core.html": {
+      "title": "Inventory Management",
+      "subtitle": "Manage back-bar and retail stock levels.",
+      "searchPlaceholder": "Search inventory...",
+      "kpis": [
+        { "label": "Total Value", "value": "$16,480", "detail": "+3.1% this month" },
+        { "label": "Low Stock Items", "value": "6", "detail": "Requires immediate action" },
+        { "label": "Total Products", "value": "356", "detail": "Across 14 brands" },
+        { "label": "Restock Order", "value": "Create PO", "detail": "Generate automated PO for low items." }
+      ],
+      "items": [
+        { "name": "Hydration Shampoo Gal.", "sku": "HYD-001", "brand": "Olaplex", "stock": "2 Gal", "stockTone": "low", "reorderPoint": "4 Gal", "cost": "$120.00", "icon": "water_drop" },
+        { "name": "Color Protect Conditioner", "sku": "COL-042", "brand": "Pureology", "stock": "8 Gal", "stockTone": "ok", "reorderPoint": "3 Gal", "cost": "$145.50", "icon": "water_drop" },
+        { "name": "Bleach Powder 500g", "sku": "BLCH-99", "brand": "Wella", "stock": "1 Tub", "stockTone": "low", "reorderPoint": "5 Tubs", "cost": "$45.00", "icon": "brush" },
+        { "name": "Developer 20 Vol", "sku": "DEV-20", "brand": "Redken", "stock": "12 Btls", "stockTone": "ok", "reorderPoint": "6 Btls", "cost": "$18.00", "icon": "science" },
+        { "name": "Styling Hairspray Strong", "sku": "STY-882", "brand": "Kenra", "stock": "5 Cans", "stockTone": "watch", "reorderPoint": "5 Cans", "cost": "$22.00", "icon": "sprinkler" }
+      ],
+      "shipments": [
+        { "title": "Order Delivered: Olaplex", "meta": "PO-2026-089 • Received by Sarah J.", "time": "10:42 AM", "status": "Received" },
+        { "title": "Restock Created: Wella", "meta": "PO-2026-091 • Awaiting supplier confirmation", "time": "9:15 AM", "status": "Pending" },
+        { "title": "Retail Count Completed", "meta": "Front retail display recounted by Elena", "time": "Yesterday", "status": "Completed" }
+      ]
+    },
+    "services-pricing-luminous-core.html": {
+      "title": "Services & Pricing",
+      "subtitle": "Manage your studio's offerings, durations, and commission structures.",
+      "searchPlaceholder": "Search services...",
+      "categories": [
+        {
+          "name": "Hair Services",
+          "badge": "12 Services",
+          "icon": "content_cut",
+          "tone": "primary",
+          "services": [
+            { "name": "Women's Precision Cut", "duration": "60 min", "price": "$85.00", "commission": "45%" },
+            { "name": "Men's Scissor Cut", "duration": "45 min", "price": "$55.00", "commission": "40%" },
+            { "name": "Blowout & Style", "duration": "45 min", "price": "$65.00", "commission": "40%" }
+          ]
+        },
+        {
+          "name": "Color & Chemical",
+          "badge": "8 Services",
+          "icon": "palette",
+          "tone": "tertiary",
+          "services": [
+            { "name": "Full Balayage", "duration": "180 min", "price": "$250.00+", "commission": "50%" },
+            { "name": "Single Process Root Touch-up", "duration": "90 min", "price": "$110.00", "commission": "45%" }
+          ]
+        }
+      ],
+      "editor": {
+        "name": "Women's Precision Cut",
+        "category": "Hair Services",
+        "description": "A customized haircut designed by your stylist to fit the guest's current look, maintenance cadence, and styling routine.",
+        "duration": "60",
+        "processingTime": "0",
+        "price": "85.00",
+        "commission": "45"
+      }
+    },
+    "client-directory-luminous-core.html": {
+      "title": "Directory",
+      "subtitle": "Manage your active client base and recent visit context.",
+      "searchPlaceholder": "Search clients...",
+      "clients": [
+        {
+          "id": "elena",
+          "name": "Elena Rodriguez",
+          "status": "VIP",
+          "statusTone": "vip",
+          "lastVisit": "Oct 12, 2026",
+          "phone": "(555) 123-4567",
+          "email": "elena.r@email.com",
+          "avatar": "https://lh3.googleusercontent.com/aida-public/AB6AXuCDShOtKFjjz5mJERyKw2nJNzbHLCrGROLIc03rNgvz3YZrIfNia00hGsHIapJo2LR7ntCU7HkA2FnGojcl8Lkp2FidteIR_UJhpHr_Cy-LrAMOqMwaCWPCUTB54ddqCOSuBqF2iFkNlmXCSxJ3Sgdpw3AzTeT9DzOWDUk8d7T2hWScUgd9wUfAcvXJlpLpa52ECgcdD3lnsW4sSbYVxEx_9GF3GTj92Qzf6UpNfiou-nJp1RRd9yMuB7obvnB1_oCm_E7ueK4MtcTH",
+          "ltv": "$3,450",
+          "visitsYtd": "8",
+          "avgTicket": "$245",
+          "preferences": ["Quiet Chair", "Sparkling Water", "Sensitive Scalp"],
+          "formulaBase": "6N (30g) + 7G (10g) + 20vol",
+          "formulaHighlights": "Lightener + 30vol, toned with 9V + 9P",
+          "history": [
+            { "service": "Balayage & Cut", "date": "Oct 12, 2026", "stylist": "Michael T.", "amount": "$310" },
+            { "service": "Gloss & Blowout", "date": "Sep 05, 2026", "stylist": "Sarah J.", "amount": "$120" }
+          ]
+        },
+        {
+          "id": "marcus",
+          "name": "Marcus Chen",
+          "status": "REGULAR",
+          "statusTone": "regular",
+          "lastVisit": "Sep 28, 2026",
+          "phone": "(555) 332-7811",
+          "email": "marcus.c@email.com",
+          "avatar": "https://lh3.googleusercontent.com/aida-public/AB6AXuCYEot-bht39uTss1MpTvTOzd-R2fkfnPpY4E5yMfmmZTCMYI26KfrXaCnTygzbf2Zsv-ZHuiy9oIzXpxltN3_WWC91T27Cp6pKITsisVYCpYCZRZ7PFNwUy21O6Xznl0x2Tyo5dRzzY1X1_6bK0rXs2rbIOveJ5xEjAxFmF80jbueunyslRAQL9NNlSQ2dA3KZ6rz8TJ2wHB20JX6kPNaJHBm4UiCahEtFs1DgJ38bxpuewESxr_2JyNM1uNXX9zx8Khhnze2d8qPo",
+          "ltv": "$1,920",
+          "visitsYtd": "6",
+          "avgTicket": "$158",
+          "preferences": ["Espresso", "Short appointment windows"],
+          "formulaBase": "N/A",
+          "formulaHighlights": "Clipper fade + beard outline",
+          "history": [
+            { "service": "Skin Fade", "date": "Sep 28, 2026", "stylist": "Michael T.", "amount": "$58" },
+            { "service": "Fade + Beard", "date": "Aug 29, 2026", "stylist": "Michael T.", "amount": "$78" }
+          ]
+        },
+        {
+          "id": "aisha",
+          "name": "Aisha Patel",
+          "status": "NEW",
+          "statusTone": "new",
+          "lastVisit": "First visit scheduled",
+          "phone": "(555) 219-0664",
+          "email": "aisha.p@email.com",
+          "avatar": "https://lh3.googleusercontent.com/aida-public/AB6AXuAdPQ6h9rXNjCP2tDBYzrwPAFKNnvVAXWYkOxpbD83tTol0MxAOfTdA3m0EkEBW9k6VvptZYSeQfmllUuQqsdjMF5sO2-7ZhMCrUfKk70P9_Jtm7pSq7hPIEQ5r5dGL-VLimBMIVbQyApb5dsSaUskX4PI-Yh02T_NjAnWazC3xz_L3y31Ii_eA2ZaNFDHFRdulzP7ulLFMg_MHKO9trvyPss6v1MdAZWVmNaq7AWSpK_AaTYctkTk7sW3OfOzlo7lXzh1Y5iTo8Xhm",
+          "ltv": "$0",
+          "visitsYtd": "0",
+          "avgTicket": "$0",
+          "preferences": ["Prefers text confirmations"],
+          "formulaBase": "Pending consultation",
+          "formulaHighlights": "First visit scheduled for consultation + gloss",
+          "history": []
+        }
+      ]
+    },
+    "unified-inbox-luminous-core.html": {
+      "title": "Messages",
+      "searchPlaceholder": "Search conversations...",
+      "conversations": [
+        {
+          "id": "emma",
+          "name": "Emma Thompson",
+          "channel": "WhatsApp",
+          "channelTone": "whatsapp",
+          "time": "Now",
+          "preview": "I'm running about 5 mins late, is that ok?",
+          "status": "Active on WhatsApp",
+          "avatar": "https://lh3.googleusercontent.com/aida-public/AB6AXuAc1hZPgCVWe1OVyWIvAHGh-Uw-jksEvZwBgRJj9d3Kiy1qt-qB-gl_iiKT2gGy1ZAa_Wk3Xqxx1K5APVTGIhhU_s8ygSjBSS51VbbeYFyY1VOejXC2FUQuYEhzzeF-9Fd1sR0dCxNnY_7O8hXTQ5Hd30UMzqNCDc_xOZ2FyKpNnugeCE2w6EcvWYzAW7mySy4t-O6RlPbm2UsOAlis3gC7CT8utdCWjA9EEKHEq6uff-fRxNeLtGCSZHLgqYogi7UdNBe9OAFXlgFz",
+          "ltv": "$2,450",
+          "visits": "14",
+          "visitCadence": "Avg 6 weeks",
+          "todayVisit": { "service": "Partial Balayage & Cut", "time": "2:00 PM - 4:30 PM", "amount": "$220", "stylist": "Sarah J." },
+          "contact": { "phone": "(555) 123-4567", "email": "emma.t@example.com", "preference": "Sparkling Water" },
+          "history": [
+            { "service": "Root Touch-up", "date": "Oct 12", "notes": "Used 6N + 20vol. Client loved the warmth." },
+            { "service": "Full Balayage", "date": "Aug 05", "notes": "Lifted perfectly to pale yellow." }
+          ],
+          "messages": [
+            { "type": "system", "text": "Appointment confirmed for Partial Balayage & Cut at 2:00 PM." },
+            { "type": "outgoing", "text": "Hi Emma! Just a reminder about your appointment today at 2:00 PM. See you soon!", "meta": "10:00 AM • Read" },
+            { "type": "incoming", "text": "I'm running about 5 mins late, is that ok? Traffic on 4th is awful.", "meta": "1:54 PM" }
+          ],
+          "suggestions": ["No problem, drive safe!", "Thanks for letting us know.", "We'll see you when you get here."]
+        },
+        {
+          "id": "jessica",
+          "name": "Jessica Rowe",
+          "channel": "Instagram",
+          "channelTone": "instagram",
+          "time": "10:42 AM",
+          "preview": "Can I add a gloss treatment to my booking?",
+          "status": "Waiting on stylist confirmation",
+          "avatarText": "JR",
+          "ltv": "$1,380",
+          "visits": "7",
+          "visitCadence": "Avg 8 weeks",
+          "todayVisit": { "service": "Gloss Add-on Request", "time": "Pending", "amount": "$35", "stylist": "Sarah J." },
+          "contact": { "phone": "(555) 888-9032", "email": "jess.r@example.com", "preference": "Oat latte" },
+          "history": [{ "service": "Cut + Gloss", "date": "Sep 14", "notes": "Asks about tonal adjustments often." }],
+          "messages": [
+            { "type": "incoming", "text": "Can I add a gloss treatment to my booking tomorrow?" , "meta": "10:42 AM" },
+            { "type": "outgoing", "text": "Checking with Sarah now. I’ll confirm in a minute.", "meta": "10:45 AM • Delivered" }
+          ],
+          "suggestions": ["Yes, we can add a gloss for $35.", "I’m confirming timing with Sarah now.", "We can shift your appointment by 15 minutes if needed."]
+        }
+      ]
+    },
+    "stylist-schedule-luminous-core.html": {
+      "title": "Friday, Apr 17",
+      "searchPlaceholder": "Search clients or services...",
+      "stylists": [
+        { "name": "Sarah Jenkins", "role": "Senior Colorist", "avatar": "https://lh3.googleusercontent.com/aida-public/AB6AXuBBg8KV6zVW_NVIz_AFM_04S3tzsYkBAAoyFvFbIM3sqvKf96YmAiHxPjl69QsYhlbM1pESRoMTEKuREX8saqmN-LHZCpfcis8GyXuxWNdhAo7WFxKPidTXETS9lp1DsxJYxJ-p1r_TCkILGSsDBLhxfiY1vVgUqk21BNzHKO7JOp9ho3x-SfIknkeMN3sUCSqmIPe2fg-gQztFzFmqZD_hvo6dA-VA4ZWnhcoH9Ohzk0LfYDXbJgL1FsBWzHMKQSb7w50tw4grA7MF" },
+        { "name": "Michael Chang", "role": "Master Stylist", "avatar": "https://lh3.googleusercontent.com/aida-public/AB6AXuC5Xoy2eqNymX24fNhmOU1wtfwLV-KlU_3cxFoPW2tXn83LBO_f-GXmpY1tilLxMeQveGcfrSS5l7SwZ_xJmsKL7bmzH6sRzasEts_vcBQgEQXT0FI3CRY-hRRx0sqp-tZKpstRaJJPCTTURLTHw82hF5IGqK-yqWX_17655Wr-0FR1zsL7FfTt2qSDDVHcN0USIfKF__HT7whEfBKvnrbq5d60hR3gZ1pwhER-frfrv1ZUR5OV-5MBpVEwg5U2_cQazYgmLbBSkrfi" },
+        { "name": "Elena Rostova", "role": "Esthetician", "avatar": "https://lh3.googleusercontent.com/aida-public/AB6AXuCTY-xz_dQXBufBIWg7dcDaTRVXN_btIWMTsMFPG7lx5QvEe6LqM3kPAAg5AY0waBY0uq3OwnYxN9ETraVeKWRulgn3OiKTzhz1ME43RfPmAXk63PlVACJohsdQBmrcnA_kHSbt93uKI0g4LX8GADljlMI7ytVVElRw5bkkVVTLqUIPdf4OX5LjDZVPj6xZHOUs1-cFSppzco4-HsMNnPzYSRT7mRqlBW0LNdZMcniS2blGpph75zke3YFZ7ywCyfGpdSv_p123F4oa" }
+      ],
+      "appointments": [
+        { "column": 0, "top": 0, "height": 240, "tone": "secondary", "service": "Balayage & Tone", "price": "$240", "time": "9:00 AM - 11:30 AM", "client": "Jessica Weaver", "avatar": "https://lh3.googleusercontent.com/aida-public/AB6AXuB41RGTWx8EPJp__dwP35ynXMgqAzlnnfWoxb3DOAP3q9YwXxwb85IoFMczLs3F0dCC5LmLNIqBlf3QblUNV8S1pfZKuuDtLYaMgetEuzSxk84dg3OTJqqbSN82pKxJ2AVoUyVyU3YT-rL7Acnx5UT54c0mFM6n7QrzwcbicvCQja2mF6wt8uL8CHB13bnmTzCxwuXC7WHbZnSGGO60_FOAYQT-KF7qDrUyUvMq40N9y9Bu3uyp4e5-50mClqg4kaOlL35_oWIll0Y4" },
+        { "column": 0, "top": 336, "height": 96, "tone": "tertiary", "service": "Women's Haircut", "time": "12:30 PM - 1:30 PM", "client": "Amanda C." },
+        { "column": 1, "top": 48, "height": 96, "tone": "no-show", "service": "Men's Fade", "time": "9:30 AM - 10:30 AM", "client": "David R.", "badge": "No-Show" },
+        { "column": 1, "top": 192, "height": 192, "tone": "primary", "service": "Full Highlights & Cut", "time": "11:00 AM - 1:00 PM", "client": "Eleanor Vance", "tags": ["Processing", "VIP"], "active": true, "price": "$320.00", "stylist": "Michael Chang" },
+        { "column": 2, "top": 96, "height": 96, "tone": "secondary", "service": "Signature Facial", "time": "10:00 AM - 11:00 AM", "client": "Maria L." },
+        { "column": 2, "top": 384, "height": 96, "tone": "secondary", "service": "Brow Lamination", "time": "1:00 PM - 2:00 PM", "client": "Chloe T." }
+      ],
+      "selectedAppointment": {
+        "client": "Eleanor Vance",
+        "since": "Since Oct 2021 • VIP",
+        "service": "Full Highlights & Cut",
+        "time": "11:00 AM - 1:00 PM",
+        "stylist": "Michael Chang",
+        "amount": "$320.00",
+        "notes": "Root drag with 7N + 20vol. Highlighting with lightener + 30vol focused on face-framing. Tone with 9V + 9P.",
+        "quietPreference": "Prefers quiet appointments. Drinks sparkling water with lemon.",
+        "history": [
+          { "service": "Root Touch-up", "date": "Sep 12, 2026", "stylist": "Michael Chang" },
+          { "service": "Full Highlights & Cut", "date": "Jul 28, 2026", "stylist": "Michael Chang" }
+        ]
+      }
+    },
+    "automations-marketing-luminous-core.html": {
+      "title": "Marketing Automations",
+      "subtitle": "Design intelligent workflows to engage clients, recover missed appointments, and drive revenue silently.",
+      "searchPlaceholder": "Search automations...",
+      "summaryBadge": "3 Running",
+      "workflows": [
+        {
+          "name": "No-Show Recovery",
+          "subtitle": "Automated SMS Campaign",
+          "trigger": "Client marked as No-Show",
+          "action": "Send SMS with 10% discount",
+          "sent": "45",
+          "converted": "12",
+          "conversionRate": "26%",
+          "revenue": "+$850",
+          "icon": "event_busy",
+          "tone": "error"
+        },
+        {
+          "name": "Birthday Treat",
+          "subtitle": "Email + Add-on Offer",
+          "trigger": "Client birthday is 7 days away",
+          "action": "Email free deep conditioning offer",
+          "sent": "120",
+          "converted": "34",
+          "conversionRate": "28%",
+          "revenue": "+$1,020",
+          "icon": "cake",
+          "tone": "tertiary"
+        }
+      ],
+      "builder": {
+        "trigger": "Client No-Show",
+        "action": "Send SMS",
+        "message": "Hi [First Name], we missed you today. Rebook within 24h and get 10% off your next visit: [Booking Link]"
+      }
+    }
+  }
+}

@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Services &amp; Pricing - Luminous Core</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@400;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-secondary": "#e6f5ff",
+                        "on-primary-fixed": "#000000",
+                        "error-dim": "#a70138",
+                        "on-tertiary-container": "#450087",
+                        "secondary-fixed": "#97daff",
+                        "surface-container": "#e6e8ea",
+                        "surface-container-high": "#e0e3e4",
+                        "on-primary-fixed-variant": "#230095",
+                        "tertiary-fixed-dim": "#bc8cff",
+                        "error": "#b41340",
+                        "primary-fixed-dim": "#8e83ff",
+                        "inverse-surface": "#0c0f10",
+                        "on-primary-container": "#1b007a",
+                        "error-container": "#f74b6d",
+                        "surface-container-highest": "#dadddf",
+                        "on-background": "#2c2f30",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary-fixed": "#24004c",
+                        "surface-tint": "#4d2afa",
+                        "on-surface-variant": "#595c5d",
+                        "tertiary": "#7a25db",
+                        "tertiary-container": "#c79eff",
+                        "surface-variant": "#dadddf",
+                        "surface-dim": "#d1d5d7",
+                        "on-surface": "#2c2f30",
+                        "primary-fixed": "#9c93ff",
+                        "tertiary-dim": "#6d09ce",
+                        "on-error": "#ffefef",
+                        "secondary-fixed-dim": "#6bcfff",
+                        "primary-dim": "#400aef",
+                        "primary": "#4d2afa",
+                        "on-tertiary-fixed-variant": "#50009c",
+                        "outline": "#757778",
+                        "on-secondary-container": "#004d68",
+                        "secondary-dim": "#005673",
+                        "inverse-on-surface": "#9b9d9e",
+                        "on-secondary-fixed": "#00394d",
+                        "on-tertiary": "#f9efff",
+                        "surface-bright": "#f5f6f7",
+                        "secondary": "#006384",
+                        "secondary-container": "#97daff",
+                        "background": "#f5f6f7",
+                        "on-secondary-fixed-variant": "#005775",
+                        "surface-container-low": "#eff1f2",
+                        "tertiary-fixed": "#c79eff",
+                        "outline-variant": "#abadae",
+                        "primary-container": "#9c93ff",
+                        "on-error-container": "#510017",
+                        "on-primary": "#f2edff",
+                        "surface": "#f5f6f7",
+                        "inverse-primary": "#8b80ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {},
+                    "fontFamily": {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body antialiased flex h-screen overflow-hidden">
+<!-- SideNavBar (Shared Component) -->
+<nav class="hidden md:flex flex-col h-screen w-64 border-r-0 bg-slate-50 dark:bg-slate-900 z-10 shrink-0 shadow-sm border-r border-slate-100/50">
+<div class="flex flex-col h-full py-6 px-4">
+<!-- Header -->
+<div class="mb-8 px-2 flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-primary-container text-primary flex items-center justify-center font-headline font-bold text-lg shadow-sm">
+                    LC
+                </div>
+<div>
+<h1 class="font-headline text-2xl font-black tracking-tighter text-[#4D2AFA] dark:text-[#7A61FF]">Luminous Core</h1>
+<p class="font-body text-xs font-medium text-slate-500 tracking-wider uppercase">Precision OS</p>
+</div>
+</div>
+<!-- Primary Nav -->
+<div class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors font-manrope text-sm font-medium tracking-tight active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-xl">dashboard</span>
+                    Dashboard
+                </a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors font-manrope text-sm font-medium tracking-tight active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-xl">calendar_month</span>
+                    Schedule
+                </a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors font-manrope text-sm font-medium tracking-tight active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-xl">inbox</span>
+                    Inbox
+                </a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors font-manrope text-sm font-medium tracking-tight active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-xl">group</span>
+                    Clients
+                </a>
+<!-- Active Item: Services -->
+<a class="flex items-center gap-3 px-3 py-2.5 bg-white dark:bg-slate-950 text-[#4D2AFA] font-bold shadow-sm rounded-lg font-manrope text-sm tracking-tight active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-xl" style="font-variation-settings: 'FILL' 1;">spa</span>
+                    Services
+                </a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors font-manrope text-sm font-medium tracking-tight active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-xl">inventory_2</span>
+                    Inventory
+                </a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors font-manrope text-sm font-medium tracking-tight active:scale-[0.98] duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-xl">auto_awesome</span>
+                    Automations
+                </a>
+</div>
+<!-- Footer Nav -->
+<div class="mt-auto space-y-1 pt-6 border-t border-slate-200/60 dark:border-slate-800/60">
+<button class="w-full flex items-center justify-center gap-2 px-4 py-2.5 mb-4 bg-gradient-to-r from-primary to-primary-dim text-on-primary rounded-md font-headline font-semibold text-sm shadow-sm hover:shadow active:scale-[0.98] transition-all">
+<span class="material-symbols-outlined text-lg">add</span>
+                    New Booking
+                </button>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors font-manrope text-sm font-medium tracking-tight" href="#">
+<span class="material-symbols-outlined text-xl">settings</span>
+                    Settings
+                </a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors font-manrope text-sm font-medium tracking-tight" href="#">
+<span class="material-symbols-outlined text-xl">help_outline</span>
+                    Help
+                </a>
+</div>
+</div>
+</nav>
+<!-- Main Content Area -->
+<div class="flex-1 flex flex-col h-full overflow-hidden relative">
+<!-- TopAppBar (Shared Component) -->
+<header class="hidden md:flex items-center justify-between px-8 h-16 w-full bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl sticky top-0 z-20 border-b border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none">
+<!-- Search (Left) -->
+<div class="flex-1 flex items-center">
+<div class="relative w-96 focus-within:ring-2 focus-within:ring-[#4D2AFA]/20 rounded-md transition-all">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xl">search</span>
+<input class="w-full pl-10 pr-4 py-2 bg-surface-container-lowest border border-outline-variant/20 rounded-md text-sm font-body focus:outline-none focus:border-primary focus:ring-0 placeholder-slate-400 text-on-surface" placeholder="Search services..." type="text"/>
+</div>
+</div>
+<!-- Actions (Right) -->
+<div class="flex items-center gap-4">
+<button class="p-2 text-slate-400 dark:text-slate-500 hover:text-[#4D2AFA] dark:hover:text-[#7A61FF] rounded-full hover:bg-surface-container-low transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="p-2 text-slate-400 dark:text-slate-500 hover:text-[#4D2AFA] dark:hover:text-[#7A61FF] rounded-full hover:bg-surface-container-low transition-colors">
+<span class="material-symbols-outlined">dark_mode</span>
+</button>
+<div class="w-8 h-8 rounded-full bg-surface-container-high overflow-hidden border border-outline-variant/20 cursor-pointer flex items-center justify-center text-slate-400 hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-2xl">account_circle</span>
+</div>
+</div>
+</header>
+<!-- Canvas -->
+<main class="flex-1 overflow-y-auto p-8 bg-background relative flex gap-6">
+<!-- Service List Column -->
+<div class="flex-1 flex flex-col max-w-5xl mx-auto w-full">
+<!-- Page Header -->
+<div class="flex items-end justify-between mb-8">
+<div>
+<h2 class="font-headline text-3xl font-bold text-on-surface tracking-tight mb-1">Services &amp; Pricing</h2>
+<p class="font-body text-sm text-on-surface-variant">Manage your studio's offerings, durations, and commission structures.</p>
+</div>
+<button class="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-primary to-primary-dim text-on-primary rounded-md font-headline font-semibold text-sm shadow-[0_2px_10px_rgba(77,42,250,0.2)] hover:shadow-[0_4px_15px_rgba(77,42,250,0.3)] active:scale-[0.98] transition-all">
+<span class="material-symbols-outlined text-lg">add</span>
+                        Add New Service
+                    </button>
+</div>
+<!-- Bento-style Service Categories -->
+<div class="space-y-6">
+<!-- Category: Hair Services -->
+<div class="bg-surface-container-lowest rounded-xl p-6 shadow-sm border border-outline-variant/10">
+<div class="flex items-center justify-between mb-4 border-b border-surface-container-low pb-4">
+<h3 class="font-headline text-lg font-bold text-on-surface flex items-center gap-2">
+<div class="w-8 h-8 rounded bg-primary-container text-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-lg">content_cut</span>
+</div>
+                                Hair Services
+                            </h3>
+<span class="px-2.5 py-1 rounded-full bg-surface-container-low text-on-surface-variant font-body text-xs font-semibold">12 Services</span>
+</div>
+<!-- List -->
+<div class="space-y-0">
+<!-- Header Row -->
+<div class="grid grid-cols-12 gap-4 px-4 py-2 text-xs font-headline font-semibold text-on-surface-variant uppercase tracking-wider">
+<div class="col-span-5">Service Name</div>
+<div class="col-span-2 text-right">Duration</div>
+<div class="col-span-2 text-right">Price</div>
+<div class="col-span-2 text-right">Commission</div>
+<div class="col-span-1 text-center"></div>
+</div>
+<!-- Item 1 (Selected/Active State Example) -->
+<div class="group grid grid-cols-12 gap-4 px-4 py-3 items-center rounded-lg bg-surface-container-low/50 border border-outline-variant/20 transition-all cursor-pointer">
+<div class="col-span-5 flex items-center gap-3">
+<div class="w-2 h-2 rounded-full bg-primary"></div>
+<span class="font-body text-sm font-medium text-on-surface">Women's Precision Cut</span>
+</div>
+<div class="col-span-2 text-right font-body text-sm text-on-surface-variant">60 min</div>
+<div class="col-span-2 text-right font-headline text-sm font-semibold text-on-surface">$85.00</div>
+<div class="col-span-2 text-right font-body text-sm text-secondary font-medium">45%</div>
+<div class="col-span-1 flex justify-end">
+<button class="text-slate-400 hover:text-primary transition-colors p-1">
+<span class="material-symbols-outlined text-lg">edit</span>
+</button>
+</div>
+</div>
+<!-- Item 2 -->
+<div class="group grid grid-cols-12 gap-4 px-4 py-3 items-center rounded-lg hover:bg-surface-container-low transition-colors cursor-pointer border border-transparent">
+<div class="col-span-5 flex items-center gap-3">
+<div class="w-2 h-2 rounded-full bg-surface-container-high group-hover:bg-outline-variant transition-colors"></div>
+<span class="font-body text-sm font-medium text-on-surface">Men's Scissor Cut</span>
+</div>
+<div class="col-span-2 text-right font-body text-sm text-on-surface-variant">45 min</div>
+<div class="col-span-2 text-right font-headline text-sm font-semibold text-on-surface">$55.00</div>
+<div class="col-span-2 text-right font-body text-sm text-secondary font-medium">40%</div>
+<div class="col-span-1 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="text-slate-400 hover:text-primary transition-colors p-1">
+<span class="material-symbols-outlined text-lg">edit</span>
+</button>
+</div>
+</div>
+<!-- Item 3 -->
+<div class="group grid grid-cols-12 gap-4 px-4 py-3 items-center rounded-lg hover:bg-surface-container-low transition-colors cursor-pointer border border-transparent">
+<div class="col-span-5 flex items-center gap-3">
+<div class="w-2 h-2 rounded-full bg-surface-container-high group-hover:bg-outline-variant transition-colors"></div>
+<span class="font-body text-sm font-medium text-on-surface">Blowout &amp; Style</span>
+</div>
+<div class="col-span-2 text-right font-body text-sm text-on-surface-variant">45 min</div>
+<div class="col-span-2 text-right font-headline text-sm font-semibold text-on-surface">$65.00</div>
+<div class="col-span-2 text-right font-body text-sm text-secondary font-medium">40%</div>
+<div class="col-span-1 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="text-slate-400 hover:text-primary transition-colors p-1">
+<span class="material-symbols-outlined text-lg">edit</span>
+</button>
+</div>
+</div>
+</div>
+<button class="w-full mt-2 py-3 flex items-center justify-center gap-2 text-primary text-sm font-headline font-semibold hover:bg-primary-container/20 rounded-md transition-colors">
+                            View All Hair Services <span class="material-symbols-outlined text-sm">expand_more</span>
+</button>
+</div>
+<!-- Category: Color Services -->
+<div class="bg-surface-container-lowest rounded-xl p-6 shadow-sm border border-outline-variant/10">
+<div class="flex items-center justify-between mb-4 border-b border-surface-container-low pb-4">
+<h3 class="font-headline text-lg font-bold text-on-surface flex items-center gap-2">
+<div class="w-8 h-8 rounded bg-tertiary-container text-tertiary flex items-center justify-center">
+<span class="material-symbols-outlined text-lg">palette</span>
+</div>
+                                Color &amp; Chemical
+                            </h3>
+<span class="px-2.5 py-1 rounded-full bg-surface-container-low text-on-surface-variant font-body text-xs font-semibold">8 Services</span>
+</div>
+<div class="space-y-0">
+<!-- Item 1 -->
+<div class="group grid grid-cols-12 gap-4 px-4 py-3 items-center rounded-lg hover:bg-surface-container-low transition-colors cursor-pointer border border-transparent">
+<div class="col-span-5 flex items-center gap-3">
+<div class="w-2 h-2 rounded-full bg-surface-container-high group-hover:bg-outline-variant transition-colors"></div>
+<span class="font-body text-sm font-medium text-on-surface">Full Balayage</span>
+</div>
+<div class="col-span-2 text-right font-body text-sm text-on-surface-variant">180 min</div>
+<div class="col-span-2 text-right font-headline text-sm font-semibold text-on-surface">$250.00+</div>
+<div class="col-span-2 text-right font-body text-sm text-tertiary font-medium">50%</div>
+<div class="col-span-1 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="text-slate-400 hover:text-primary transition-colors p-1">
+<span class="material-symbols-outlined text-lg">edit</span>
+</button>
+</div>
+</div>
+<!-- Item 2 -->
+<div class="group grid grid-cols-12 gap-4 px-4 py-3 items-center rounded-lg hover:bg-surface-container-low transition-colors cursor-pointer border border-transparent">
+<div class="col-span-5 flex items-center gap-3">
+<div class="w-2 h-2 rounded-full bg-surface-container-high group-hover:bg-outline-variant transition-colors"></div>
+<span class="font-body text-sm font-medium text-on-surface">Single Process Root Touch-up</span>
+</div>
+<div class="col-span-2 text-right font-body text-sm text-on-surface-variant">90 min</div>
+<div class="col-span-2 text-right font-headline text-sm font-semibold text-on-surface">$110.00</div>
+<div class="col-span-2 text-right font-body text-sm text-tertiary font-medium">45%</div>
+<div class="col-span-1 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="text-slate-400 hover:text-primary transition-colors p-1">
+<span class="material-symbols-outlined text-lg">edit</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Side Panel (Quick-Slot Drawer - Open State Example) -->
+<div class="w-96 shrink-0 bg-surface-container-lowest/90 backdrop-blur-2xl border-l border-outline-variant/10 shadow-[-10px_0_30px_rgba(0,0,0,0.03)] h-full rounded-l-2xl flex flex-col sticky top-0">
+<!-- Panel Header -->
+<div class="px-6 py-5 border-b border-surface-container-low flex items-center justify-between">
+<h3 class="font-headline text-lg font-bold text-on-surface">Edit Service</h3>
+<button class="w-8 h-8 rounded-full bg-surface-container-low flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-sm">close</span>
+</button>
+</div>
+<!-- Panel Body -->
+<div class="flex-1 overflow-y-auto p-6 space-y-6">
+<!-- Basic Info -->
+<div class="space-y-4">
+<div>
+<label class="block font-headline text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1.5">Service Name</label>
+<input class="w-full px-3 py-2.5 bg-surface-container-lowest border border-outline-variant/20 rounded-md text-sm font-body focus:outline-none focus:border-primary focus:ring-0 text-on-surface shadow-sm" type="text" value="Women's Precision Cut"/>
+</div>
+<div>
+<label class="block font-headline text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1.5">Category</label>
+<div class="relative">
+<select class="w-full pl-3 pr-8 py-2.5 bg-surface-container-lowest border border-outline-variant/20 rounded-md text-sm font-body focus:outline-none focus:border-primary focus:ring-0 text-on-surface shadow-sm appearance-none">
+<option>Hair Services</option>
+<option>Color &amp; Chemical</option>
+<option>Treatments</option>
+</select>
+<span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_more</span>
+</div>
+</div>
+<div>
+<label class="block font-headline text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1.5">Description (Optional)</label>
+<textarea class="w-full px-3 py-2.5 bg-surface-container-lowest border border-outline-variant/20 rounded-md text-sm font-body focus:outline-none focus:border-primary focus:ring-0 text-on-surface shadow-sm resize-none" rows="3">A customized haircut designed by your stylist to fit your individual style and preferences, includes professional blow dry and style.</textarea>
+</div>
+</div>
+<!-- Pricing & Time -->
+<div class="p-5 rounded-xl bg-surface-container-low/50 border border-outline-variant/10 space-y-4">
+<div class="grid grid-cols-2 gap-4">
+<div>
+<label class="block font-headline text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1.5">Duration</label>
+<div class="relative">
+<input class="w-full pl-3 pr-10 py-2.5 bg-surface-container-lowest border border-outline-variant/20 rounded-md text-sm font-body focus:outline-none focus:border-primary focus:ring-0 text-on-surface shadow-sm" type="number" value="60"/>
+<span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-body text-slate-400">min</span>
+</div>
+</div>
+<div>
+<label class="block font-headline text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1.5">Processing Time</label>
+<div class="relative">
+<input class="w-full pl-3 pr-10 py-2.5 bg-surface-container-lowest border border-outline-variant/20 rounded-md text-sm font-body focus:outline-none focus:border-primary focus:ring-0 text-on-surface shadow-sm text-slate-400" type="number" value="0"/>
+<span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-body text-slate-400">min</span>
+</div>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div>
+<label class="block font-headline text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1.5">Price</label>
+<div class="relative">
+<span class="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-body text-slate-400">$</span>
+<input class="w-full pl-7 pr-3 py-2.5 bg-surface-container-lowest border border-outline-variant/20 rounded-md text-sm font-headline font-semibold focus:outline-none focus:border-primary focus:ring-0 text-on-surface shadow-sm" type="number" value="85.00"/>
+</div>
+</div>
+<div>
+<label class="block font-headline text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1.5">Commission Rate</label>
+<div class="relative">
+<input class="w-full pl-3 pr-8 py-2.5 bg-surface-container-lowest border border-outline-variant/20 rounded-md text-sm font-headline font-semibold focus:outline-none focus:border-primary focus:ring-0 text-on-surface shadow-sm" type="number" value="45"/>
+<span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-body text-slate-400">%</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Toggles -->
+<div class="space-y-3">
+<label class="flex items-center justify-between cursor-pointer">
+<span class="font-body text-sm font-medium text-on-surface">Available Online Booking</span>
+<div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+<input checked="" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer translate-x-5 border-primary" id="toggle1" name="toggle" style="transition: transform 0.2s;" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-5 rounded-full bg-primary cursor-pointer" for="toggle1"></label>
+</div>
+</label>
+<label class="flex items-center justify-between cursor-pointer">
+<span class="font-body text-sm font-medium text-on-surface">Requires Deposit</span>
+<div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+<input class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer border-outline-variant/50" id="toggle2" name="toggle" style="transition: transform 0.2s;" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-5 rounded-full bg-surface-container-high cursor-pointer" for="toggle2"></label>
+</div>
+</label>
+</div>
+</div>
+<!-- Panel Footer -->
+<div class="p-6 border-t border-surface-container-low bg-surface-container-lowest flex gap-3">
+<button class="flex-1 py-2.5 bg-surface-container-highest text-primary font-headline font-semibold text-sm rounded-md hover:bg-surface-dim transition-colors">
+                        Cancel
+                    </button>
+<button class="flex-1 py-2.5 bg-primary text-on-primary font-headline font-semibold text-sm rounded-md shadow-sm hover:bg-primary-dim transition-colors">
+                        Save Changes
+                    </button>
+</div>
+</div>
+</main>
+</div>
+<script src="./_inventory-chrome.js"></script>
+<script src="./_platform-runtime.js"></script>
+<script src="./_router.js"></script>
+</body></html>

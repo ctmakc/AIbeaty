@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aura AI Salon OS</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5f6f7;
+        --panel: #ffffff;
+        --text: #17181b;
+        --muted: #666b72;
+        --line: #dadddf;
+        --accent: #4d2afa;
+        --accent-2: #7a25db;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Inter, Arial, sans-serif;
+        background:
+          radial-gradient(circle at top right, rgba(122, 37, 219, 0.16), transparent 26%),
+          radial-gradient(circle at top left, rgba(77, 42, 250, 0.12), transparent 24%),
+          var(--bg);
+        color: var(--text);
+      }
+
+      .shell {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 32px 20px 48px;
+      }
+
+      .hero {
+        padding: 28px;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.82);
+        backdrop-filter: blur(10px);
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--accent);
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: clamp(32px, 6vw, 56px);
+        line-height: 0.95;
+      }
+
+      .copy {
+        max-width: 760px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.6;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 22px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 46px;
+        padding: 0 18px;
+        border-radius: 12px;
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      .button-primary {
+        color: #fff;
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      }
+
+      .button-secondary {
+        color: var(--text);
+        background: var(--panel);
+        border: 1px solid var(--line);
+      }
+
+      .section-title {
+        margin: 28px 0 14px;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+      }
+
+      .card {
+        display: block;
+        padding: 18px;
+        text-decoration: none;
+        color: inherit;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+      }
+
+      .card:hover {
+        transform: translateY(-2px);
+        border-color: rgba(77, 42, 250, 0.32);
+        box-shadow: 0 20px 40px rgba(77, 42, 250, 0.08);
+      }
+
+      .card-number {
+        display: inline-flex;
+        width: 32px;
+        height: 32px;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        background: rgba(77, 42, 250, 0.08);
+        color: var(--accent);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .card h2 {
+        margin: 14px 0 8px;
+        font-size: 20px;
+        line-height: 1.15;
+      }
+
+      .card p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      @media (max-width: 640px) {
+        .shell {
+          padding-top: 20px;
+        }
+
+        .hero {
+          padding: 22px 18px;
+        }
+
+        .copy {
+          font-size: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Stitch Import</p>
+        <h1>Aura AI Salon OS</h1>
+        <p class="copy">
+          Seven purple `Luminous Core` system screens were imported from Stitch into this app as
+          standalone static pages. The screen HTML files are kept intact under
+          <code>apps/platform/screens</code>.
+        </p>
+        <div class="actions">
+          <a class="button button-primary" href="./screens/stylist-schedule-luminous-core.html">Open First Screen</a>
+          <a class="button button-secondary" href="http://localhost:4173" target="_blank" rel="noreferrer">Landing on 4173</a>
+        </div>
+      </section>
+
+      <p class="section-title">Imported Screens</p>
+      <section class="grid">
+        <a class="card" href="./screens/stylist-schedule-luminous-core.html">
+          <span class="card-number">01</span>
+          <h2>Stylist Schedule</h2>
+          <p>High-density salon calendar and daily booking view.</p>
+        </a>
+        <a class="card" href="./screens/unified-inbox-luminous-core.html">
+          <span class="card-number">02</span>
+          <h2>Unified Inbox</h2>
+          <p>Cross-channel conversations, booking requests, and client follow-up.</p>
+        </a>
+        <a class="card" href="./screens/salon-performance-luminous-core.html">
+          <span class="card-number">03</span>
+          <h2>Salon Performance</h2>
+          <p>Owner metrics, revenue movement, and operational performance signals.</p>
+        </a>
+        <a class="card" href="./screens/inventory-management-luminous-core.html">
+          <span class="card-number">04</span>
+          <h2>Inventory Management</h2>
+          <p>Stock levels, product velocity, and supply monitoring.</p>
+        </a>
+        <a class="card" href="./screens/services-pricing-luminous-core.html">
+          <span class="card-number">05</span>
+          <h2>Services &amp; Pricing</h2>
+          <p>Catalog structure, service positioning, and package configuration.</p>
+        </a>
+        <a class="card" href="./screens/client-directory-luminous-core.html">
+          <span class="card-number">06</span>
+          <h2>Client Directory</h2>
+          <p>Profiles, loyalty tiers, booking history, and retention context.</p>
+        </a>
+        <a class="card" href="./screens/automations-marketing-luminous-core.html">
+          <span class="card-number">07</span>
+          <h2>Automations &amp; Marketing</h2>
+          <p>Campaign flows, triggers, and lifecycle automation monitoring.</p>
+        </a>
+      </section>
+    </main>
+  </body>
+</html>
