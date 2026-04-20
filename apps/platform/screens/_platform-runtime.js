@@ -35,6 +35,19 @@
       ".aibeaty-overlay-card{min-width:280px;max-width:420px;padding:18px 20px;border-radius:18px;background:rgba(255,255,255,.96);border:1px solid rgba(171,173,174,.26);box-shadow:0 24px 60px rgba(44,47,48,.12)}" +
       ".aibeaty-spinner{width:18px;height:18px;border-radius:999px;border:2px solid rgba(77,42,250,.15);border-top-color:#4d2afa;animation:aibeaty-spin 1s linear infinite}" +
       ".aibeaty-action-muted{opacity:.55;pointer-events:none}" +
+      ".aibeaty-modal-backdrop{position:fixed;inset:0;background:rgba(44,47,48,.24);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:24px;z-index:10000}" +
+      ".aibeaty-modal{width:min(560px,100%);max-height:min(90vh,820px);overflow:auto;border-radius:24px;background:rgba(255,255,255,.98);border:1px solid rgba(171,173,174,.24);box-shadow:0 30px 80px rgba(44,47,48,.18)}" +
+      ".aibeaty-modal__header{padding:24px 24px 12px;border-bottom:1px solid rgba(171,173,174,.16)}" +
+      ".aibeaty-modal__body{padding:20px 24px;display:grid;gap:16px}" +
+      ".aibeaty-modal__footer{padding:16px 24px 24px;display:flex;justify-content:flex-end;gap:12px}" +
+      ".aibeaty-modal__label{display:grid;gap:8px}" +
+      ".aibeaty-modal__label span{font-size:12px;font-weight:700;color:#595c5d;text-transform:uppercase;letter-spacing:.04em}" +
+      ".aibeaty-modal__input,.aibeaty-modal__select,.aibeaty-modal__textarea{width:100%;border:1px solid rgba(171,173,174,.28);border-radius:14px;background:#fff;padding:12px 14px;font-size:14px;color:#2c2f30;outline:none;transition:border-color .15s ease,box-shadow .15s ease}" +
+      ".aibeaty-modal__textarea{min-height:120px;resize:vertical}" +
+      ".aibeaty-modal__input:focus,.aibeaty-modal__select:focus,.aibeaty-modal__textarea:focus{border-color:#4d2afa;box-shadow:0 0 0 3px rgba(77,42,250,.12)}" +
+      ".aibeaty-modal__actions button{border-radius:999px;padding:10px 16px;font-size:13px;font-weight:700}" +
+      ".aibeaty-modal__cancel{background:transparent;border:1px solid rgba(171,173,174,.28);color:#595c5d}" +
+      ".aibeaty-modal__submit{background:#4d2afa;border:1px solid #4d2afa;color:#fff}" +
       "@keyframes aibeaty-spin{to{transform:rotate(360deg)}}";
     document.head.appendChild(style);
   }
@@ -45,6 +58,14 @@
 
   function qsa(selector, root) {
     return Array.prototype.slice.call((root || document).querySelectorAll(selector));
+  }
+
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;");
   }
 
   function notify(message, tone) {
@@ -63,6 +84,65 @@
     window.setTimeout(function () {
       toast.remove();
     }, 2600);
+  }
+
+  function presentForm(options) {
+    ensureRuntimeStyle();
+    options = options || {};
+    var fields = Array.isArray(options.fields) ? options.fields : [];
+    return new Promise(function (resolve) {
+      var backdrop = document.createElement("div");
+      backdrop.className = "aibeaty-modal-backdrop";
+      var bodyHtml = fields.map(function (field, index) {
+        var label = escapeHtml(field.label || field.name || ("Field " + (index + 1)));
+        var name = escapeHtml(field.name || ("field_" + index));
+        var value = escapeHtml(field.value || "");
+        if (field.type === "select") {
+          var choices = (field.options || []).map(function (option) {
+            var optionValue = typeof option === "string" ? option : option.value;
+            var optionLabel = typeof option === "string" ? option : (option.label || option.value);
+            return '<option value="' + escapeHtml(optionValue) + '"' + (String(optionValue) === String(field.value || "") ? " selected" : "") + '>' + escapeHtml(optionLabel) + "</option>";
+          }).join("");
+          return '<label class="aibeaty-modal__label"><span>' + label + '</span><select class="aibeaty-modal__select" name="' + name + '">' + choices + "</select></label>";
+        }
+        if (field.type === "textarea") {
+          return '<label class="aibeaty-modal__label"><span>' + label + '</span><textarea class="aibeaty-modal__textarea" name="' + name + '" placeholder="' + escapeHtml(field.placeholder || "") + '">' + value + "</textarea></label>";
+        }
+        return '<label class="aibeaty-modal__label"><span>' + label + '</span><input class="aibeaty-modal__input" type="' + escapeHtml(field.type || "text") + '" name="' + name + '" value="' + value + '" placeholder="' + escapeHtml(field.placeholder || "") + '"/></label>';
+      }).join("");
+      backdrop.innerHTML =
+        '<div class="aibeaty-modal" role="dialog" aria-modal="true">' +
+        '<div class="aibeaty-modal__header"><div class="font-headline font-bold text-xl text-on-surface">' + escapeHtml(options.title || "Edit") + '</div>' +
+        (options.description ? '<div class="text-sm text-on-surface-variant mt-2">' + escapeHtml(options.description) + "</div>" : "") +
+        '</div><form class="aibeaty-modal__form"><div class="aibeaty-modal__body">' + bodyHtml + '</div><div class="aibeaty-modal__footer aibeaty-modal__actions">' +
+        '<button type="button" class="aibeaty-modal__cancel">' + escapeHtml(options.cancelLabel || "Cancel") + '</button>' +
+        '<button type="submit" class="aibeaty-modal__submit">' + escapeHtml(options.submitLabel || "Save") + "</button>" +
+        "</div></form></div>";
+      document.body.appendChild(backdrop);
+      var form = qs("form", backdrop);
+      var cancel = qs(".aibeaty-modal__cancel", backdrop);
+      var inputs = qsa("input, select, textarea", backdrop);
+      var done = function (result) {
+        backdrop.remove();
+        resolve(result);
+      };
+      cancel.addEventListener("click", function () { done(null); });
+      backdrop.addEventListener("click", function (event) {
+        if (event.target === backdrop) done(null);
+      });
+      form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        var values = {};
+        inputs.forEach(function (input) {
+          values[input.name] = input.value;
+        });
+        done(values);
+      });
+      if (inputs[0]) {
+        inputs[0].focus();
+        if (inputs[0].select) inputs[0].select();
+      }
+    });
   }
 
   function setStatus(state) {
@@ -409,15 +489,23 @@
           var item = items.find(function (entry) { return entry.name === itemName; });
           if (!item) return;
           var currentStock = getNumericStockValue(item.stock);
-          var nextStock = window.prompt("Update stock for " + item.name, String(currentStock));
-          if (nextStock === null) return;
-          mutateJson(apiBase.replace(/\/$/, "") + "/inventory/items/" + encodeURIComponent(item.sku), "PATCH", {
-            stock: nextStock
-          }).then(function () {
-            notify("Inventory updated for " + item.name + ".");
-            reload();
-          }).catch(function () {
-            notify("Inventory update failed.", "error");
+          presentForm({
+            title: "Update Inventory",
+            description: item.name,
+            submitLabel: "Save Stock",
+            fields: [
+              { name: "stock", label: "Stock Quantity", value: String(currentStock), type: "number" }
+            ]
+          }).then(function (values) {
+            if (!values || !String(values.stock).trim()) return;
+            mutateJson(apiBase.replace(/\/$/, "") + "/inventory/items/" + encodeURIComponent(item.sku), "PATCH", {
+              stock: values.stock
+            }).then(function () {
+              notify("Inventory updated for " + item.name + ".");
+              reload();
+            }).catch(function () {
+              notify("Inventory update failed.", "error");
+            });
           });
         });
       });
@@ -481,10 +569,17 @@
     if (filterButton) {
       filterButton.dataset.actionBound = "true";
       filterButton.onclick = function () {
-        var nextStock = window.prompt("Inventory stock filter: all, low, watch, ok", currentQuery.stock || "all");
-        if (nextStock === null) return;
-        pageIndex = 0;
-        reload({ stock: nextStock });
+        presentForm({
+          title: "Filter Inventory",
+          submitLabel: "Apply",
+          fields: [
+            { name: "stock", label: "Stock Status", type: "select", value: currentQuery.stock || "all", options: ["all", "low", "watch", "ok"] }
+          ]
+        }).then(function (values) {
+          if (!values) return;
+          pageIndex = 0;
+          reload({ stock: values.stock });
+        });
       };
     }
 
@@ -858,27 +953,30 @@
       if (editProfileButton) {
         editProfileButton.dataset.actionBound = "true";
         editProfileButton.onclick = function () {
-          var nextName = window.prompt("Client name", client.name);
-          if (nextName === null || !nextName.trim()) return;
-          var nextEmail = window.prompt("Email", client.email);
-          if (nextEmail === null || !nextEmail.trim()) return;
-          var nextPhone = window.prompt("Phone", client.phone);
-          if (nextPhone === null || !nextPhone.trim()) return;
-          var nextStatus = window.prompt("Status (VIP, REGULAR, NEW, AT-RISK)", client.status);
-          if (nextStatus === null || !nextStatus.trim()) return;
-          var nextPreferences = window.prompt("Preferences (comma separated)", (client.preferences || []).join(", "));
-          if (nextPreferences === null) return;
-          mutateJson(apiBase.replace(/\/$/, "") + "/clients/" + encodeURIComponent(client.id), "PATCH", {
-            name: nextName,
-            email: nextEmail,
-            phone: nextPhone,
-            status: nextStatus,
-            preferences: nextPreferences
-          }).then(function () {
-            notify("Client updated on live backend.");
-            reload();
-          }).catch(function () {
-            notify("Client update failed.", "error");
+          presentForm({
+            title: "Edit Client",
+            submitLabel: "Save Client",
+            fields: [
+              { name: "name", label: "Client Name", value: client.name },
+              { name: "email", label: "Email", value: client.email, type: "email" },
+              { name: "phone", label: "Phone", value: client.phone, type: "tel" },
+              { name: "status", label: "Status", type: "select", value: client.status, options: ["VIP", "REGULAR", "NEW", "AT-RISK"] },
+              { name: "preferences", label: "Preferences", value: (client.preferences || []).join(", ") }
+            ]
+          }).then(function (values) {
+            if (!values || !values.name.trim() || !values.email.trim() || !values.phone.trim()) return;
+            mutateJson(apiBase.replace(/\/$/, "") + "/clients/" + encodeURIComponent(client.id), "PATCH", {
+              name: values.name,
+              email: values.email,
+              phone: values.phone,
+              status: values.status,
+              preferences: values.preferences
+            }).then(function () {
+              notify("Client updated on live backend.");
+              reload();
+            }).catch(function () {
+              notify("Client update failed.", "error");
+            });
           });
         };
       }
@@ -886,27 +984,31 @@
       if (bookButton) {
         bookButton.dataset.actionBound = "true";
         bookButton.onclick = function () {
-          var service = window.prompt("Service", "Signature Color Refresh");
-          if (service === null || !service.trim()) return;
-          var stylist = window.prompt("Stylist", "Sarah J.");
-          if (stylist === null || !stylist.trim()) return;
-          var date = window.prompt("Booking date (YYYY-MM-DD)", new Date().toISOString().slice(0, 10));
-          if (date === null || !date.trim()) return;
-          var slot = window.prompt("Time slot (HH:MM-HH:MM)", "11:00-12:00");
-          if (slot === null || !slot.trim()) return;
-          var amount = window.prompt("Ticket amount", String((client.avgTicket || "$0").replace(/[^0-9.]/g, "") || "120"));
-          if (amount === null || !amount.trim()) return;
-          mutateJson(apiBase.replace(/\/$/, "") + "/clients/" + encodeURIComponent(client.id) + "/bookings", "POST", {
-            service: service,
-            stylist: stylist,
-            date: date,
-            slot: slot,
-            amount: amount
-          }).then(function () {
-            notify("Booking saved on live backend.");
-            reload();
-          }).catch(function () {
-            notify("Booking creation failed.", "error");
+          presentForm({
+            title: "Book Client Visit",
+            description: client.name,
+            submitLabel: "Create Booking",
+            fields: [
+              { name: "service", label: "Service", value: "Signature Color Refresh" },
+              { name: "stylist", label: "Stylist", value: "Sarah J." },
+              { name: "date", label: "Booking Date", value: new Date().toISOString().slice(0, 10), type: "date" },
+              { name: "slot", label: "Time Slot", value: "11:00-12:00" },
+              { name: "amount", label: "Ticket Amount", value: String((client.avgTicket || "$0").replace(/[^0-9.]/g, "") || "120"), type: "number" }
+            ]
+          }).then(function (values) {
+            if (!values || !values.service.trim() || !values.stylist.trim() || !values.date.trim() || !values.slot.trim() || !values.amount.trim()) return;
+            mutateJson(apiBase.replace(/\/$/, "") + "/clients/" + encodeURIComponent(client.id) + "/bookings", "POST", {
+              service: values.service,
+              stylist: values.stylist,
+              date: values.date,
+              slot: values.slot,
+              amount: values.amount
+            }).then(function () {
+              notify("Booking saved on live backend.");
+              reload();
+            }).catch(function () {
+              notify("Booking creation failed.", "error");
+            });
           });
         };
       }
@@ -914,18 +1016,25 @@
       if (formulaEditButton) {
         formulaEditButton.dataset.actionBound = "true";
         formulaEditButton.onclick = function () {
-          var formulaBase = window.prompt("Current base formula", client.formulaBase);
-          if (formulaBase === null) return;
-          var formulaHighlights = window.prompt("Highlights / notes", client.formulaHighlights);
-          if (formulaHighlights === null) return;
-          mutateJson(apiBase.replace(/\/$/, "") + "/clients/" + encodeURIComponent(client.id), "PATCH", {
-            formulaBase: formulaBase,
-            formulaHighlights: formulaHighlights
-          }).then(function () {
-            notify("Formula notes saved on live backend.");
-            reload();
-          }).catch(function () {
-            notify("Formula update failed.", "error");
+          presentForm({
+            title: "Edit Formula Notes",
+            description: client.name,
+            submitLabel: "Save Formula",
+            fields: [
+              { name: "formulaBase", label: "Base Formula", value: client.formulaBase, type: "textarea" },
+              { name: "formulaHighlights", label: "Highlights / Notes", value: client.formulaHighlights, type: "textarea" }
+            ]
+          }).then(function (values) {
+            if (!values) return;
+            mutateJson(apiBase.replace(/\/$/, "") + "/clients/" + encodeURIComponent(client.id), "PATCH", {
+              formulaBase: values.formulaBase,
+              formulaHighlights: values.formulaHighlights
+            }).then(function () {
+              notify("Formula notes saved on live backend.");
+              reload();
+            }).catch(function () {
+              notify("Formula update failed.", "error");
+            });
           });
         };
       }
@@ -953,27 +1062,30 @@
     if (createClientButton) {
       createClientButton.dataset.actionBound = "true";
       createClientButton.onclick = function () {
-        var name = window.prompt("Client name", "");
-        if (name === null || !name.trim()) return;
-        var email = window.prompt("Email", "");
-        if (email === null || !email.trim()) return;
-        var phone = window.prompt("Phone", "");
-        if (phone === null || !phone.trim()) return;
-        var status = window.prompt("Status (VIP, REGULAR, NEW, AT-RISK)", "NEW");
-        if (status === null || !status.trim()) return;
-        var preferences = window.prompt("Preferences (comma separated)", "Text confirmations");
-        if (preferences === null) return;
-        mutateJson(apiBase.replace(/\/$/, "") + "/clients", "POST", {
-          name: name,
-          email: email,
-          phone: phone,
-          status: status,
-          preferences: preferences
-        }).then(function () {
-          notify("Client created on live backend.");
-          reload();
-        }).catch(function () {
-          notify("Client creation failed.", "error");
+        presentForm({
+          title: "New Client",
+          submitLabel: "Create Client",
+          fields: [
+            { name: "name", label: "Client Name", value: "" },
+            { name: "email", label: "Email", value: "", type: "email" },
+            { name: "phone", label: "Phone", value: "", type: "tel" },
+            { name: "status", label: "Status", type: "select", value: "NEW", options: ["VIP", "REGULAR", "NEW", "AT-RISK"] },
+            { name: "preferences", label: "Preferences", value: "Text confirmations" }
+          ]
+        }).then(function (values) {
+          if (!values || !values.name.trim() || !values.email.trim() || !values.phone.trim()) return;
+          mutateJson(apiBase.replace(/\/$/, "") + "/clients", "POST", {
+            name: values.name,
+            email: values.email,
+            phone: values.phone,
+            status: values.status,
+            preferences: values.preferences
+          }).then(function () {
+            notify("Client created on live backend.");
+            reload();
+          }).catch(function () {
+            notify("Client creation failed.", "error");
+          });
         });
       };
     }
@@ -989,9 +1101,16 @@
     if (clientFilterButton) {
       clientFilterButton.dataset.actionBound = "true";
       clientFilterButton.onclick = function () {
-        var nextStatus = window.prompt("Client status filter: all, vip, regular, new, at-risk", currentQuery.status || "all");
-        if (nextStatus === null) return;
-        reload({ status: nextStatus });
+        presentForm({
+          title: "Filter Clients",
+          submitLabel: "Apply Filter",
+          fields: [
+            { name: "status", label: "Status", type: "select", value: currentQuery.status || "all", options: ["all", "vip", "regular", "new", "at-risk"] }
+          ]
+        }).then(function (values) {
+          if (!values) return;
+          reload({ status: values.status });
+        });
       };
     }
 
@@ -1180,33 +1299,38 @@
           var defaultService = conversation.todayVisit && conversation.todayVisit.service && conversation.todayVisit.service !== "No service booked"
             ? conversation.todayVisit.service
             : "Consultation";
-          var service = window.prompt("Service", defaultService);
-          if (service === null || !service.trim()) return;
           var defaultStylist = conversation.todayVisit && conversation.todayVisit.stylist && conversation.todayVisit.stylist !== "TBD"
             ? conversation.todayVisit.stylist
             : "Front Desk";
-          var stylist = window.prompt("Stylist", defaultStylist);
-          if (stylist === null || !stylist.trim()) return;
           var defaultSlot = conversation.todayVisit && conversation.todayVisit.time && conversation.todayVisit.time !== "No active booking"
             ? conversation.todayVisit.time
             : "11:00-12:00";
-          var slot = window.prompt("Time slot", defaultSlot);
-          if (slot === null || !slot.trim()) return;
           var defaultAmount = conversation.todayVisit && conversation.todayVisit.amount && conversation.todayVisit.amount !== "$0"
             ? conversation.todayVisit.amount.replace(/^\$/, "")
             : "95";
-          var amount = window.prompt("Amount", defaultAmount);
-          if (amount === null || !amount.trim()) return;
-          mutateJson(apiBase.replace(/\/$/, "") + "/inbox/conversations/" + encodeURIComponent(conversation.id) + "/bookings", "POST", {
-            service: service,
-            stylist: stylist,
-            slot: slot,
-            amount: amount
-          }).then(function () {
-            notify("Inbox booking created on live backend.");
-            reload();
-          }).catch(function () {
-            notify("Inbox booking failed.", "error");
+          presentForm({
+            title: "Book Visit From Thread",
+            description: conversation.name,
+            submitLabel: "Book Visit",
+            fields: [
+              { name: "service", label: "Service", value: defaultService },
+              { name: "stylist", label: "Stylist", value: defaultStylist },
+              { name: "slot", label: "Time Slot", value: defaultSlot },
+              { name: "amount", label: "Amount", value: defaultAmount, type: "number" }
+            ]
+          }).then(function (values) {
+            if (!values || !values.service.trim() || !values.stylist.trim() || !values.slot.trim() || !values.amount.trim()) return;
+            mutateJson(apiBase.replace(/\/$/, "") + "/inbox/conversations/" + encodeURIComponent(conversation.id) + "/bookings", "POST", {
+              service: values.service,
+              stylist: values.stylist,
+              slot: values.slot,
+              amount: values.amount
+            }).then(function () {
+              notify("Inbox booking created on live backend.");
+              reload();
+            }).catch(function () {
+              notify("Inbox booking failed.", "error");
+            });
           });
         };
       }
@@ -1217,18 +1341,25 @@
         editNotesButton.dataset.actionBound = "true";
         editNotesButton.onclick = function () {
           var currentNote = conversation.history[0] ? conversation.history[0].notes : "";
-          var nextNote = window.prompt("Update latest client note", currentNote);
-          if (nextNote === null || !nextNote.trim()) return;
-          var nextPreference = window.prompt("Drink / contact preference", conversation.contact.preference);
-          if (nextPreference === null || !nextPreference.trim()) return;
-          mutateJson(apiBase.replace(/\/$/, "") + "/inbox/conversations/" + encodeURIComponent(conversation.id), "PATCH", {
-            note: nextNote,
-            preference: nextPreference
-          }).then(function () {
-            notify("Conversation notes saved on live backend.");
-            reload();
-          }).catch(function () {
-            notify("Conversation update failed.", "error");
+          presentForm({
+            title: "Update Conversation Notes",
+            description: conversation.name,
+            submitLabel: "Save Notes",
+            fields: [
+              { name: "note", label: "Latest Note", value: currentNote, type: "textarea" },
+              { name: "preference", label: "Drink / Contact Preference", value: conversation.contact.preference }
+            ]
+          }).then(function (values) {
+            if (!values || !values.note.trim() || !values.preference.trim()) return;
+            mutateJson(apiBase.replace(/\/$/, "") + "/inbox/conversations/" + encodeURIComponent(conversation.id), "PATCH", {
+              note: values.note,
+              preference: values.preference
+            }).then(function () {
+              notify("Conversation notes saved on live backend.");
+              reload();
+            }).catch(function () {
+              notify("Conversation update failed.", "error");
+            });
           });
         };
       }
@@ -1255,37 +1386,40 @@
     if (createConversationButton) {
       createConversationButton.dataset.actionBound = "true";
       createConversationButton.onclick = function () {
-        var name = window.prompt("Client or conversation name", "");
-        if (name === null || !name.trim()) return;
-        var channel = window.prompt("Channel (WhatsApp or Instagram)", "WhatsApp");
-        if (channel === null || !channel.trim()) return;
-        var email = window.prompt("Email", "");
-        if (email === null || !email.trim()) return;
-        var phone = window.prompt("Phone", "");
-        if (phone === null || !phone.trim()) return;
-        var message = window.prompt("Initial message", "Hi, reaching out from Precision Studio.");
-        if (message === null || !message.trim()) return;
-        mutateJson(apiBase.replace(/\/$/, "") + "/inbox/conversations", "POST", {
-          name: name,
-          channel: channel,
-          contact: {
-            email: email,
-            phone: phone,
-            preference: "Text updates"
-          },
-          preview: message,
-          messages: [
-            {
-              type: "outgoing",
-              text: message,
-              meta: "Just now • Sent"
-            }
+        presentForm({
+          title: "New Thread",
+          submitLabel: "Create Thread",
+          fields: [
+            { name: "name", label: "Client or Conversation Name", value: "" },
+            { name: "channel", label: "Channel", type: "select", value: "WhatsApp", options: ["WhatsApp", "Instagram"] },
+            { name: "email", label: "Email", value: "", type: "email" },
+            { name: "phone", label: "Phone", value: "", type: "tel" },
+            { name: "message", label: "Initial Message", value: "Hi, reaching out from Precision Studio.", type: "textarea" }
           ]
-        }).then(function () {
-          notify("Conversation created on live backend.");
-          reload();
-        }).catch(function () {
-          notify("Conversation creation failed.", "error");
+        }).then(function (values) {
+          if (!values || !values.name.trim() || !values.channel.trim() || !values.email.trim() || !values.phone.trim() || !values.message.trim()) return;
+          mutateJson(apiBase.replace(/\/$/, "") + "/inbox/conversations", "POST", {
+            name: values.name,
+            channel: values.channel,
+            contact: {
+              email: values.email,
+              phone: values.phone,
+              preference: "Text updates"
+            },
+            preview: values.message,
+            messages: [
+              {
+                type: "outgoing",
+                text: values.message,
+                meta: "Just now • Sent"
+              }
+            ]
+          }).then(function () {
+            notify("Conversation created on live backend.");
+            reload();
+          }).catch(function () {
+            notify("Conversation creation failed.", "error");
+          });
         });
       };
     }
@@ -1301,9 +1435,16 @@
     if (inboxFilterButton) {
       inboxFilterButton.dataset.actionBound = "true";
       inboxFilterButton.onclick = function () {
-        var nextChannel = window.prompt("Inbox channel filter: all, whatsapp, instagram", currentQuery.channel || "all");
-        if (nextChannel === null) return;
-        reload({ channel: nextChannel });
+        presentForm({
+          title: "Filter Inbox",
+          submitLabel: "Apply Filter",
+          fields: [
+            { name: "channel", label: "Channel", type: "select", value: currentQuery.channel || "all", options: ["all", "whatsapp", "instagram"] }
+          ]
+        }).then(function (values) {
+          if (!values) return;
+          reload({ channel: values.channel });
+        });
       };
     }
 
@@ -1449,30 +1590,33 @@
     if (newBookingButton) {
       newBookingButton.dataset.actionBound = "true";
       newBookingButton.onclick = function () {
-        var client = window.prompt("Client", "Walk-in Client");
-        if (client === null || !client.trim()) return;
-        var service = window.prompt("Service", "Women's Precision Cut");
-        if (service === null || !service.trim()) return;
-        var stylist = window.prompt("Stylist", page.stylists[0] ? page.stylists[0].name : "Sarah Jenkins");
-        if (stylist === null || !stylist.trim()) return;
-        var slot = window.prompt("Time slot (HH:MM-HH:MM)", "14:00-15:00");
-        if (slot === null || !slot.trim()) return;
-        var amount = window.prompt("Amount", "120");
-        if (amount === null || !amount.trim()) return;
-        mutateJson(apiBase.replace(/\/$/, "") + "/schedule/appointments", "POST", {
-          client: client,
-          service: service,
-          stylist: stylist,
-          date: slot,
-          amount: amount,
-          since: "New client",
-          notes: "Booked from live schedule panel.",
-          quietPreference: "No special preference recorded."
-        }).then(function () {
-          notify("Appointment created on live backend.");
-          reload();
-        }).catch(function () {
-          notify("Appointment creation failed.", "error");
+        presentForm({
+          title: "New Booking",
+          submitLabel: "Create Booking",
+          fields: [
+            { name: "client", label: "Client", value: "Walk-in Client" },
+            { name: "service", label: "Service", value: "Women's Precision Cut" },
+            { name: "stylist", label: "Stylist", value: page.stylists[0] ? page.stylists[0].name : "Sarah Jenkins" },
+            { name: "slot", label: "Time Slot", value: "14:00-15:00" },
+            { name: "amount", label: "Amount", value: "120", type: "number" }
+          ]
+        }).then(function (values) {
+          if (!values || !values.client.trim() || !values.service.trim() || !values.stylist.trim() || !values.slot.trim() || !values.amount.trim()) return;
+          mutateJson(apiBase.replace(/\/$/, "") + "/schedule/appointments", "POST", {
+            client: values.client,
+            service: values.service,
+            stylist: values.stylist,
+            date: values.slot,
+            amount: values.amount,
+            since: "New client",
+            notes: "Booked from live schedule panel.",
+            quietPreference: "No special preference recorded."
+          }).then(function () {
+            notify("Appointment created on live backend.");
+            reload();
+          }).catch(function () {
+            notify("Appointment creation failed.", "error");
+          });
         });
       };
     }
@@ -1505,18 +1649,25 @@
         editButton.onclick = function () {
           var appointmentId = drawer.dataset.selectedAppointmentId;
           if (!appointmentId || !currentSelected) return;
-          var nextNotes = window.prompt("Update formula / appointment notes", currentSelected.notes);
-          if (nextNotes === null || !nextNotes.trim()) return;
-          var nextPreference = window.prompt("Update quiet preference", currentSelected.quietPreference);
-          if (nextPreference === null || !nextPreference.trim()) return;
-          mutateJson(apiBase.replace(/\/$/, "") + "/schedule/appointments/" + encodeURIComponent(appointmentId), "PATCH", {
-            notes: nextNotes,
-            quietPreference: nextPreference
-          }).then(function () {
-            notify("Appointment notes saved on live backend.");
-            reload();
-          }).catch(function () {
-            notify("Appointment update failed.", "error");
+          presentForm({
+            title: "Edit Appointment Notes",
+            description: currentSelected.client,
+            submitLabel: "Save Notes",
+            fields: [
+              { name: "notes", label: "Formula / Appointment Notes", value: currentSelected.notes, type: "textarea" },
+              { name: "quietPreference", label: "Quiet Preference", value: currentSelected.quietPreference }
+            ]
+          }).then(function (values) {
+            if (!values || !values.notes.trim() || !values.quietPreference.trim()) return;
+            mutateJson(apiBase.replace(/\/$/, "") + "/schedule/appointments/" + encodeURIComponent(appointmentId), "PATCH", {
+              notes: values.notes,
+              quietPreference: values.quietPreference
+            }).then(function () {
+              notify("Appointment notes saved on live backend.");
+              reload();
+            }).catch(function () {
+              notify("Appointment update failed.", "error");
+            });
           });
         };
       }
@@ -1529,9 +1680,16 @@
     if (scheduleFilterButton) {
       scheduleFilterButton.dataset.actionBound = "true";
       scheduleFilterButton.onclick = function () {
-        var nextStylist = window.prompt("Schedule stylist filter: all or exact stylist name", currentQuery.stylist || "all");
-        if (nextStylist === null) return;
-        reload({ stylist: nextStylist });
+        presentForm({
+          title: "Filter Schedule",
+          submitLabel: "Apply Filter",
+          fields: [
+            { name: "stylist", label: "Stylist", type: "select", value: currentQuery.stylist || "all", options: ["all"].concat(page.stylists.map(function (item) { return item.name; })) }
+          ]
+        }).then(function (values) {
+          if (!values) return;
+          reload({ stylist: values.stylist });
+        });
       };
     }
   }
@@ -1649,9 +1807,16 @@
     if (filterButton) {
       filterButton.dataset.actionBound = "true";
       filterButton.onclick = function () {
-        var nextEnabled = window.prompt("Automation filter: all, enabled, disabled", currentQuery.enabled || "all");
-        if (nextEnabled === null) return;
-        reload({ enabled: nextEnabled });
+        presentForm({
+          title: "Filter Automations",
+          submitLabel: "Apply Filter",
+          fields: [
+            { name: "enabled", label: "Workflow State", type: "select", value: currentQuery.enabled || "all", options: ["all", "enabled", "disabled"] }
+          ]
+        }).then(function (values) {
+          if (!values) return;
+          reload({ enabled: values.enabled });
+        });
       };
     }
   }
