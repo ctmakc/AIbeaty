@@ -376,6 +376,26 @@
     window.history.replaceState({}, "", buildScreenHref(pageFile, query));
   }
 
+  function ensureActionButton(container, key, label, className) {
+    if (!container) return null;
+    var button = qs('[data-runtime-action="' + key + '"]', container);
+    if (!button) {
+      button = document.createElement("button");
+      button.type = "button";
+      button.dataset.runtimeAction = key;
+      container.appendChild(button);
+    }
+    button.textContent = label;
+    button.className = className;
+    return button;
+  }
+
+  function setButtonDisabled(button, disabled) {
+    if (!button) return;
+    button.disabled = !!disabled;
+    button.classList.toggle("aibeaty-action-muted", !!disabled);
+  }
+
   function wireClickable(node, handler) {
     if (!node) return;
     node.style.cursor = "pointer";
@@ -1118,6 +1138,7 @@
       var headerButtons = qsa(".p-8.border-b button", detail);
       var editProfileButton = headerButtons[0];
       var bookButton = headerButtons[1];
+      var actionRow = editProfileButton ? editProfileButton.parentElement : null;
       var formulaEditButton = qsa("section button", detail)[0];
 
       if (editProfileButton) {
@@ -1180,6 +1201,30 @@
               notify("Booking creation failed.", "error");
             });
           });
+        };
+      }
+
+      var openInboxButton = ensureActionButton(
+        actionRow,
+        "client-open-inbox",
+        "Open Inbox",
+        "px-4 py-2 bg-surface-container-lowest border border-outline-variant/20 rounded-md text-xs font-semibold text-on-surface hover:bg-surface-container-high transition-colors shadow-sm"
+      );
+      if (openInboxButton) {
+        openInboxButton.onclick = function () {
+          navigateToScreen("unified-inbox-luminous-core.html", { clientId: client.id });
+        };
+      }
+
+      var openScheduleButton = ensureActionButton(
+        actionRow,
+        "client-open-schedule",
+        "View Schedule",
+        "px-4 py-2 bg-surface-container-lowest border border-outline-variant/20 rounded-md text-xs font-semibold text-on-surface hover:bg-surface-container-high transition-colors shadow-sm"
+      );
+      if (openScheduleButton) {
+        openScheduleButton.onclick = function () {
+          navigateToScreen("stylist-schedule-luminous-core.html", { clientId: client.id });
         };
       }
 
@@ -1299,6 +1344,7 @@
     var currentQuery = {
       q: page.liveQuery && page.liveQuery.q ? page.liveQuery.q : "",
       channel: page.liveQuery && page.liveQuery.channel ? page.liveQuery.channel : "all",
+      clientId: page.liveQuery && page.liveQuery.clientId ? page.liveQuery.clientId : "",
       conversationId: page.liveQuery && page.liveQuery.conversationId ? page.liveQuery.conversationId : ""
     };
 
@@ -1375,6 +1421,15 @@
       qs("h2", header).textContent = conversation.name;
       var status = qs(".text-xs.font-medium", header);
       if (status) status.textContent = conversation.status;
+      var inputButtons = qsa("button", inputArea);
+      var textarea = qs("textarea", inputArea);
+      if (textarea) {
+        textarea.disabled = false;
+        textarea.placeholder = "Type a message...";
+      }
+      inputButtons.forEach(function (button) {
+        setButtonDisabled(button, false);
+      });
       messageArea.innerHTML = conversation.messages
         .map(function (message) {
           if (message.type === "system") {
@@ -1398,7 +1453,7 @@
               return '<button class="aibeaty-suggestion flex-shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-tertiary-container/30 text-on-tertiary-container border border-tertiary-container/50 hover:bg-tertiary-container/50 transition-colors" data-text="' + text.replace(/"/g, "&quot;") + '">' + text + "</button>";
             })
             .join("");
-        var textarea = qs("textarea", inputArea);
+        textarea = qs("textarea", inputArea);
         qsa(".aibeaty-suggestion", suggestionsWrap).forEach(function (button) {
           button.addEventListener("click", function () {
             if (textarea) textarea.value = button.dataset.text;
@@ -1428,7 +1483,73 @@
       }
     }
 
+    function renderEmptyConversationState() {
+      var centerChildren = qsa(":scope > *", centerPane);
+      var header = centerChildren[0];
+      var messageArea = centerChildren[1];
+      var inputArea = centerChildren[2];
+      var title = qs("h2", header);
+      var status = qs(".text-xs.font-medium", header);
+      if (title) title.textContent = currentQuery.clientId ? "No linked thread" : "No conversation selected";
+      if (status) {
+        status.textContent = currentQuery.clientId
+          ? "This client has no matching inbox thread yet."
+          : "No conversations match the current filters.";
+      }
+      if (messageArea) {
+        messageArea.innerHTML = '<div class="h-full flex items-center justify-center"><div class="aibeaty-empty">' +
+          (currentQuery.clientId
+            ? "No inbox thread is linked to this client yet."
+            : "No conversations match this search.") +
+          "</div></div>";
+      }
+      if (inputArea) {
+        var suggestionsWrap = qs(".flex.gap-2.mb-3", inputArea);
+        var textarea = qs("textarea", inputArea);
+        if (suggestionsWrap) suggestionsWrap.innerHTML = "";
+        if (textarea) {
+          textarea.value = "";
+          textarea.disabled = true;
+          textarea.placeholder = "No conversation selected";
+        }
+        qsa("button", inputArea).forEach(function (button) {
+          setButtonDisabled(button, true);
+        });
+      }
+
+      var heading = qs(".font-headline.font-extrabold.text-xl", rightPane);
+      var stats = qsa(".font-headline.font-extrabold.text-2xl", rightPane);
+      var cadence = qs(".text-\\[10px\\].text-on-surface-variant.mt-1", rightPane);
+      var todayService = qs(".font-headline.font-bold.text-sm", rightPane);
+      var visitRow = qsa(".flex.justify-between.items-center.text-sm", rightPane)[0];
+      var stylistText = qs(".text-xs.text-on-surface-variant", rightPane);
+      var detailRows = qsa(".space-y-3 > div.flex.items-center.gap-3", rightPane);
+      var pref = qs(".inline-flex.items-center", rightPane);
+      var historyWrap = qsa(".space-y-3", rightPane).slice(-1)[0];
+      if (heading) heading.textContent = currentQuery.clientId ? "No linked client thread" : "No conversation selected";
+      if (stats[0]) stats[0].textContent = "--";
+      if (stats[1]) stats[1].textContent = "--";
+      if (cadence) cadence.textContent = currentQuery.clientId ? "Create a thread from inbox to start continuity." : "Adjust filters or search to find a conversation.";
+      if (todayService) todayService.textContent = "No active booking";
+      if (visitRow) {
+        var visitSpans = qsa("span", visitRow);
+        if (visitSpans[0]) visitSpans[0].textContent = "--";
+        if (visitSpans[1]) visitSpans[1].textContent = "--";
+      }
+      if (stylistText) stylistText.textContent = "with no stylist assigned";
+      if (detailRows[0]) qs("span.text-sm", detailRows[0]).textContent = "--";
+      if (detailRows[1]) qs("span.text-sm", detailRows[1]).textContent = "--";
+      if (pref) pref.textContent = "No preference";
+      if (historyWrap) historyWrap.innerHTML = '<div class="aibeaty-empty">No visit history for this selection.</div>';
+      qsa("button", rightPane).forEach(function (button) {
+        setButtonDisabled(button, true);
+      });
+    }
+
     function renderProfile(conversation) {
+      qsa("button", rightPane).forEach(function (button) {
+        setButtonDisabled(button, false);
+      });
       qs(".font-headline.font-extrabold.text-xl", rightPane).textContent = conversation.name;
       var stats = qsa(".font-headline.font-extrabold.text-2xl", rightPane);
       if (stats[0]) stats[0].textContent = conversation.ltv;
@@ -1465,10 +1586,27 @@
       var viewProfileButton = actionButtons.filter(function (button) {
         return button.textContent.trim().toLowerCase() === "view profile";
       })[0];
+      var actionRow = viewProfileButton ? viewProfileButton.parentElement : null;
       if (viewProfileButton) {
-        viewProfileButton.textContent = "Book Visit";
+        viewProfileButton.textContent = "View Profile";
         viewProfileButton.dataset.actionBound = "true";
         viewProfileButton.onclick = function () {
+          if (!conversation.clientId) {
+            notify("No linked client profile for this thread.", "error");
+            return;
+          }
+          navigateToScreen("client-directory-luminous-core.html", { clientId: conversation.clientId });
+        };
+      }
+
+      var bookVisitButton = ensureActionButton(
+        actionRow,
+        "inbox-book-visit",
+        "Book Visit",
+        "px-4 py-1.5 bg-surface-container-lowest border border-outline-variant/20 rounded-md text-xs font-semibold text-on-surface hover:bg-surface-container-high transition-colors shadow-sm"
+      );
+      if (bookVisitButton) {
+        bookVisitButton.onclick = function () {
           var defaultService = conversation.todayVisit && conversation.todayVisit.service && conversation.todayVisit.service !== "No service booked"
             ? conversation.todayVisit.service
             : "Consultation";
@@ -1541,7 +1679,10 @@
     function update() {
       renderConversationList(filtered, activeId);
       var current = filtered.find(function (item) { return item.id === activeId; }) || filtered[0];
-      if (!current) return;
+      if (!current) {
+        renderEmptyConversationState();
+        return;
+      }
       activeId = current.id;
       currentQuery.conversationId = activeId;
       syncCurrentScreenQuery(currentQuery);
@@ -1636,6 +1777,7 @@
     var currentQuery = {
       q: page.liveQuery && page.liveQuery.q ? page.liveQuery.q : "",
       stylist: page.liveQuery && page.liveQuery.stylist ? page.liveQuery.stylist : "all",
+      clientId: page.liveQuery && page.liveQuery.clientId ? page.liveQuery.clientId : "",
       appointmentId: page.liveQuery && page.liveQuery.appointmentId ? page.liveQuery.appointmentId : ""
     };
 
@@ -1667,7 +1809,30 @@
     var columns = qsa(".flex-1.grid.grid-cols-3.divide-x.divide-outline-variant\\/20.relative > div.relative.px-2");
     var drawer = qs("main > aside");
     function renderDrawer(selected) {
-      if (!drawer || !selected) return;
+      if (!drawer) return;
+      if (!selected) {
+        drawer.dataset.selectedAppointmentId = "";
+        var emptyHeaderName = qs("h2.font-headline.font-bold.text-xl", drawer);
+        var emptySince = qs(".text-sm.text-on-surface-variant.mt-0\\.5", drawer);
+        var emptyServiceRows = qsa(".bg-surface-container-lowest .flex.justify-between.text-sm", drawer);
+        var emptyAmount = qs(".pt-2.mt-2.border-t.border-dashed span:last-child", drawer);
+        var emptyNotes = qsa("p.text-sm.text-on-surface.leading-relaxed", drawer)[0];
+        var emptyHistoryWrap = qs(".space-y-3.relative", drawer);
+        if (emptyHeaderName) emptyHeaderName.textContent = currentQuery.clientId ? "No linked appointment" : "No appointment selected";
+        if (emptySince) emptySince.textContent = currentQuery.clientId ? "This client has no active appointment in the current schedule view." : "Choose an appointment card to inspect details.";
+        emptyServiceRows.forEach(function (row) {
+          var spans = qsa("span", row);
+          if (spans[1]) spans[1].textContent = "--";
+        });
+        if (emptyAmount) emptyAmount.textContent = "--";
+        if (emptyNotes) emptyNotes.innerHTML = '<span class="font-semibold text-tertiary-dim block mb-1">Formula & Notes:</span>No notes for this selection.';
+        if (emptyHistoryWrap) emptyHistoryWrap.innerHTML = '<div class="aibeaty-empty">No linked visit history available.</div>';
+        qsa("button", drawer).forEach(function (button) {
+          if ((button.textContent || "").replace(/\s+/g, " ").trim().toLowerCase() === "close") return;
+          setButtonDisabled(button, true);
+        });
+        return;
+      }
       drawer.dataset.selectedAppointmentId = selected.id || "";
       var headerName = qs("h2.font-headline.font-bold.text-xl", drawer);
       var since = qs(".text-sm.text-on-surface-variant.mt-0\\.5", drawer);
@@ -1691,6 +1856,10 @@
           })
           .join("");
       }
+      qsa("button", drawer).forEach(function (button) {
+        if ((button.textContent || "").replace(/\s+/g, " ").trim().toLowerCase() === "close") return;
+        setButtonDisabled(button, false);
+      });
     }
 
     function renderCards(list) {
@@ -1731,6 +1900,7 @@
           currentSelected = {
             id: found.id,
             client: found.client,
+            clientId: found.clientId || "",
             since: found.since || (found.tags && found.tags.indexOf("VIP") !== -1 ? "Since Oct 2021 • VIP" : "Recent client"),
             service: found.service,
             time: found.time,
@@ -1808,6 +1978,9 @@
       var editButton = drawerButtons.filter(function (button) {
         return button.textContent.trim().toLowerCase() === "edit";
       })[0];
+      var historyButton = drawerButtons.filter(function (button) {
+        return button.textContent.trim().toLowerCase() === "view full history";
+      })[0];
       if (checkoutButton) {
         checkoutButton.dataset.actionBound = "true";
         checkoutButton.onclick = function () {
@@ -1849,6 +2022,32 @@
             });
           });
         };
+      }
+      if (historyButton) {
+        historyButton.textContent = "Open Client";
+        historyButton.dataset.actionBound = "true";
+        historyButton.onclick = function () {
+          if (!currentSelected || !currentSelected.clientId) {
+            notify("No linked client profile for this appointment.", "error");
+            return;
+          }
+          navigateToScreen("client-directory-luminous-core.html", { clientId: currentSelected.clientId });
+        };
+        var openInboxButton = ensureActionButton(
+          historyButton.parentElement,
+          "schedule-open-inbox",
+          "Open Inbox",
+          "mt-2 w-full py-1.5 text-xs font-medium text-secondary hover:bg-secondary-container/20 rounded-md transition-colors"
+        );
+        if (openInboxButton) {
+          openInboxButton.onclick = function () {
+            if (!currentSelected || !currentSelected.clientId) {
+              notify("No linked inbox thread for this appointment.", "error");
+              return;
+            }
+            navigateToScreen("unified-inbox-luminous-core.html", { clientId: currentSelected.clientId });
+          };
+        }
       }
     }
 

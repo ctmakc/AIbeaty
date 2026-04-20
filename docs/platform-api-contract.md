@@ -112,8 +112,8 @@ Examples:
 - `GET /api/platform/inventory-management-luminous-core?q=<term>&category=professional|retail&stock=all|low|watch|ok`
 - `GET /api/platform/automations-marketing-luminous-core?q=<term>&enabled=all|enabled|disabled`
 - `GET /api/platform/client-directory-luminous-core?q=<term>&status=all|vip|regular|new|at-risk&clientId=<client id>`
-- `GET /api/platform/unified-inbox-luminous-core?q=<term>&channel=all|whatsapp|instagram&conversationId=<conversation id>`
-- `GET /api/platform/stylist-schedule-luminous-core?q=<term>&stylist=<exact stylist name>&appointmentId=<appointment id>`
+- `GET /api/platform/unified-inbox-luminous-core?q=<term>&channel=all|whatsapp|instagram&clientId=<client id>&conversationId=<conversation id>`
+- `GET /api/platform/stylist-schedule-luminous-core?q=<term>&stylist=<exact stylist name>&clientId=<client id>&appointmentId=<appointment id>`
 
 Filtered live pages return the same page payload shape plus `page.liveQuery`, which the runtime uses to preserve active search/filter state across reloads. Client, inbox, and schedule payloads also expose resolved selected entities via `page.selectedClientId`, `page.selectedConversationId`, and `page.selectedAppointment`.
 
@@ -129,3 +129,4 @@ Returns a generated live report snapshot with metrics, top stylists, recent acti
 - Stylist performance rows route into schedule with `stylist=<name>`.
 - Recent activity rows route into inventory, schedule, clients, or inbox with prefilled `q` where possible.
 - Live screens can also open a specific selected client, conversation, or appointment through `clientId`, `conversationId`, and `appointmentId`.
+- Client, inbox, and schedule detail panes now cross-link into each other using `clientId` so operators can jump between the same guest across screens without losing context.

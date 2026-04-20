@@ -1050,15 +1050,19 @@ function createPlatformStore() {
     };
   }
 
-  function selectByRequestedId(items, requestedId) {
+  function selectByRequestedId(items, requestedId, matcher, fallbackToFirst = true) {
     const normalizedId = String(requestedId || "").trim();
     if (!Array.isArray(items) || !items.length) return "";
     if (normalizedId && items.some((item) => item && item.id === normalizedId)) return normalizedId;
-    return items[0].id;
+    if (typeof matcher === "function") {
+      const matched = items.find((item) => item && matcher(item));
+      if (matched && matched.id) return matched.id;
+    }
+    return fallbackToFirst ? items[0].id : "";
   }
 
-  function getSelectedAppointment(filteredAppointments, requestedAppointmentId) {
-    const selectedAppointmentId = selectByRequestedId(filteredAppointments, requestedAppointmentId);
+  function getSelectedAppointment(filteredAppointments, requestedAppointmentId, fallbackToGlobal = true) {
+    const selectedAppointmentId = String(requestedAppointmentId || "").trim();
     if (selectedAppointmentId) {
       const selectedRow = db.prepare(`
         SELECT a.*, s.name AS stylist_name, c.avatar AS client_avatar, c.status AS client_status,
@@ -1071,6 +1075,7 @@ function createPlatformStore() {
       `).get(selectedAppointmentId);
       return selectedRow ? mapSelectedAppointment(selectedRow) : null;
     }
+    if (!fallbackToGlobal) return null;
     const row = db.prepare(`
       SELECT a.*, s.name AS stylist_name, c.avatar AS client_avatar, c.status AS client_status,
              c.status_tone AS client_status_tone
@@ -1089,6 +1094,7 @@ function createPlatformStore() {
     const page = getBasePage("stylist-schedule-luminous-core.html");
     const search = String(options.q || "").trim();
     const stylist = normalizeQueryValue(options.stylist) || "all";
+    const clientId = String(options.clientId || "").trim();
     const appointmentId = String(options.appointmentId || "").trim();
     page.stylists = getStylistRows().map((stylist) => ({
       name: stylist.name,
@@ -1099,8 +1105,17 @@ function createPlatformStore() {
       (stylist === "all" || normalizeQueryValue(page.stylists[appointment.column] && page.stylists[appointment.column].name) === stylist) &&
       matchesQuery(search, [appointment.client, appointment.service, appointment.price, appointment.time, appointment.since, appointment.clientStatus, page.stylists[appointment.column] && page.stylists[appointment.column].name])
     ));
-    page.selectedAppointment = getSelectedAppointment(page.appointments, appointmentId);
-    return withLiveQuery(page, { q: search, stylist, appointmentId });
+    page.selectedAppointment = getSelectedAppointment(
+      page.appointments,
+      selectByRequestedId(
+        page.appointments,
+        appointmentId,
+        (appointment) => appointment.clientId === clientId,
+        clientId ? false : true
+      ),
+      clientId ? false : true
+    );
+    return withLiveQuery(page, { q: search, stylist, clientId, appointmentId });
   }
 
   function getPerformancePage(options = {}) {
@@ -1254,6 +1269,7 @@ function createPlatformStore() {
     const page = getBasePage(LIVE_SCREEN_FILES.inbox);
     const search = String(options.q || "").trim();
     const channel = normalizeQueryValue(options.channel) || "all";
+    const clientId = String(options.clientId || "").trim();
     const conversationId = String(options.conversationId || "").trim();
     page.conversations = db.prepare(`
       SELECT id, client_id, name, channel, channel_tone, time_label, preview, status, avatar, avatar_text, ltv, visits,
@@ -1311,8 +1327,13 @@ function createPlatformStore() {
       ])
     ));
     page.summaryBadge = `${page.conversations.length} Active`;
-    page.selectedConversationId = selectByRequestedId(page.conversations, conversationId);
-    return withLiveQuery(page, { q: search, channel, conversationId });
+    page.selectedConversationId = selectByRequestedId(
+      page.conversations,
+      conversationId,
+      (conversation) => conversation.clientId === clientId,
+      clientId ? false : true
+    );
+    return withLiveQuery(page, { q: search, channel, clientId, conversationId });
   }
 
   function getStaticScreen(screenFile) {
