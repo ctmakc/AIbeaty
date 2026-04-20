@@ -112,6 +112,7 @@ Live query-driven views:
 Live reports:
 
 - `GET /api/platform/reports/performance`
+- `GET /api/platform/reports/activity`
 
 Dashboard deep-links:
 
@@ -120,3 +121,4 @@ Dashboard deep-links:
 - recent activity rows deep-link into the most relevant live screen with prefilled query context
 - live screens accept `clientId`, `conversationId`, and `appointmentId` so a deep-link can open with a specific entity already selected
 - client, inbox, and schedule detail panes now cross-link using `clientId` to keep the same guest selected across screens
+- dashboard activity now opens a live modal feed with search, tone filters, export, and route-aware deep-links

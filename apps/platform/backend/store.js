@@ -827,21 +827,108 @@ function createPlatformStore() {
     return page;
   }
 
+  function inferActivityRoute(title, meta) {
+    const normalizedTitle = String(title || "").toLowerCase();
+    const normalizedMeta = String(meta || "");
+    if (normalizedTitle.includes("inventory")) {
+      return {
+        screen: "inventory-management-luminous-core.html",
+        query: normalizedMeta
+      };
+    }
+    if (normalizedTitle.includes("booking") || normalizedTitle.includes("checkout") || normalizedTitle.includes("appointment")) {
+      return {
+        screen: "stylist-schedule-luminous-core.html",
+        query: normalizedMeta
+      };
+    }
+    if (normalizedTitle.includes("client")) {
+      return {
+        screen: "client-directory-luminous-core.html",
+        query: normalizedMeta
+      };
+    }
+    if (normalizedTitle.includes("conversation") || normalizedTitle.includes("reply") || normalizedTitle.includes("message")) {
+      return {
+        screen: "unified-inbox-luminous-core.html",
+        query: normalizedMeta
+      };
+    }
+    if (normalizedTitle.includes("workflow") || normalizedTitle.includes("automation")) {
+      return {
+        screen: "automations-marketing-luminous-core.html",
+        query: normalizedMeta
+      };
+    }
+    if (normalizedTitle.includes("service")) {
+      return {
+        screen: "services-pricing-luminous-core.html",
+        query: normalizedMeta
+      };
+    }
+    return {
+      screen: "salon-performance-luminous-core.html",
+      query: normalizedMeta
+    };
+  }
+
   function getActivityEntries(options = {}) {
     const limit = Math.max(1, Number(options.limit) || 6);
     const search = String(options.q || "").trim();
-    return db.prepare(`
+    const tone = normalizeQueryValue(options.tone) || "all";
+    const matched = db.prepare(`
       SELECT title, meta, time_label, icon, tone
       FROM activity_events
       ORDER BY sort_order ASC, created_at DESC
-      LIMIT ?
-    `).all(limit).map((row) => ({
-      title: row.title,
-      meta: row.meta,
-      time: row.time_label,
-      icon: row.icon,
-      tone: row.tone
-    })).filter((row) => matchesQuery(search, [row.title, row.meta, row.time, row.icon, row.tone]));
+    `).all().map((row) => {
+      const route = inferActivityRoute(row.title, row.meta);
+      return {
+        title: row.title,
+        meta: row.meta,
+        time: row.time_label,
+        icon: row.icon,
+        tone: row.tone,
+        route
+      };
+    }).filter((row) => (
+      (tone === "all" || normalizeQueryValue(row.tone) === tone) &&
+      matchesQuery(search, [row.title, row.meta, row.time, row.icon, row.tone, row.route.screen, row.route.query])
+    ));
+    return matched.slice(0, limit);
+  }
+
+  function getActivityReport(options = {}) {
+    const q = String(options.q || "").trim();
+    const tone = normalizeQueryValue(options.tone) || "all";
+    const limit = Math.max(1, Number(options.limit) || 50);
+    const matched = getActivityEntries({ q, tone, limit: 500 });
+    const entries = matched.slice(0, limit);
+    const counts = matched.reduce((acc, item) => {
+      const key = normalizeQueryValue(item.tone) || "other";
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+    const total = db.prepare(`SELECT COUNT(*) AS count FROM activity_events`).get().count;
+    return {
+      generatedAt: getLastUpdated(),
+      filters: { q, tone, limit },
+      summary: {
+        total,
+        matched: matched.length,
+        shown: entries.length,
+        tones: counts
+      },
+      entries,
+      summaryText: [
+        `Generated: ${getLastUpdated()}`,
+        `Total events: ${total}`,
+        `Matched filters: ${matched.length}`,
+        `Shown: ${entries.length}`,
+        "",
+        "Recent activity:",
+        entries.map((item) => `- ${item.title}: ${item.meta} (${item.time}) -> ${item.route.screen}`).join("\n")
+      ].join("\n")
+    };
   }
 
   function getBasePage(screenFile) {
@@ -2219,6 +2306,7 @@ function createPlatformStore() {
     getScreen,
     listScreens,
     getPerformanceReport,
+    getActivityReport,
     reset: seedFromDemo,
     health() {
       return {

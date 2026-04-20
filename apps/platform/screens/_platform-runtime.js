@@ -189,6 +189,122 @@
     });
   }
 
+  function presentActivityFeed(options) {
+    ensureRuntimeStyle();
+    options = options || {};
+    return new Promise(function (resolve) {
+      var state = {
+        q: options.q || "",
+        tone: options.tone || "all",
+        limit: String(options.limit || "50")
+      };
+      var latestPayload = null;
+      var debounceId = null;
+      var backdrop = document.createElement("div");
+      backdrop.className = "aibeaty-modal-backdrop";
+      backdrop.innerHTML =
+        '<div class="aibeaty-modal" role="dialog" aria-modal="true">' +
+        '<div class="aibeaty-modal__header"><div class="font-headline font-bold text-xl text-on-surface">Activity Feed</div>' +
+        '<div class="text-sm text-on-surface-variant mt-2">Live operator activity with search, tone filters, and deep-links.</div></div>' +
+        '<div class="aibeaty-modal__body">' +
+        '<div class="grid gap-4 md:grid-cols-3">' +
+        '<label class="aibeaty-modal__label md:col-span-2"><span>Search</span><input class="aibeaty-modal__input" name="activity-search" type="text" placeholder="Search titles, meta, screens"/></label>' +
+        '<label class="aibeaty-modal__label"><span>Tone</span><select class="aibeaty-modal__select" name="activity-tone"><option value="all">all</option><option value="secondary">secondary</option><option value="tertiary">tertiary</option><option value="error">error</option></select></label>' +
+        '</div>' +
+        '<div class="rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-4">' +
+        '<div class="flex items-center justify-between gap-3 mb-4"><div class="text-sm text-on-surface-variant" data-activity-summary>Loading activity...</div><button type="button" class="px-3 py-1.5 rounded-md border border-outline-variant/20 text-xs font-semibold text-on-surface hover:bg-surface-container-low transition-colors" data-activity-export>Copy Summary</button></div>' +
+        '<div class="space-y-3 max-h-[52vh] overflow-y-auto pr-1" data-activity-entries></div>' +
+        '</div></div>' +
+        '<div class="aibeaty-modal__footer aibeaty-modal__actions"><button type="button" class="aibeaty-modal__cancel">Close</button></div></div>';
+      document.body.appendChild(backdrop);
+
+      var searchInput = qs('[name="activity-search"]', backdrop);
+      var toneSelect = qs('[name="activity-tone"]', backdrop);
+      var summary = qs("[data-activity-summary]", backdrop);
+      var entriesWrap = qs("[data-activity-entries]", backdrop);
+      var cancel = qs(".aibeaty-modal__cancel", backdrop);
+      var exportButton = qs("[data-activity-export]", backdrop);
+
+      function finish(result) {
+        backdrop.remove();
+        resolve(result);
+      }
+
+      function renderEntries(payload) {
+        latestPayload = payload;
+        if (summary) {
+          summary.textContent = "Showing " + payload.summary.shown + " of " + payload.summary.matched + " matched events (" + payload.summary.total + " total).";
+        }
+        if (!entriesWrap) return;
+        entriesWrap.innerHTML = payload.entries.length
+          ? payload.entries.map(function (item) {
+              return '<button type="button" class="w-full text-left rounded-xl border border-outline-variant/15 bg-white p-4 hover:bg-surface-container-low transition-colors" data-activity-screen="' + escapeHtml(item.route.screen || "") + '" data-activity-query="' + escapeHtml(item.route.query || "") + '">' +
+                '<div class="flex items-start gap-3"><div class="w-9 h-9 rounded-full ' + toneClasses(item.tone) + ' flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[18px]">' + escapeHtml(item.icon || "bolt") + '</span></div>' +
+                '<div class="min-w-0 flex-1"><div class="flex items-start justify-between gap-3"><div><div class="text-sm font-semibold text-on-surface">' + escapeHtml(item.title) + '</div><div class="text-xs text-on-surface-variant mt-1">' + escapeHtml(item.meta) + '</div></div><div class="text-[11px] text-outline whitespace-nowrap">' + escapeHtml(item.time) + '</div></div>' +
+                '<div class="mt-3 text-[11px] text-primary font-medium">Open ' + escapeHtml(String(item.route.screen || "").replace(".html", "")) + '</div></div></div></button>';
+            }).join("")
+          : '<div class="aibeaty-empty">No activity matches the current filters.</div>';
+        qsa("[data-activity-screen]", entriesWrap).forEach(function (button) {
+          button.addEventListener("click", function () {
+            navigateToScreen(button.dataset.activityScreen, { q: button.dataset.activityQuery });
+            finish("navigated");
+          });
+        });
+      }
+
+      function loadFeed() {
+        if (summary) summary.textContent = "Loading activity...";
+        if (entriesWrap) entriesWrap.innerHTML = '<div class="aibeaty-empty">Loading activity feed...</div>';
+        var params = new URLSearchParams({
+          q: state.q || "",
+          tone: state.tone || "all",
+          limit: state.limit || "50"
+        });
+        fetchJson(apiBase.replace(/\/$/, "") + "/reports/activity?" + params.toString())
+          .then(renderEntries)
+          .catch(function () {
+            if (summary) summary.textContent = "Activity feed failed to load.";
+            if (entriesWrap) entriesWrap.innerHTML = '<div class="aibeaty-empty">Could not load activity feed.</div>';
+          });
+      }
+
+      if (searchInput) {
+        searchInput.value = state.q;
+        searchInput.addEventListener("input", function () {
+          state.q = searchInput.value;
+          window.clearTimeout(debounceId);
+          debounceId = window.setTimeout(loadFeed, 180);
+        });
+      }
+      if (toneSelect) {
+        toneSelect.value = state.tone;
+        toneSelect.addEventListener("change", function () {
+          state.tone = toneSelect.value;
+          loadFeed();
+        });
+      }
+      if (exportButton) {
+        exportButton.addEventListener("click", function () {
+          if (!latestPayload || !navigator.clipboard) {
+            notify("Summary not ready yet.", "error");
+            return;
+          }
+          navigator.clipboard.writeText(latestPayload.summaryText || "").then(function () {
+            notify("Activity summary copied.");
+          }).catch(function () {
+            notify("Copy failed.", "error");
+          });
+        });
+      }
+      if (cancel) cancel.addEventListener("click", function () { finish(null); });
+      backdrop.addEventListener("click", function (event) {
+        if (event.target === backdrop) finish(null);
+      });
+      loadFeed();
+      if (searchInput) searchInput.focus();
+    });
+  }
+
   function setStatus(state) {
     ensureRuntimeStyle();
     var header = document.querySelector("header");
@@ -504,25 +620,8 @@
               : item.tone === "tertiary"
                 ? "bg-tertiary-container text-on-tertiary-container"
                 : "bg-surface-container text-on-surface";
-          var targetScreen = "salon-performance-luminous-core.html";
-          var targetQuery = {};
-          var title = String(item.title || "").toLowerCase();
-          var meta = String(item.meta || "");
-          if (title.includes("inventory")) {
-            targetScreen = "inventory-management-luminous-core.html";
-            targetQuery.q = meta;
-          } else if (title.includes("booking") || title.includes("checkout")) {
-            targetScreen = "stylist-schedule-luminous-core.html";
-            targetQuery.q = meta;
-          } else if (title.includes("client")) {
-            targetScreen = "client-directory-luminous-core.html";
-            targetQuery.q = meta;
-          } else if (title.includes("conversation") || title.includes("reply") || title.includes("message")) {
-            targetScreen = "unified-inbox-luminous-core.html";
-            targetQuery.q = meta;
-          }
           return (
-            '<div class="flex gap-3" data-activity-screen="' + escapeHtml(targetScreen) + '" data-activity-query="' + escapeHtml(targetQuery.q || "") + '">' +
+            '<div class="flex gap-3" data-activity-screen="' + escapeHtml(item.route && item.route.screen ? item.route.screen : "salon-performance-luminous-core.html") + '" data-activity-query="' + escapeHtml(item.route && item.route.query ? item.route.query : "") + '">' +
             '<div class="w-8 h-8 rounded-full ' +
             toneClass +
             ' flex items-center justify-center shrink-0"><span class="material-symbols-outlined" style="font-size: 16px;">' +
@@ -579,10 +678,13 @@
     if (activityButtons[0]) {
       activityButtons[0].dataset.actionBound = "true";
       activityButtons[0].onclick = function () {
-        var nextLimit = Number(currentQuery.limit || "6") >= 24 ? "6" : "24";
-        reload({ limit: nextLimit });
+        presentActivityFeed({
+          q: currentQuery.q || "",
+          tone: "all",
+          limit: "50"
+        });
       };
-      activityButtons[0].textContent = Number(currentQuery.limit || "6") >= 24 ? "Show Less Activity" : "View All Activity";
+      activityButtons[0].textContent = "View All Activity";
     }
   }
 

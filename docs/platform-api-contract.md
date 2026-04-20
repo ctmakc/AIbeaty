@@ -120,8 +120,11 @@ Filtered live pages return the same page payload shape plus `page.liveQuery`, wh
 ## Live reports
 
 - `GET /api/platform/reports/performance`
+- `GET /api/platform/reports/activity?q=<term>&tone=all|secondary|tertiary|error&limit=<n>`
 
 Returns a generated live report snapshot with metrics, top stylists, recent activity, and a ready-to-copy `summaryText`.
+
+The activity report returns `entries[]` with `title`, `meta`, `time`, `icon`, `tone`, and `route` metadata so the UI can open the most relevant live screen directly from an activity row.
 
 ## Dashboard navigation behavior
 

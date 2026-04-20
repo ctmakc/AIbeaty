@@ -63,6 +63,7 @@ function parseViewOptions(requestUrl) {
     category: params.get("category") || "",
     stock: params.get("stock") || "",
     enabled: params.get("enabled") || "",
+    tone: params.get("tone") || "",
     status: params.get("status") || "",
     channel: params.get("channel") || "",
     stylist: params.get("stylist") || "",
@@ -93,6 +94,10 @@ function handleApiGet(requestUrl, response) {
 
   if (screenSlug === "reports/performance") {
     return json(response, 200, store.getPerformanceReport(parseViewOptions(requestUrl)));
+  }
+
+  if (screenSlug === "reports/activity") {
+    return json(response, 200, store.getActivityReport(parseViewOptions(requestUrl)));
   }
 
   const payload = pagePayload(screenSlug, requestUrl);
