@@ -1162,9 +1162,9 @@
               phone: values.phone,
               status: values.status,
               preferences: values.preferences
-            }).then(function () {
+            }).then(function (payload) {
               notify("Client updated on live backend.");
-              reload();
+              reload({ clientId: payload.clientId || client.id });
             }).catch(function () {
               notify("Client update failed.", "error");
             });
@@ -1194,9 +1194,9 @@
               date: values.date,
               slot: values.slot,
               amount: values.amount
-            }).then(function () {
+            }).then(function (payload) {
               notify("Booking saved on live backend.");
-              reload();
+              reload({ clientId: payload.clientId || client.id });
             }).catch(function () {
               notify("Booking creation failed.", "error");
             });
@@ -1244,9 +1244,9 @@
             mutateJson(apiBase.replace(/\/$/, "") + "/clients/" + encodeURIComponent(client.id), "PATCH", {
               formulaBase: values.formulaBase,
               formulaHighlights: values.formulaHighlights
-            }).then(function () {
+            }).then(function (payload) {
               notify("Formula notes saved on live backend.");
-              reload();
+              reload({ clientId: payload.clientId || client.id });
             }).catch(function () {
               notify("Formula update failed.", "error");
             });
@@ -1297,9 +1297,9 @@
             phone: values.phone,
             status: values.status,
             preferences: values.preferences
-          }).then(function () {
+          }).then(function (payload) {
             notify("Client created on live backend.");
-            reload();
+            reload({ clientId: payload.clientId || "" });
           }).catch(function () {
             notify("Client creation failed.", "error");
           });
@@ -1471,10 +1471,10 @@
             mutateJson(apiBase.replace(/\/$/, "") + "/inbox/conversations/" + encodeURIComponent(conversation.id) + "/messages", "POST", {
               text: text,
               type: "outgoing"
-            }).then(function () {
+            }).then(function (payload) {
               textarea.value = "";
               notify("Reply sent through live backend.");
-              reload();
+              reload({ conversationId: payload.conversationId || conversation.id, clientId: conversation.clientId || currentQuery.clientId || "" });
             }).catch(function () {
               notify("Reply send failed.", "error");
             });
@@ -1636,9 +1636,12 @@
               stylist: values.stylist,
               slot: values.slot,
               amount: values.amount
-            }).then(function () {
+            }).then(function (payload) {
               notify("Inbox booking created on live backend.");
-              reload();
+              reload({
+                conversationId: payload.conversationId || conversation.id,
+                clientId: payload.booking && payload.booking.clientId ? payload.booking.clientId : (conversation.clientId || currentQuery.clientId || "")
+              });
             }).catch(function () {
               notify("Inbox booking failed.", "error");
             });
@@ -1665,9 +1668,9 @@
             mutateJson(apiBase.replace(/\/$/, "") + "/inbox/conversations/" + encodeURIComponent(conversation.id), "PATCH", {
               note: values.note,
               preference: values.preference
-            }).then(function () {
+            }).then(function (payload) {
               notify("Conversation notes saved on live backend.");
-              reload();
+              reload({ conversationId: payload.conversationId || conversation.id, clientId: conversation.clientId || currentQuery.clientId || "" });
             }).catch(function () {
               notify("Conversation update failed.", "error");
             });
@@ -1730,9 +1733,9 @@
                 meta: "Just now • Sent"
               }
             ]
-          }).then(function () {
+          }).then(function (payload) {
             notify("Conversation created on live backend.");
-            reload();
+            reload({ conversationId: payload.conversationId || "" });
           }).catch(function () {
             notify("Conversation creation failed.", "error");
           });
@@ -1960,9 +1963,9 @@
             since: "New client",
             notes: "Booked from live schedule panel.",
             quietPreference: "No special preference recorded."
-          }).then(function () {
+          }).then(function (payload) {
             notify("Appointment created on live backend.");
-            reload();
+            reload({ appointmentId: payload.appointmentId || "" });
           }).catch(function () {
             notify("Appointment creation failed.", "error");
           });
@@ -1987,9 +1990,9 @@
           var appointmentId = drawer.dataset.selectedAppointmentId;
           if (!appointmentId) return;
           mutateJson(apiBase.replace(/\/$/, "") + "/schedule/appointments/" + encodeURIComponent(appointmentId) + "/checkout", "POST", {})
-            .then(function () {
+            .then(function (payload) {
               notify("Appointment checked out on live backend.");
-              reload();
+              reload({ appointmentId: payload.appointmentId || "" });
             })
             .catch(function () {
               notify("Checkout failed.", "error");
@@ -2014,9 +2017,9 @@
             mutateJson(apiBase.replace(/\/$/, "") + "/schedule/appointments/" + encodeURIComponent(appointmentId), "PATCH", {
               notes: values.notes,
               quietPreference: values.quietPreference
-            }).then(function () {
+            }).then(function (payload) {
               notify("Appointment notes saved on live backend.");
-              reload();
+              reload({ appointmentId: payload.appointmentId || appointmentId, clientId: currentSelected.clientId || currentQuery.clientId || "" });
             }).catch(function () {
               notify("Appointment update failed.", "error");
             });

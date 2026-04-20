@@ -195,6 +195,7 @@ async function handleApiMutation(request, requestUrl, response) {
     return json(response, 201, {
       ok: true,
       action: "appointment_created",
+      appointmentId,
       page: store.getSchedulePage(),
       lastUpdated: store.getLastUpdated()
     });
@@ -208,6 +209,7 @@ async function handleApiMutation(request, requestUrl, response) {
     return json(response, 200, {
       ok: true,
       action: "appointment_updated",
+      appointmentId: updatedId,
       page: store.getSchedulePage(),
       lastUpdated: store.getLastUpdated()
     });
@@ -221,6 +223,7 @@ async function handleApiMutation(request, requestUrl, response) {
     return json(response, 200, {
       ok: true,
       action: "appointment_checked_out",
+      appointmentId: checkedOutId,
       page: store.getSchedulePage(),
       lastUpdated: store.getLastUpdated()
     });
@@ -234,6 +237,7 @@ async function handleApiMutation(request, requestUrl, response) {
     return json(response, 201, {
       ok: true,
       action: "client_created",
+      clientId,
       client: store.getClientsPage().clients.find((client) => client.id === clientId),
       page: store.getClientsPage(),
       lastUpdated: store.getLastUpdated()
@@ -248,6 +252,7 @@ async function handleApiMutation(request, requestUrl, response) {
     return json(response, 200, {
       ok: true,
       action: "client_updated",
+      clientId: updatedId,
       client: store.getClientsPage().clients.find((client) => client.id === updatedId),
       page: store.getClientsPage(),
       lastUpdated: store.getLastUpdated()
@@ -261,6 +266,7 @@ async function handleApiMutation(request, requestUrl, response) {
     return json(response, 200, {
       ok: true,
       action: "client_deleted",
+      clientId,
       client: removed,
       page: store.getClientsPage(),
       lastUpdated: store.getLastUpdated()
@@ -275,6 +281,7 @@ async function handleApiMutation(request, requestUrl, response) {
     return json(response, 200, {
       ok: true,
       action: "client_booking_created",
+      clientId: updatedId,
       client: store.getClientsPage().clients.find((client) => client.id === updatedId),
       page: store.getClientsPage(),
       lastUpdated: store.getLastUpdated()
@@ -289,6 +296,7 @@ async function handleApiMutation(request, requestUrl, response) {
     return json(response, 201, {
       ok: true,
       action: "conversation_created",
+      conversationId,
       conversation: store.getInboxPage().conversations.find((conversation) => conversation.id === conversationId),
       page: store.getInboxPage(),
       lastUpdated: store.getLastUpdated()
@@ -303,6 +311,7 @@ async function handleApiMutation(request, requestUrl, response) {
     return json(response, 200, {
       ok: true,
       action: "conversation_updated",
+      conversationId: updatedId,
       conversation: store.getInboxPage().conversations.find((conversation) => conversation.id === updatedId),
       page: store.getInboxPage(),
       lastUpdated: store.getLastUpdated()
@@ -316,6 +325,7 @@ async function handleApiMutation(request, requestUrl, response) {
     return json(response, 200, {
       ok: true,
       action: "conversation_deleted",
+      conversationId,
       conversation: removed,
       page: store.getInboxPage(),
       lastUpdated: store.getLastUpdated()
@@ -331,6 +341,7 @@ async function handleApiMutation(request, requestUrl, response) {
     return json(response, 201, {
       ok: true,
       action: "conversation_message_created",
+      conversationId: result,
       conversation: store.getInboxPage().conversations.find((conversation) => conversation.id === result),
       page: store.getInboxPage(),
       lastUpdated: store.getLastUpdated()
