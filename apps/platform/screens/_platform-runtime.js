@@ -351,6 +351,39 @@
     });
   }
 
+  function buildScreenHref(file, query) {
+    var params = new URLSearchParams();
+    Object.keys(query || {}).forEach(function (key) {
+      var value = query[key];
+      if (value === null || value === undefined) return;
+      value = String(value).trim();
+      if (!value || value === "all") return;
+      params.set(key, value);
+    });
+    if (apiBase && apiBase !== "/api/platform") {
+      params.set("api", apiBase);
+    }
+    var queryString = params.toString();
+    return file + (queryString ? "?" + queryString : "");
+  }
+
+  function navigateToScreen(file, query) {
+    window.location.href = buildScreenHref(file, query);
+  }
+
+  function wireClickable(node, handler) {
+    if (!node) return;
+    node.style.cursor = "pointer";
+    node.tabIndex = 0;
+    node.addEventListener("click", handler);
+    node.addEventListener("keydown", function (event) {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        handler(event);
+      }
+    });
+  }
+
   function renderPerformance(page) {
     var currentQuery = {
       q: page.liveQuery && page.liveQuery.q ? page.liveQuery.q : "",
@@ -401,6 +434,10 @@
           kpi.trend;
       }
     });
+    if (cards[0]) wireClickable(cards[0], function () { navigateToScreen("stylist-schedule-luminous-core.html"); });
+    if (cards[1]) wireClickable(cards[1], function () { navigateToScreen("stylist-schedule-luminous-core.html"); });
+    if (cards[2]) wireClickable(cards[2], function () { navigateToScreen("unified-inbox-luminous-core.html"); });
+    if (cards[3]) wireClickable(cards[3], function () { navigateToScreen("client-directory-luminous-core.html"); });
 
     var stylistCard = qsa(".bg-surface-container-lowest.rounded-lg.border.border-outline-variant\\/20.p-6")[0];
     var stylistList = stylistCard ? qs(".space-y-4", stylistCard) : null;
@@ -408,7 +445,7 @@
       stylistList.innerHTML = page.stylists
         .map(function (stylist) {
           return (
-            '<div class="flex items-center justify-between py-2 border-b border-surface-container-high/50 last:border-0">' +
+            '<div class="flex items-center justify-between py-2 border-b border-surface-container-high/50 last:border-0" data-performance-stylist="' + escapeHtml(stylist.name) + '">' +
             '<div class="flex items-center gap-3">' +
             '<div class="w-10 h-10 rounded-full bg-surface-dim overflow-hidden border border-outline-variant/20"><img alt="Stylist" class="w-full h-full object-cover" src="' +
             stylist.avatar +
@@ -424,6 +461,11 @@
           );
         })
         .join("");
+      qsa("[data-performance-stylist]", stylistList).forEach(function (node) {
+        wireClickable(node, function () {
+          navigateToScreen("stylist-schedule-luminous-core.html", { stylist: node.dataset.performanceStylist });
+        });
+      });
     }
 
     var activityCard = qsa(".bg-surface-container-lowest.rounded-lg.border.border-outline-variant\\/20.p-6")[1];
@@ -437,8 +479,25 @@
               : item.tone === "tertiary"
                 ? "bg-tertiary-container text-on-tertiary-container"
                 : "bg-surface-container text-on-surface";
+          var targetScreen = "salon-performance-luminous-core.html";
+          var targetQuery = {};
+          var title = String(item.title || "").toLowerCase();
+          var meta = String(item.meta || "");
+          if (title.includes("inventory")) {
+            targetScreen = "inventory-management-luminous-core.html";
+            targetQuery.q = meta;
+          } else if (title.includes("booking") || title.includes("checkout")) {
+            targetScreen = "stylist-schedule-luminous-core.html";
+            targetQuery.q = meta;
+          } else if (title.includes("client")) {
+            targetScreen = "client-directory-luminous-core.html";
+            targetQuery.q = meta;
+          } else if (title.includes("conversation") || title.includes("reply") || title.includes("message")) {
+            targetScreen = "unified-inbox-luminous-core.html";
+            targetQuery.q = meta;
+          }
           return (
-            '<div class="flex gap-3">' +
+            '<div class="flex gap-3" data-activity-screen="' + escapeHtml(targetScreen) + '" data-activity-query="' + escapeHtml(targetQuery.q || "") + '">' +
             '<div class="w-8 h-8 rounded-full ' +
             toneClass +
             ' flex items-center justify-center shrink-0"><span class="material-symbols-outlined" style="font-size: 16px;">' +
@@ -453,6 +512,11 @@
           );
         })
         .join("");
+      qsa("[data-activity-screen]", activityList).forEach(function (node) {
+        wireClickable(node, function () {
+          navigateToScreen(node.dataset.activityScreen, { q: node.dataset.activityQuery });
+        });
+      });
     }
 
     var search = qs("header input[type='text']");

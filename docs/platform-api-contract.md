@@ -122,3 +122,9 @@ Filtered live pages return the same page payload shape plus `page.liveQuery`, wh
 - `GET /api/platform/reports/performance`
 
 Returns a generated live report snapshot with metrics, top stylists, recent activity, and a ready-to-copy `summaryText`.
+
+## Dashboard navigation behavior
+
+- Performance KPI cards now route into the most relevant live operational screens.
+- Stylist performance rows route into schedule with `stylist=<name>`.
+- Recent activity rows route into inventory, schedule, clients, or inbox with prefilled `q` where possible.

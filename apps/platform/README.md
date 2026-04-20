@@ -112,3 +112,9 @@ Live query-driven views:
 Live reports:
 
 - `GET /api/platform/reports/performance`
+
+Dashboard deep-links:
+
+- KPI cards route into the live schedule, inbox, and client directory screens
+- stylist performance rows deep-link into filtered schedule views
+- recent activity rows deep-link into the most relevant live screen with prefilled query context
