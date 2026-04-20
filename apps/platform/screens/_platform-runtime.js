@@ -175,8 +175,29 @@
     if (input && value) input.placeholder = value;
   }
 
-  function screenApiUrl() {
-    return apiBase.replace(/\/$/, "") + "/" + pageFile.replace(".html", "");
+  function screenApiUrl(query) {
+    var base = apiBase.replace(/\/$/, "") + "/" + pageFile.replace(".html", "");
+    var params = new URLSearchParams();
+    Object.keys(query || {}).forEach(function (key) {
+      var value = query[key];
+      if (value === null || value === undefined) return;
+      value = String(value).trim();
+      if (!value || value === "all") return;
+      params.set(key, value);
+    });
+    var queryString = params.toString();
+    return queryString ? base + "?" + queryString : base;
+  }
+
+  function debounce(fn, wait) {
+    var timeoutId = null;
+    return function () {
+      var args = arguments;
+      window.clearTimeout(timeoutId);
+      timeoutId = window.setTimeout(function () {
+        fn.apply(null, args);
+      }, wait);
+    };
   }
 
   function fetchJson(url) {
@@ -197,6 +218,12 @@
     }).then(function (response) {
       if (!response.ok) throw new Error("HTTP " + response.status);
       return response.json();
+    });
+  }
+
+  function loadLivePage(query) {
+    return fetchJson(screenApiUrl(query)).then(function (payload) {
+      return payload.page || payload;
     });
   }
 
@@ -291,9 +318,20 @@
   }
 
   function renderInventory(page) {
+    var currentQuery = {
+      q: page.liveQuery && page.liveQuery.q ? page.liveQuery.q : "",
+      category: page.liveQuery && page.liveQuery.category ? page.liveQuery.category : "professional",
+      stock: page.liveQuery && page.liveQuery.stock ? page.liveQuery.stock : "all"
+    };
+
     function syncPage(nextPage) {
       renderInventory(nextPage);
       bindStaticButtons();
+    }
+
+    function reload(nextQuery) {
+      currentQuery = Object.assign({}, currentQuery, nextQuery || {});
+      return loadLivePage(currentQuery).then(syncPage);
     }
 
     var title = qs(".max-w-7xl h2.text-3xl");
@@ -326,7 +364,7 @@
     var tbody = qs("table tbody");
     var paginationLabel = qs(".p-4.border-t span");
     var items = page.items.slice();
-    var currentTab = "professional";
+    var currentTab = currentQuery.category || "professional";
     var pageIndex = 0;
     var pageSize = 5;
 
@@ -375,9 +413,9 @@
           if (nextStock === null) return;
           mutateJson(apiBase.replace(/\/$/, "") + "/inventory/items/" + encodeURIComponent(item.sku), "PATCH", {
             stock: nextStock
-          }).then(function (payload) {
+          }).then(function () {
             notify("Inventory updated for " + item.name + ".");
-            syncPage(payload.page);
+            reload();
           }).catch(function () {
             notify("Inventory update failed.", "error");
           });
@@ -388,29 +426,19 @@
     var search = qs("header input[type='text']");
     var tabButtons = qsa(".flex.items-center.gap-2.bg-surface-container-low button");
     var navButtons = qsa(".p-1.rounded.hover\\:bg-surface-container");
-    function filteredInventory() {
-      var term = search ? search.value.trim().toLowerCase() : "";
-      return items.filter(function (item) {
-        return (
-          (!term ||
-            item.name.toLowerCase().indexOf(term) !== -1 ||
-            item.brand.toLowerCase().indexOf(term) !== -1 ||
-            item.sku.toLowerCase().indexOf(term) !== -1) &&
-          (!item.category || item.category === currentTab)
-        );
-      });
-    }
-
     function update() {
-      var filtered = filteredInventory();
-      if (pageIndex * pageSize >= filtered.length) pageIndex = 0;
-      renderTable(filtered);
+      if (pageIndex * pageSize >= items.length) pageIndex = 0;
+      renderTable(items);
     }
 
     update();
 
     if (search) {
-      search.addEventListener("input", update);
+      search.value = currentQuery.q || "";
+      search.addEventListener("input", debounce(function () {
+        pageIndex = 0;
+        reload({ q: search.value });
+      }, 180));
     }
 
     tabButtons.forEach(function (button, index) {
@@ -423,8 +451,13 @@
               ? "bg-surface-container-lowest text-primary shadow-sm"
               : "text-on-surface-variant hover:text-on-surface");
         });
-        update();
+        pageIndex = 0;
+        reload({ category: currentTab });
       });
+      if ((index === 0 && currentTab === "professional") || (index === 1 && currentTab === "retail")) {
+        button.className =
+          "px-5 py-2 text-sm font-medium rounded-md transition-all bg-surface-container-lowest text-primary shadow-sm";
+      }
     });
 
     if (navButtons[0]) {
@@ -435,9 +468,24 @@
     }
     if (navButtons[1]) {
       navButtons[1].addEventListener("click", function () {
-        if ((pageIndex + 1) * pageSize < filteredInventory().length) pageIndex += 1;
+        if ((pageIndex + 1) * pageSize < items.length) pageIndex += 1;
         update();
       });
+    }
+
+    var headerButtons = qsa("header button");
+    var filterButton = headerButtons.filter(function (button) {
+      var text = (button.textContent || "").replace(/\s+/g, " ").trim().toLowerCase();
+      return text === "filter" || text === "filter list";
+    })[0];
+    if (filterButton) {
+      filterButton.dataset.actionBound = "true";
+      filterButton.onclick = function () {
+        var nextStock = window.prompt("Inventory stock filter: all, low, watch, ok", currentQuery.stock || "all");
+        if (nextStock === null) return;
+        pageIndex = 0;
+        reload({ stock: nextStock });
+      };
     }
 
     var shipmentWrap = qs(".flex-1.overflow-y-auto.pr-2.space-y-6");
@@ -465,9 +513,9 @@
       createPoButton.addEventListener("click", function () {
         mutateJson(apiBase.replace(/\/$/, "") + "/inventory/restock-orders", "POST", {
           scope: currentTab
-        }).then(function (payload) {
+        }).then(function () {
           notify("Restock order created from live backend.");
-          syncPage(payload.page);
+          reload();
         }).catch(function () {
           notify("Restock order request failed.", "error");
         });
@@ -671,9 +719,19 @@
   }
 
   function renderClients(page) {
+    var currentQuery = {
+      q: page.liveQuery && page.liveQuery.q ? page.liveQuery.q : "",
+      status: page.liveQuery && page.liveQuery.status ? page.liveQuery.status : "all"
+    };
+
     function syncPage(nextPage) {
       renderClients(nextPage);
       bindStaticButtons();
+    }
+
+    function reload(nextQuery) {
+      currentQuery = Object.assign({}, currentQuery, nextQuery || {});
+      return loadLivePage(currentQuery).then(syncPage);
     }
 
     var title = qs("main h1.text-3xl");
@@ -816,9 +874,9 @@
             phone: nextPhone,
             status: nextStatus,
             preferences: nextPreferences
-          }).then(function (payload) {
+          }).then(function () {
             notify("Client updated on live backend.");
-            syncPage(payload.page);
+            reload();
           }).catch(function () {
             notify("Client update failed.", "error");
           });
@@ -844,9 +902,9 @@
             date: date,
             slot: slot,
             amount: amount
-          }).then(function (payload) {
+          }).then(function () {
             notify("Booking saved on live backend.");
-            syncPage(payload.page);
+            reload();
           }).catch(function () {
             notify("Booking creation failed.", "error");
           });
@@ -863,9 +921,9 @@
           mutateJson(apiBase.replace(/\/$/, "") + "/clients/" + encodeURIComponent(client.id), "PATCH", {
             formulaBase: formulaBase,
             formulaHighlights: formulaHighlights
-          }).then(function (payload) {
+          }).then(function () {
             notify("Formula notes saved on live backend.");
-            syncPage(payload.page);
+            reload();
           }).catch(function () {
             notify("Formula update failed.", "error");
           });
@@ -911,32 +969,55 @@
           phone: phone,
           status: status,
           preferences: preferences
-        }).then(function (payload) {
+        }).then(function () {
           notify("Client created on live backend.");
-          syncPage(payload.page);
+          reload();
         }).catch(function () {
           notify("Client creation failed.", "error");
         });
       };
     }
 
+    if (headerActions && !qs("[data-client-filter]", headerActions)) {
+      var filterButton = document.createElement("button");
+      filterButton.className = "px-4 py-2 rounded-md border border-outline-variant/20 text-on-surface-variant font-medium text-sm hover:bg-surface-container-low transition-colors";
+      filterButton.textContent = "Filter";
+      filterButton.dataset.clientFilter = "true";
+      headerActions.appendChild(filterButton);
+    }
+    var clientFilterButton = headerActions ? qs("[data-client-filter]", headerActions) : null;
+    if (clientFilterButton) {
+      clientFilterButton.dataset.actionBound = "true";
+      clientFilterButton.onclick = function () {
+        var nextStatus = window.prompt("Client status filter: all, vip, regular, new, at-risk", currentQuery.status || "all");
+        if (nextStatus === null) return;
+        reload({ status: nextStatus });
+      };
+    }
+
     var search = qs("header input[type='text']");
     if (search) {
-      search.addEventListener("input", function () {
-        var term = search.value.trim().toLowerCase();
-        filtered = page.clients.filter(function (client) {
-          return !term || client.name.toLowerCase().indexOf(term) !== -1 || client.status.toLowerCase().indexOf(term) !== -1;
-        });
-        selectedId = filtered[0] ? filtered[0].id : null;
-        update();
-      });
+      search.value = currentQuery.q || "";
+      search.addEventListener("input", debounce(function () {
+        reload({ q: search.value });
+      }, 180));
     }
   }
 
   function renderInbox(page) {
+    var currentQuery = {
+      q: page.liveQuery && page.liveQuery.q ? page.liveQuery.q : "",
+      channel: page.liveQuery && page.liveQuery.channel ? page.liveQuery.channel : "all"
+    };
+
     function syncPage(nextPage) {
       renderInbox(nextPage);
       bindStaticButtons();
+    }
+
+    function reload(nextQuery) {
+      currentQuery = Object.assign({}, currentQuery, nextQuery || {});
+      return loadLivePage(currentQuery).then(syncPage);
     }
 
     var leftPane = qs("main > aside");
@@ -1043,10 +1124,10 @@
             mutateJson(apiBase.replace(/\/$/, "") + "/inbox/conversations/" + encodeURIComponent(conversation.id) + "/messages", "POST", {
               text: text,
               type: "outgoing"
-            }).then(function (payload) {
+            }).then(function () {
               textarea.value = "";
               notify("Reply sent through live backend.");
-              syncPage(payload.page);
+              reload();
             }).catch(function () {
               notify("Reply send failed.", "error");
             });
@@ -1121,9 +1202,9 @@
             stylist: stylist,
             slot: slot,
             amount: amount
-          }).then(function (payload) {
+          }).then(function () {
             notify("Inbox booking created on live backend.");
-            syncPage(payload.page);
+            reload();
           }).catch(function () {
             notify("Inbox booking failed.", "error");
           });
@@ -1143,9 +1224,9 @@
           mutateJson(apiBase.replace(/\/$/, "") + "/inbox/conversations/" + encodeURIComponent(conversation.id), "PATCH", {
             note: nextNote,
             preference: nextPreference
-          }).then(function (payload) {
+          }).then(function () {
             notify("Conversation notes saved on live backend.");
-            syncPage(payload.page);
+            reload();
           }).catch(function () {
             notify("Conversation update failed.", "error");
           });
@@ -1200,32 +1281,55 @@
               meta: "Just now • Sent"
             }
           ]
-        }).then(function (payload) {
+        }).then(function () {
           notify("Conversation created on live backend.");
-          syncPage(payload.page);
+          reload();
         }).catch(function () {
           notify("Conversation creation failed.", "error");
         });
       };
     }
 
+    if (paneHeader && !qs("[data-channel-filter]", paneHeader)) {
+      var channelFilterButton = document.createElement("button");
+      channelFilterButton.className = "px-3 py-1.5 rounded-md border border-outline-variant/20 text-on-surface-variant text-xs font-semibold hover:bg-surface-container-low transition-colors";
+      channelFilterButton.textContent = "Filter";
+      channelFilterButton.dataset.channelFilter = "true";
+      paneHeader.insertBefore(channelFilterButton, paneHeader.lastElementChild);
+    }
+    var inboxFilterButton = paneHeader ? qs("[data-channel-filter]", paneHeader) : null;
+    if (inboxFilterButton) {
+      inboxFilterButton.dataset.actionBound = "true";
+      inboxFilterButton.onclick = function () {
+        var nextChannel = window.prompt("Inbox channel filter: all, whatsapp, instagram", currentQuery.channel || "all");
+        if (nextChannel === null) return;
+        reload({ channel: nextChannel });
+      };
+    }
+
     var search = qs("header input[type='text']");
     if (search) {
-      search.addEventListener("input", function () {
-        var term = search.value.trim().toLowerCase();
-        filtered = page.conversations.filter(function (conversation) {
-          return !term || conversation.name.toLowerCase().indexOf(term) !== -1 || conversation.preview.toLowerCase().indexOf(term) !== -1;
-        });
-        activeId = filtered[0] ? filtered[0].id : null;
-        update();
-      });
+      search.value = currentQuery.q || "";
+      search.addEventListener("input", debounce(function () {
+        reload({ q: search.value });
+      }, 180));
     }
   }
 
   function renderSchedule(page) {
+    var currentQuery = {
+      q: page.liveQuery && page.liveQuery.q ? page.liveQuery.q : "",
+      stylist: page.liveQuery && page.liveQuery.stylist ? page.liveQuery.stylist : "all"
+    };
+
     function syncPage(nextPage) {
       renderSchedule(nextPage);
       bindStaticButtons();
+    }
+
+    function reload(nextQuery) {
+      currentQuery = Object.assign({}, currentQuery, nextQuery || {});
+      return loadLivePage(currentQuery).then(syncPage);
     }
 
     setSearchPlaceholder(page.searchPlaceholder);
@@ -1325,34 +1429,10 @@
 
     var search = qs("header input[type='text']");
     if (search) {
-      search.addEventListener("input", function () {
-        var term = search.value.trim().toLowerCase();
-        var filtered = page.appointments.filter(function (item) {
-          return !term || item.client.toLowerCase().indexOf(term) !== -1 || item.service.toLowerCase().indexOf(term) !== -1;
-        });
-        renderCards(filtered);
-        qsa("[data-schedule-card]").forEach(function (button) {
-          button.addEventListener("click", function () {
-            var appointmentId = button.dataset.appointmentId;
-            var found = filtered.find(function (item) { return item.id === appointmentId; });
-            if (found) {
-              currentSelected = {
-                id: found.id,
-                client: found.client,
-                since: found.since || (found.tags && found.tags.indexOf("VIP") !== -1 ? "Since Oct 2021 • VIP" : "Recent client"),
-                service: found.service,
-                time: found.time,
-                stylist: found.stylist || page.stylists[found.column].name,
-                amount: found.price || "$0.00",
-                notes: found.notes || page.selectedAppointment.notes,
-                quietPreference: found.quietPreference || page.selectedAppointment.quietPreference,
-                history: found.history || page.selectedAppointment.history
-              };
-              renderDrawer(currentSelected);
-            }
-          });
-        });
-      });
+      search.value = currentQuery.q || "";
+      search.addEventListener("input", debounce(function () {
+        reload({ q: search.value });
+      }, 180));
     }
 
     var toggleButtons = qsa("header .flex.bg-surface-container-highest button");
@@ -1388,9 +1468,9 @@
           since: "New client",
           notes: "Booked from live schedule panel.",
           quietPreference: "No special preference recorded."
-        }).then(function (payload) {
+        }).then(function () {
           notify("Appointment created on live backend.");
-          syncPage(payload.page);
+          reload();
         }).catch(function () {
           notify("Appointment creation failed.", "error");
         });
@@ -1411,9 +1491,9 @@
           var appointmentId = drawer.dataset.selectedAppointmentId;
           if (!appointmentId) return;
           mutateJson(apiBase.replace(/\/$/, "") + "/schedule/appointments/" + encodeURIComponent(appointmentId) + "/checkout", "POST", {})
-            .then(function (payload) {
+            .then(function () {
               notify("Appointment checked out on live backend.");
-              syncPage(payload.page);
+              reload();
             })
             .catch(function () {
               notify("Checkout failed.", "error");
@@ -1432,21 +1512,44 @@
           mutateJson(apiBase.replace(/\/$/, "") + "/schedule/appointments/" + encodeURIComponent(appointmentId), "PATCH", {
             notes: nextNotes,
             quietPreference: nextPreference
-          }).then(function (payload) {
+          }).then(function () {
             notify("Appointment notes saved on live backend.");
-            syncPage(payload.page);
+            reload();
           }).catch(function () {
             notify("Appointment update failed.", "error");
           });
         };
       }
     }
+
+    var headerButtons = qsa("header button");
+    var scheduleFilterButton = headerButtons.filter(function (button) {
+      return (button.textContent || "").replace(/\s+/g, " ").trim().toLowerCase() === "filter";
+    })[0];
+    if (scheduleFilterButton) {
+      scheduleFilterButton.dataset.actionBound = "true";
+      scheduleFilterButton.onclick = function () {
+        var nextStylist = window.prompt("Schedule stylist filter: all or exact stylist name", currentQuery.stylist || "all");
+        if (nextStylist === null) return;
+        reload({ stylist: nextStylist });
+      };
+    }
   }
 
   function renderAutomations(page) {
+    var currentQuery = {
+      q: page.liveQuery && page.liveQuery.q ? page.liveQuery.q : "",
+      enabled: page.liveQuery && page.liveQuery.enabled ? page.liveQuery.enabled : "all"
+    };
+
     function syncPage(nextPage) {
       renderAutomations(nextPage);
       bindStaticButtons();
+    }
+
+    function reload(nextQuery) {
+      currentQuery = Object.assign({}, currentQuery, nextQuery || {});
+      return loadLivePage(currentQuery).then(syncPage);
     }
 
     var title = qs("main h2.text-3xl");
@@ -1479,9 +1582,9 @@
           var enabled = button.dataset.enabled === "true";
           mutateJson(apiBase.replace(/\/$/, "") + "/automations/workflows/" + encodeURIComponent(button.dataset.workflowName), "PATCH", {
             enabled: !enabled
-          }).then(function (payload) {
+          }).then(function () {
             notify("Workflow " + (enabled ? "paused" : "enabled") + " on live backend.");
-            syncPage(payload.page);
+            reload();
           }).catch(function () {
             notify("Workflow update failed.", "error");
           });
@@ -1510,7 +1613,7 @@
           mutateJson(apiBase.replace(/\/$/, "") + "/automations/builder/test-run", "POST", payloadForBuilder())
             .then(function (payload) {
               notify(payload.preview || "Automation preview created.");
-              syncPage(payload.page);
+              reload();
             })
             .catch(function () {
               notify("Automation test run failed.", "error");
@@ -1521,9 +1624,9 @@
         actionButtons[1].dataset.actionBound = "true";
         actionButtons[1].addEventListener("click", function () {
           mutateJson(apiBase.replace(/\/$/, "") + "/automations/builder/activate", "POST", payloadForBuilder())
-            .then(function (payload) {
+            .then(function () {
               notify("Automation activated on live backend.");
-              syncPage(payload.page);
+              reload();
             })
             .catch(function () {
               notify("Automation activation failed.", "error");
@@ -1533,14 +1636,23 @@
     }
     var search = qs("header input[type='text']");
     if (search) {
-      search.addEventListener("input", function () {
-        var term = search.value.trim().toLowerCase();
-        renderWorkflows(
-          workflows.filter(function (workflow) {
-            return !term || workflow.name.toLowerCase().indexOf(term) !== -1 || workflow.action.toLowerCase().indexOf(term) !== -1;
-          })
-        );
-      });
+      search.value = currentQuery.q || "";
+      search.addEventListener("input", debounce(function () {
+        reload({ q: search.value });
+      }, 180));
+    }
+
+    var headerButtons = qsa("header button");
+    var filterButton = headerButtons.filter(function (button) {
+      return (button.textContent || "").replace(/\s+/g, " ").trim().toLowerCase() === "filter";
+    })[0];
+    if (filterButton) {
+      filterButton.dataset.actionBound = "true";
+      filterButton.onclick = function () {
+        var nextEnabled = window.prompt("Automation filter: all, enabled, disabled", currentQuery.enabled || "all");
+        if (nextEnabled === null) return;
+        reload({ enabled: nextEnabled });
+      };
     }
   }
 

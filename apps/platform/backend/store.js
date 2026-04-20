@@ -90,6 +90,16 @@ function titleCaseWords(value) {
     .join(" ");
 }
 
+function normalizeQueryValue(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function matchesQuery(term, values) {
+  const normalized = normalizeQueryValue(term);
+  if (!normalized) return true;
+  return values.some((value) => normalizeQueryValue(value).includes(normalized));
+}
+
 function createPlatformStore() {
   const demo = readDemoPayload();
   const db = new Database(DB_FILE);
@@ -750,6 +760,11 @@ function createPlatformStore() {
     return "Recent client";
   }
 
+  function withLiveQuery(page, liveQuery = {}) {
+    page.liveQuery = liveQuery;
+    return page;
+  }
+
   function getBasePage(screenFile) {
     return clone(demo.pages[screenFile] || {});
   }
@@ -773,9 +788,16 @@ function createPlatformStore() {
     }));
   }
 
-  function getInventoryPage() {
+  function getInventoryPage(options = {}) {
     const page = getBasePage(LIVE_SCREEN_FILES.inventory);
-    page.items = getInventoryItems();
+    const category = normalizeQueryValue(options.category) || "professional";
+    const stock = normalizeQueryValue(options.stock) || "all";
+    const search = String(options.q || "").trim();
+    page.items = getInventoryItems().filter((item) => (
+      (!category || item.category === category) &&
+      (stock === "all" || item.stockTone === stock) &&
+      matchesQuery(search, [item.name, item.brand, item.sku, item.category, item.stockTone])
+    ));
     page.shipments = db.prepare(`
       SELECT title, meta, time_label, status
       FROM inventory_shipments
@@ -807,7 +829,7 @@ function createPlatformStore() {
       if (page.kpis[2]) page.kpis[2].value = String(totalProducts);
     }
 
-    return page;
+    return withLiveQuery(page, { q: search, category, stock });
   }
 
   function getWorkflows() {
@@ -831,9 +853,16 @@ function createPlatformStore() {
     }));
   }
 
-  function getAutomationsPage() {
+  function getAutomationsPage(options = {}) {
     const page = getBasePage(LIVE_SCREEN_FILES.automations);
-    page.workflows = getWorkflows();
+    const search = String(options.q || "").trim();
+    const enabled = normalizeQueryValue(options.enabled) || "all";
+    page.workflows = getWorkflows().filter((workflow) => (
+      (enabled === "all" ||
+        (enabled === "enabled" && workflow.enabled !== false) ||
+        (enabled === "disabled" && workflow.enabled === false)) &&
+      matchesQuery(search, [workflow.name, workflow.subtitle, workflow.trigger, workflow.action])
+    ));
     const builder = db.prepare(`
       SELECT trigger_text, action_text, message_text FROM automation_builder WHERE id = 1
     `).get();
@@ -845,7 +874,7 @@ function createPlatformStore() {
       };
     }
     page.summaryBadge = `${page.workflows.filter((workflow) => workflow.enabled !== false).length} Running`;
-    return page;
+    return withLiveQuery(page, { q: search, enabled });
   }
 
   function logActivity(entry) {
@@ -984,18 +1013,7 @@ function createPlatformStore() {
     }));
   }
 
-  function getSelectedAppointment() {
-    const row = db.prepare(`
-      SELECT a.*, s.name AS stylist_name, c.avatar AS client_avatar, c.status AS client_status,
-             c.status_tone AS client_status_tone
-      FROM appointments a
-      JOIN stylists s ON s.id = a.stylist_id
-      LEFT JOIN clients c ON c.id = a.client_id
-      WHERE a.checked_out = 0
-      ORDER BY a.active DESC, a.updated_at DESC, a.sort_order ASC
-      LIMIT 1
-    `).get();
-    if (!row) return null;
+  function mapSelectedAppointment(row) {
     return {
       id: row.id,
       client: row.client_name,
@@ -1015,16 +1033,48 @@ function createPlatformStore() {
     };
   }
 
-  function getSchedulePage() {
+  function getSelectedAppointment(filteredAppointments) {
+    if (Array.isArray(filteredAppointments) && filteredAppointments.length) {
+      const selectedRow = db.prepare(`
+        SELECT a.*, s.name AS stylist_name, c.avatar AS client_avatar, c.status AS client_status,
+               c.status_tone AS client_status_tone
+        FROM appointments a
+        JOIN stylists s ON s.id = a.stylist_id
+        LEFT JOIN clients c ON c.id = a.client_id
+        WHERE a.id = ?
+        LIMIT 1
+      `).get(filteredAppointments[0].id);
+      return selectedRow ? mapSelectedAppointment(selectedRow) : null;
+    }
+    const row = db.prepare(`
+      SELECT a.*, s.name AS stylist_name, c.avatar AS client_avatar, c.status AS client_status,
+             c.status_tone AS client_status_tone
+      FROM appointments a
+      JOIN stylists s ON s.id = a.stylist_id
+      LEFT JOIN clients c ON c.id = a.client_id
+      WHERE a.checked_out = 0
+      ORDER BY a.active DESC, a.updated_at DESC, a.sort_order ASC
+      LIMIT 1
+    `).get();
+    if (!row) return null;
+    return mapSelectedAppointment(row);
+  }
+
+  function getSchedulePage(options = {}) {
     const page = getBasePage("stylist-schedule-luminous-core.html");
+    const search = String(options.q || "").trim();
+    const stylist = normalizeQueryValue(options.stylist) || "all";
     page.stylists = getStylistRows().map((stylist) => ({
       name: stylist.name,
       role: stylist.role,
       avatar: stylist.avatar
     }));
-    page.appointments = getAppointmentRows();
-    page.selectedAppointment = getSelectedAppointment();
-    return page;
+    page.appointments = getAppointmentRows().filter((appointment) => (
+      (stylist === "all" || normalizeQueryValue(page.stylists[appointment.column] && page.stylists[appointment.column].name) === stylist) &&
+      matchesQuery(search, [appointment.client, appointment.service, appointment.price, appointment.time, appointment.since, appointment.clientStatus, page.stylists[appointment.column] && page.stylists[appointment.column].name])
+    ));
+    page.selectedAppointment = getSelectedAppointment(page.appointments);
+    return withLiveQuery(page, { q: search, stylist });
   }
 
   function getPerformancePage() {
@@ -1098,8 +1148,10 @@ function createPlatformStore() {
     }));
   }
 
-  function getClientsPage() {
+  function getClientsPage(options = {}) {
     const page = getBasePage(LIVE_SCREEN_FILES.clients);
+    const search = String(options.q || "").trim();
+    const status = normalizeQueryValue(options.status) || "all";
     page.clients = db.prepare(`
       SELECT id, name, status, status_tone, last_visit, phone, email, avatar, ltv,
              visits_ytd, avg_ticket, formula_base, formula_highlights
@@ -1121,9 +1173,12 @@ function createPlatformStore() {
       formulaBase: row.formula_base,
       formulaHighlights: row.formula_highlights,
       history: getClientHistory(row.id)
-    }));
+    })).filter((client) => (
+      (status === "all" || normalizeQueryValue(client.status) === status || normalizeQueryValue(client.statusTone) === status) &&
+      matchesQuery(search, [client.name, client.email, client.phone, client.status, client.ltv, client.avgTicket].concat(client.preferences || []))
+    ));
     page.subtitle = `Manage your ${page.clients.length.toLocaleString("en-US")} active clients.`;
-    return page;
+    return withLiveQuery(page, { q: search, status });
   }
 
   function getConversationHistory(conversationId) {
@@ -1172,8 +1227,10 @@ function createPlatformStore() {
     `).get(clientId);
   }
 
-  function getInboxPage() {
+  function getInboxPage(options = {}) {
     const page = getBasePage(LIVE_SCREEN_FILES.inbox);
+    const search = String(options.q || "").trim();
+    const channel = normalizeQueryValue(options.channel) || "all";
     page.conversations = db.prepare(`
       SELECT id, client_id, name, channel, channel_tone, time_label, preview, status, avatar, avatar_text, ltv, visits,
              visit_cadence, today_service, today_time, today_amount, today_stylist,
@@ -1216,24 +1273,36 @@ function createPlatformStore() {
         messages: getConversationMessages(row.id),
         suggestions: getConversationSuggestions(row.id)
       };
-    });
+    }).filter((conversation) => (
+      (channel === "all" || normalizeQueryValue(conversation.channel) === channel || normalizeQueryValue(conversation.channelTone) === channel) &&
+      matchesQuery(search, [
+        conversation.name,
+        conversation.preview,
+        conversation.status,
+        conversation.channel,
+        conversation.contact.phone,
+        conversation.contact.email,
+        conversation.todayVisit.service,
+        conversation.todayVisit.stylist
+      ])
+    ));
     page.summaryBadge = `${page.conversations.length} Active`;
-    return page;
+    return withLiveQuery(page, { q: search, channel });
   }
 
   function getStaticScreen(screenFile) {
     return getBasePage(screenFile);
   }
 
-  function getPage(screenSlug) {
+  function getPage(screenSlug, options = {}) {
     const pageFile = `${screenSlug}.html`;
     if (pageFile === "salon-performance-luminous-core.html") return getPerformancePage();
     if (pageFile === "services-pricing-luminous-core.html") return getServicesPage();
-    if (pageFile === "stylist-schedule-luminous-core.html") return getSchedulePage();
-    if (pageFile === LIVE_SCREEN_FILES.inventory) return getInventoryPage();
-    if (pageFile === LIVE_SCREEN_FILES.automations) return getAutomationsPage();
-    if (pageFile === LIVE_SCREEN_FILES.clients) return getClientsPage();
-    if (pageFile === LIVE_SCREEN_FILES.inbox) return getInboxPage();
+    if (pageFile === "stylist-schedule-luminous-core.html") return getSchedulePage(options);
+    if (pageFile === LIVE_SCREEN_FILES.inventory) return getInventoryPage(options);
+    if (pageFile === LIVE_SCREEN_FILES.automations) return getAutomationsPage(options);
+    if (pageFile === LIVE_SCREEN_FILES.clients) return getClientsPage(options);
+    if (pageFile === LIVE_SCREEN_FILES.inbox) return getInboxPage(options);
     if (!demo.pages[pageFile]) return null;
     return getStaticScreen(pageFile);
   }
@@ -1244,8 +1313,8 @@ function createPlatformStore() {
     return salon;
   }
 
-  function getScreen(screenSlug) {
-    const page = getPage(screenSlug);
+  function getScreen(screenSlug, options = {}) {
+    const page = getPage(screenSlug, options);
     if (!page) return null;
     return {
       lastUpdated: getLastUpdated(),

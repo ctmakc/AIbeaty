@@ -99,3 +99,11 @@ Current live mutations:
 - `POST /api/platform/schedule/appointments`
 - `PATCH /api/platform/schedule/appointments/:id`
 - `POST /api/platform/schedule/appointments/:id/checkout`
+
+Live query-driven views:
+
+- Inventory: `q`, `category`, `stock`
+- Automations: `q`, `enabled`
+- Clients: `q`, `status`
+- Inbox: `q`, `channel`
+- Schedule: `q`, `stylist`

@@ -55,8 +55,21 @@ function parseRequestBody(request) {
   });
 }
 
-function pagePayload(screenSlug) {
-  return store.getScreen(screenSlug);
+function parseViewOptions(requestUrl) {
+  const params = requestUrl.searchParams;
+  return {
+    q: params.get("q") || "",
+    category: params.get("category") || "",
+    stock: params.get("stock") || "",
+    enabled: params.get("enabled") || "",
+    status: params.get("status") || "",
+    channel: params.get("channel") || "",
+    stylist: params.get("stylist") || ""
+  };
+}
+
+function pagePayload(screenSlug, requestUrl) {
+  return store.getScreen(screenSlug, parseViewOptions(requestUrl));
 }
 
 function handleApiGet(requestUrl, response) {
@@ -74,7 +87,7 @@ function handleApiGet(requestUrl, response) {
     return json(response, 200, store.health());
   }
 
-  const payload = pagePayload(screenSlug);
+  const payload = pagePayload(screenSlug, requestUrl);
   if (!payload) {
     return sendNotFound(response, `Unknown platform screen: ${screenSlug}`);
   }
