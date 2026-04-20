@@ -113,9 +113,11 @@ Examples:
 - `GET /api/platform/automations-marketing-luminous-core?q=<term>&enabled=all|enabled|disabled`
 - `GET /api/platform/client-directory-luminous-core?q=<term>&status=all|vip|regular|new|at-risk&clientId=<client id>`
 - `GET /api/platform/unified-inbox-luminous-core?q=<term>&channel=all|whatsapp|instagram&clientId=<client id>&conversationId=<conversation id>`
-- `GET /api/platform/stylist-schedule-luminous-core?q=<term>&stylist=<exact stylist name>&clientId=<client id>&appointmentId=<appointment id>`
+- `GET /api/platform/stylist-schedule-luminous-core?q=<term>&stylist=<exact stylist name>&clientId=<client id>&appointmentId=<appointment id>&view=day|week&dayOffset=<n>&weekOffset=<n>`
 
 Filtered live pages return the same page payload shape plus `page.liveQuery`, which the runtime uses to preserve active search/filter state across reloads. Client, inbox, and schedule payloads also expose resolved selected entities via `page.selectedClientId`, `page.selectedConversationId`, and `page.selectedAppointment`.
+
+Schedule payloads also expose `page.weekView` when the runtime requests week mode so the UI can render a week planner and drill back into a selected day.
 
 ## Live reports
 

@@ -73,6 +73,39 @@ function formatShortDate(value) {
   });
 }
 
+function startOfWeek(date) {
+  const next = new Date(date);
+  const day = next.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  next.setHours(0, 0, 0, 0);
+  next.setDate(next.getDate() + diff);
+  return next;
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + Number(days || 0));
+  return next;
+}
+
+function formatScheduleDayTitle(value) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return String(value || "");
+  return date.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric"
+  });
+}
+
+function formatWeekdayShort(value) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return String(value || "");
+  return date.toLocaleDateString("en-US", {
+    weekday: "short"
+  });
+}
+
 function normalizeClientStatus(status) {
   const label = String(status || "Regular").trim();
   const normalized = label.toLowerCase();
@@ -213,6 +246,7 @@ function createPlatformStore() {
         quiet_preference TEXT NOT NULL,
         history_json TEXT NOT NULL,
         since_label TEXT NOT NULL,
+        day_offset INTEGER NOT NULL DEFAULT 0,
         checked_out INTEGER NOT NULL,
         sort_order INTEGER NOT NULL,
         updated_at TEXT NOT NULL
@@ -334,6 +368,7 @@ function createPlatformStore() {
   function runMigrations() {
     ensureColumn("appointments", "client_id", "TEXT NOT NULL DEFAULT ''");
     ensureColumn("appointments", "service_id", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn("appointments", "day_offset", "INTEGER NOT NULL DEFAULT 0");
     ensureColumn("conversations", "client_id", "TEXT NOT NULL DEFAULT ''");
   }
 
@@ -488,6 +523,7 @@ function createPlatformStore() {
       `).run(createId("stylist", stylist.name), stylist.name, stylist.role, stylist.avatar, index);
     });
     const stylistRows = db.prepare(`SELECT id, name FROM stylists ORDER BY sort_order ASC`).all();
+    const seededDayOffsets = [0, 1, 2, 0, 3, 4, 0];
     schedulePage.appointments.forEach((appointment, index) => {
       const stylist = stylistRows[appointment.column];
       const timeMatch = String(appointment.time || "").match(/(\d{1,2}):(\d{2})\s*(AM|PM)\s*-\s*(\d{1,2}):(\d{2})\s*(AM|PM)/i);
@@ -501,12 +537,14 @@ function createPlatformStore() {
       const endMinutes = timeMatch ? toMinutes(timeMatch[4], timeMatch[5], timeMatch[6]) : startMinutes + 60;
       const selected = schedulePage.selectedAppointment;
       const isSelected = appointment.active === true || appointment.client === selected.client;
+      const dayOffset = seededDayOffsets[index] !== undefined ? seededDayOffsets[index] : index % 5;
       db.prepare(`
       INSERT INTO appointments (
           id, stylist_id, client_id, service_id, service_name, client_name, avatar, tone, start_minutes, end_minutes, badge,
           price_label, price_value, active, tags_json, notes, quiet_preference, history_json,
+          day_offset,
           since_label, checked_out, sort_order, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
       `).run(
         createId("appointment", `${appointment.client}-${appointment.service}`),
         stylist ? stylist.id : stylistRows[0].id,
@@ -526,6 +564,7 @@ function createPlatformStore() {
         isSelected ? selected.notes : "",
         isSelected ? selected.quietPreference : "",
         JSON.stringify(isSelected ? selected.history : []),
+        dayOffset,
         isSelected ? selected.since : "Client context pending",
         index,
         now
@@ -1174,6 +1213,7 @@ function createPlatformStore() {
       quietPreference: row.quiet_preference,
       history: JSON.parse(row.history_json || "[]"),
       since: row.since_label,
+      dayOffset: Number(row.day_offset || 0),
       clientStatus: row.client_status || "",
       clientStatusTone: row.client_status_tone || ""
     }));
@@ -1195,7 +1235,8 @@ function createPlatformStore() {
       statusTone: row.client_status_tone || "",
       notes: row.notes,
       quietPreference: row.quiet_preference,
-      history: JSON.parse(row.history_json || "[]")
+      history: JSON.parse(row.history_json || "[]"),
+      dayOffset: Number(row.day_offset || 0)
     };
   }
 
@@ -1239,21 +1280,72 @@ function createPlatformStore() {
     return mapSelectedAppointment(row);
   }
 
+  function getScheduleWeek(page, appointments, weekOffset) {
+    const referenceDate = new Date(getLastUpdated());
+    const weekStart = addDays(startOfWeek(referenceDate), weekOffset * 7);
+    return {
+      weekOffset,
+      label: `Week of ${formatShortDate(weekStart)}`,
+      days: Array.from({ length: 7 }, (_, index) => {
+        const absoluteOffset = weekOffset * 7 + index;
+        const date = addDays(weekStart, index);
+        const dayAppointments = appointments.filter((appointment) => Number(appointment.dayOffset || 0) === absoluteOffset);
+        const revenue = dayAppointments.reduce((sum, appointment) => sum + parseMoney(appointment.price || 0), 0);
+        const stylistCounts = {};
+        dayAppointments.forEach((appointment) => {
+          const stylistName = appointment.stylist || (page.stylists[appointment.column] && page.stylists[appointment.column].name) || "Front Desk";
+          stylistCounts[stylistName] = (stylistCounts[stylistName] || 0) + 1;
+        });
+        return {
+          dayOffset: absoluteOffset,
+          dayLabel: formatWeekdayShort(date),
+          dateLabel: formatShortDate(date),
+          fullLabel: formatScheduleDayTitle(date),
+          isToday: absoluteOffset === 0,
+          appointmentsCount: dayAppointments.length,
+          revenue: formatMoney(revenue),
+          stylists: Object.keys(stylistCounts).map((name) => ({
+            name,
+            appointments: stylistCounts[name]
+          })).sort((left, right) => right.appointments - left.appointments),
+          appointments: dayAppointments.slice(0, 4).map((appointment) => ({
+            id: appointment.id,
+            client: appointment.client,
+            service: appointment.service,
+            time: appointment.time,
+            stylist: appointment.stylist || (page.stylists[appointment.column] && page.stylists[appointment.column].name) || "Front Desk",
+            tone: appointment.tone
+          }))
+        };
+      })
+    };
+  }
+
   function getSchedulePage(options = {}) {
     const page = getBasePage("stylist-schedule-luminous-core.html");
     const search = String(options.q || "").trim();
+    const view = normalizeQueryValue(options.view) === "week" ? "week" : "day";
     const stylist = normalizeQueryValue(options.stylist) || "all";
     const clientId = String(options.clientId || "").trim();
     const appointmentId = String(options.appointmentId || "").trim();
+    const dayOffset = Number.isFinite(Number(options.dayOffset)) ? Number(options.dayOffset) : 0;
+    const weekOffset = Number.isFinite(Number(options.weekOffset)) ? Number(options.weekOffset) : Math.floor(dayOffset / 7);
+    const effectiveDayOffset = view === "week" ? weekOffset * 7 : dayOffset;
+    const referenceDate = addDays(new Date(getLastUpdated()), effectiveDayOffset);
     page.stylists = getStylistRows().map((stylist) => ({
       name: stylist.name,
       role: stylist.role,
       avatar: stylist.avatar
     }));
-    page.appointments = getAppointmentRows().filter((appointment) => (
+    page.title = view === "week"
+      ? `Week of ${formatShortDate(addDays(startOfWeek(new Date(getLastUpdated())), weekOffset * 7))}`
+      : formatScheduleDayTitle(referenceDate);
+    const allAppointments = getAppointmentRows().filter((appointment) => (
       (stylist === "all" || normalizeQueryValue(page.stylists[appointment.column] && page.stylists[appointment.column].name) === stylist) &&
       matchesQuery(search, [appointment.client, appointment.service, appointment.price, appointment.time, appointment.since, appointment.clientStatus, page.stylists[appointment.column] && page.stylists[appointment.column].name])
     ));
+    page.weekView = getScheduleWeek(page, allAppointments, weekOffset);
+    page.appointments = allAppointments.filter((appointment) => Number(appointment.dayOffset || 0) === effectiveDayOffset);
     page.selectedAppointment = getSelectedAppointment(
       page.appointments,
       selectByRequestedId(
@@ -1264,7 +1356,7 @@ function createPlatformStore() {
       ),
       clientId ? false : true
     );
-    return withLiveQuery(page, { q: search, stylist, clientId, appointmentId });
+    return withLiveQuery(page, { q: search, stylist, clientId, appointmentId, view, dayOffset: String(effectiveDayOffset), weekOffset: String(weekOffset) });
   }
 
   function getPerformancePage(options = {}) {
@@ -1787,6 +1879,7 @@ function createPlatformStore() {
     const match = date.match(/^(.+?)\s*-\s*(.+)$/);
     const startMinutes = match ? parseClockLabel(match[1], 11 * 60) : 11 * 60;
     const endMinutes = match ? parseClockLabel(match[2], 12 * 60) : 12 * 60;
+    const dayOffset = Number.isFinite(Number(payload.dayOffset)) ? Number(payload.dayOffset) : 0;
     db.prepare(`UPDATE appointments SET active = 0`).run();
     const id = createId("appointment", `${payload.client}-${payload.service}`);
     db.prepare(`UPDATE appointments SET sort_order = sort_order + 1`).run();
@@ -1794,8 +1887,8 @@ function createPlatformStore() {
       INSERT INTO appointments (
         id, stylist_id, client_id, service_id, service_name, client_name, avatar, tone, start_minutes, end_minutes, badge,
         price_label, price_value, active, tags_json, notes, quiet_preference, history_json, since_label,
-        checked_out, sort_order, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'primary', ?, ?, '', ?, ?, 1, '[]', ?, ?, '[]', ?, 0, 0, ?)
+        day_offset, checked_out, sort_order, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'primary', ?, ?, '', ?, ?, 1, '[]', ?, ?, '[]', ?, ?, 0, 0, ?)
     `).run(
       id,
       stylist.id,
@@ -1811,6 +1904,7 @@ function createPlatformStore() {
       payload.notes || "New booking created from schedule panel.",
       payload.quietPreference || "No special preference recorded.",
       client ? buildSinceLabel(client) : payload.since || "New client",
+      dayOffset,
       new Date().toISOString()
     );
     syncAppointmentFromEntities(id);

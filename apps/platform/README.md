@@ -107,7 +107,7 @@ Live query-driven views:
 - Automations: `q`, `enabled`
 - Clients: `q`, `status`
 - Inbox: `q`, `channel`
-- Schedule: `q`, `stylist`
+- Schedule: `q`, `stylist`, `view`, `dayOffset`, `weekOffset`
 
 Live reports:
 
@@ -122,3 +122,4 @@ Dashboard deep-links:
 - live screens accept `clientId`, `conversationId`, and `appointmentId` so a deep-link can open with a specific entity already selected
 - client, inbox, and schedule detail panes now cross-link using `clientId` to keep the same guest selected across screens
 - dashboard activity now opens a live modal feed with search, tone filters, export, and route-aware deep-links
+- schedule now supports real `Day` and `Week` modes backed by persisted appointment day offsets

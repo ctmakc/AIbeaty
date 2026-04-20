@@ -1883,7 +1883,10 @@
       q: page.liveQuery && page.liveQuery.q ? page.liveQuery.q : "",
       stylist: page.liveQuery && page.liveQuery.stylist ? page.liveQuery.stylist : "all",
       clientId: page.liveQuery && page.liveQuery.clientId ? page.liveQuery.clientId : "",
-      appointmentId: page.liveQuery && page.liveQuery.appointmentId ? page.liveQuery.appointmentId : ""
+      appointmentId: page.liveQuery && page.liveQuery.appointmentId ? page.liveQuery.appointmentId : "",
+      view: page.liveQuery && page.liveQuery.view ? page.liveQuery.view : "day",
+      dayOffset: page.liveQuery && page.liveQuery.dayOffset ? page.liveQuery.dayOffset : "0",
+      weekOffset: page.liveQuery && page.liveQuery.weekOffset ? page.liveQuery.weekOffset : "0"
     };
 
     function syncPage(nextPage) {
@@ -1897,8 +1900,99 @@
     }
 
     setSearchPlaceholder(page.searchPlaceholder);
+    var schedulePane = qs("main > div.flex-1.overflow-x-auto.overflow-y-auto.schedule-scroll.bg-surface");
+    var drawer = qs("main > aside");
+    if (schedulePane && !renderSchedule._daySurfaceTemplate) {
+      renderSchedule._daySurfaceTemplate = schedulePane.innerHTML;
+    }
+    if (drawer && !renderSchedule._dayDrawerTemplate) {
+      renderSchedule._dayDrawerTemplate = drawer.innerHTML;
+    }
+
+    function restoreDayScaffold() {
+      if (schedulePane && renderSchedule._daySurfaceTemplate && schedulePane.innerHTML !== renderSchedule._daySurfaceTemplate) {
+        schedulePane.innerHTML = renderSchedule._daySurfaceTemplate;
+      }
+      if (drawer && renderSchedule._dayDrawerTemplate && drawer.innerHTML !== renderSchedule._dayDrawerTemplate) {
+        drawer.innerHTML = renderSchedule._dayDrawerTemplate;
+      }
+      if (drawer) drawer.style.display = "";
+    }
+
+    function renderWeekOverview() {
+      if (!schedulePane) return;
+      schedulePane.innerHTML =
+        '<div class="min-w-0 h-full flex flex-col bg-surface-container-low">' +
+        '<div class="sticky top-0 z-10 bg-surface/95 backdrop-blur-md border-b border-outline-variant/15 px-6 py-4 flex items-center justify-between gap-4">' +
+        '<div><div class="text-xs font-bold uppercase tracking-[0.14em] text-primary">Week Planner</div><div class="text-sm text-on-surface-variant mt-1">' + escapeHtml(page.weekView && page.weekView.label ? page.weekView.label : page.title || "Current week") + '</div></div>' +
+        '<div class="flex items-center gap-2"><button type="button" class="px-3 py-1.5 rounded-md border border-outline-variant/20 text-xs font-semibold text-on-surface hover:bg-surface-container-low transition-colors" data-week-shift="-1">Previous Week</button><button type="button" class="px-3 py-1.5 rounded-md border border-outline-variant/20 text-xs font-semibold text-on-surface hover:bg-surface-container-low transition-colors" data-week-shift="1">Next Week</button></div>' +
+        '</div>' +
+        '<div class="p-6 grid grid-cols-1 xl:grid-cols-7 lg:grid-cols-3 md:grid-cols-2 gap-4 overflow-y-auto">';
+      schedulePane.insertAdjacentHTML("beforeend", (page.weekView && page.weekView.days ? page.weekView.days : []).map(function (day) {
+        return '<button type="button" class="text-left rounded-2xl border ' + (day.isToday ? 'border-primary/30 bg-primary-container/10' : 'border-outline-variant/15 bg-white') + ' p-4 hover:bg-surface-container-low transition-colors shadow-sm" data-week-day-offset="' + day.dayOffset + '">' +
+          '<div class="flex items-start justify-between gap-3"><div><div class="text-xs font-bold uppercase tracking-[0.14em] ' + (day.isToday ? 'text-primary' : 'text-on-surface-variant') + '">' + escapeHtml(day.dayLabel) + '</div><div class="text-lg font-headline font-bold text-on-surface mt-1">' + escapeHtml(day.dateLabel) + '</div><div class="text-xs text-on-surface-variant mt-1">' + escapeHtml(day.fullLabel) + '</div></div><div class="text-right"><div class="text-2xl font-headline font-extrabold text-on-surface">' + day.appointmentsCount + '</div><div class="text-[11px] text-on-surface-variant">appointments</div></div></div>' +
+          '<div class="mt-4 flex items-center justify-between text-xs"><span class="text-on-surface-variant">Revenue</span><span class="font-semibold text-secondary">' + escapeHtml(day.revenue) + '</span></div>' +
+          '<div class="mt-3 space-y-2">' +
+          (day.appointments.length
+            ? day.appointments.map(function (appointment) {
+                return '<div class="rounded-xl px-3 py-2 ' + (appointment.tone === 'primary' ? 'bg-primary-container/20' : appointment.tone === 'secondary' ? 'bg-secondary-container/20' : 'bg-surface-container-low') + '">' +
+                  '<div class="text-sm font-semibold text-on-surface truncate">' + escapeHtml(appointment.service) + '</div>' +
+                  '<div class="text-xs text-on-surface-variant mt-1">' + escapeHtml(appointment.client) + ' • ' + escapeHtml(appointment.time) + '</div>' +
+                  '<div class="text-[11px] text-on-surface-variant mt-1">with ' + escapeHtml(appointment.stylist) + '</div></div>';
+              }).join("")
+            : '<div class="aibeaty-empty">No bookings on this day.</div>') +
+          '</div>' +
+          '<div class="mt-4 pt-3 border-t border-outline-variant/10 text-[11px] text-on-surface-variant">' +
+          (day.stylists.length
+            ? day.stylists.map(function (stylist) { return escapeHtml(stylist.name + " (" + stylist.appointments + ")"); }).join(" • ")
+            : 'No stylist load yet.') +
+          '</div></button>';
+      }).join("") + '</div></div>');
+      if (drawer) drawer.style.display = "none";
+      qsa("[data-week-shift]", schedulePane).forEach(function (button) {
+        button.addEventListener("click", function () {
+          var shift = Number(button.dataset.weekShift || 0);
+          reload({
+            view: "week",
+            weekOffset: String(Number(currentQuery.weekOffset || "0") + shift),
+            appointmentId: "",
+            clientId: ""
+          });
+        });
+      });
+      qsa("[data-week-day-offset]", schedulePane).forEach(function (button) {
+        button.addEventListener("click", function () {
+          reload({
+            view: "day",
+            dayOffset: button.dataset.weekDayOffset,
+            weekOffset: String(Math.floor(Number(button.dataset.weekDayOffset || "0") / 7)),
+            appointmentId: "",
+            clientId: ""
+          });
+        });
+      });
+    }
+
+    restoreDayScaffold();
     var dateTitle = qs("header h2.font-headline");
     if (dateTitle) dateTitle.textContent = page.title;
+    var toggleButtons = qsa("header .flex.bg-surface-container-highest button");
+    if (toggleButtons[0]) {
+      toggleButtons[0].className = "px-3 py-1 text-sm font-medium rounded-md " + (currentQuery.view === "day" ? "bg-surface-container-lowest text-primary shadow-sm" : "text-on-surface-variant hover:text-on-surface transition-colors");
+      toggleButtons[0].onclick = function () {
+        reload({ view: "day", appointmentId: "", clientId: "" });
+      };
+    }
+    if (toggleButtons[1]) {
+      toggleButtons[1].className = "px-3 py-1 text-sm font-medium rounded-md " + (currentQuery.view === "week" ? "bg-surface-container-lowest text-primary shadow-sm" : "text-on-surface-variant hover:text-on-surface transition-colors");
+      toggleButtons[1].onclick = function () {
+        reload({ view: "week", weekOffset: currentQuery.weekOffset || "0", appointmentId: "", clientId: "" });
+      };
+    }
+    if (currentQuery.view === "week") {
+      renderWeekOverview();
+      return;
+    }
     var headerColumns = qsa(".grid.grid-cols-3.divide-x.divide-outline-variant\\/20 > div");
     page.stylists.forEach(function (stylist, index) {
       var column = headerColumns[index];
@@ -1912,7 +2006,6 @@
     });
 
     var columns = qsa(".flex-1.grid.grid-cols-3.divide-x.divide-outline-variant\\/20.relative > div.relative.px-2");
-    var drawer = qs("main > aside");
     function renderDrawer(selected) {
       if (!drawer) return;
       if (!selected) {
@@ -2030,13 +2123,6 @@
       }, 180));
     }
 
-    var toggleButtons = qsa("header .flex.bg-surface-container-highest button");
-    if (toggleButtons[1]) {
-      toggleButtons[1].addEventListener("click", function () {
-        notify("Week view is queued after backend schedule aggregation lands.");
-      });
-    }
-
     var shellButtons = qsa("button", document);
     var newBookingButton = shellButtons.filter(function (button) {
       return button.textContent.trim().toLowerCase() === "new booking";
@@ -2062,6 +2148,7 @@
             stylist: values.stylist,
             date: values.slot,
             amount: values.amount,
+            dayOffset: currentQuery.dayOffset || "0",
             since: "New client",
             notes: "Booked from live schedule panel.",
             quietPreference: "No special preference recorded."
