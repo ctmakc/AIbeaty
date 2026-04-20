@@ -108,6 +108,7 @@ Examples:
 
 ## Live view query params
 
+- `GET /api/platform/salon-performance-luminous-core?q=<term>&limit=<n>`
 - `GET /api/platform/inventory-management-luminous-core?q=<term>&category=professional|retail&stock=all|low|watch|ok`
 - `GET /api/platform/automations-marketing-luminous-core?q=<term>&enabled=all|enabled|disabled`
 - `GET /api/platform/client-directory-luminous-core?q=<term>&status=all|vip|regular|new|at-risk`
@@ -115,3 +116,9 @@ Examples:
 - `GET /api/platform/stylist-schedule-luminous-core?q=<term>&stylist=<exact stylist name>`
 
 Filtered live pages return the same page payload shape plus `page.liveQuery`, which the runtime uses to preserve active search/filter state across reloads.
+
+## Live reports
+
+- `GET /api/platform/reports/performance`
+
+Returns a generated live report snapshot with metrics, top stylists, recent activity, and a ready-to-copy `summaryText`.

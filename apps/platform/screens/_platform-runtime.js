@@ -145,6 +145,50 @@
     });
   }
 
+  function presentReport(options) {
+    ensureRuntimeStyle();
+    options = options || {};
+    return new Promise(function (resolve) {
+      var backdrop = document.createElement("div");
+      backdrop.className = "aibeaty-modal-backdrop";
+      backdrop.innerHTML =
+        '<div class="aibeaty-modal" role="dialog" aria-modal="true">' +
+        '<div class="aibeaty-modal__header"><div class="font-headline font-bold text-xl text-on-surface">' + escapeHtml(options.title || "Report") + '</div>' +
+        (options.description ? '<div class="text-sm text-on-surface-variant mt-2">' + escapeHtml(options.description) + "</div>" : "") +
+        '</div><div class="aibeaty-modal__body">' +
+        '<label class="aibeaty-modal__label"><span>Summary</span><textarea class="aibeaty-modal__textarea" readonly>' + escapeHtml(options.content || "") + '</textarea></label>' +
+        "</div><div class=\"aibeaty-modal__footer aibeaty-modal__actions\">" +
+        '<button type="button" class="aibeaty-modal__cancel">Close</button>' +
+        '<button type="button" class="aibeaty-modal__submit">Copy Report</button>' +
+        "</div></div>";
+      document.body.appendChild(backdrop);
+      var cancel = qs(".aibeaty-modal__cancel", backdrop);
+      var submit = qs(".aibeaty-modal__submit", backdrop);
+      var textarea = qs("textarea", backdrop);
+      var done = function (result) {
+        backdrop.remove();
+        resolve(result);
+      };
+      cancel.addEventListener("click", function () { done(null); });
+      submit.addEventListener("click", function () {
+        if (navigator.clipboard && textarea) {
+          navigator.clipboard.writeText(textarea.value).then(function () {
+            notify("Report copied.");
+            done("copied");
+          }).catch(function () {
+            notify("Copy failed.", "error");
+          });
+        } else {
+          textarea.select();
+          done("selected");
+        }
+      });
+      backdrop.addEventListener("click", function (event) {
+        if (event.target === backdrop) done(null);
+      });
+    });
+  }
+
   function setStatus(state) {
     ensureRuntimeStyle();
     var header = document.querySelector("header");
@@ -308,6 +352,21 @@
   }
 
   function renderPerformance(page) {
+    var currentQuery = {
+      q: page.liveQuery && page.liveQuery.q ? page.liveQuery.q : "",
+      limit: page.liveQuery && page.liveQuery.limit ? page.liveQuery.limit : "6"
+    };
+
+    function syncPage(nextPage) {
+      renderPerformance(nextPage);
+      bindStaticButtons();
+    }
+
+    function reload(nextQuery) {
+      currentQuery = Object.assign({}, currentQuery, nextQuery || {});
+      return loadLivePage(currentQuery).then(syncPage);
+    }
+
     var title = qs(".max-w-7xl h1");
     var subtitle = title && title.parentElement ? title.parentElement.querySelector("p") : null;
     if (title) title.textContent = page.title;
@@ -394,6 +453,47 @@
           );
         })
         .join("");
+    }
+
+    var search = qs("header input[type='text']");
+    if (search) {
+      search.value = currentQuery.q || "";
+      search.addEventListener("input", debounce(function () {
+        reload({ q: search.value });
+      }, 180));
+    }
+
+    var mainActions = qsa(".max-w-7xl .flex.gap-2 button");
+    var exportButton = mainActions.filter(function (button) {
+      return (button.textContent || "").replace(/\s+/g, " ").trim().toLowerCase() === "export report";
+    })[0];
+    if (exportButton) {
+      exportButton.dataset.actionBound = "true";
+      exportButton.onclick = function () {
+        fetchJson(apiBase.replace(/\/$/, "") + "/reports/performance?" + new URLSearchParams({ q: currentQuery.q || "", limit: "12" }).toString())
+          .then(function (payload) {
+            return presentReport({
+              title: "Performance Report",
+              description: "Live summary generated from current platform state",
+              content: payload.summaryText || ""
+            });
+          })
+          .catch(function () {
+            notify("Report export failed.", "error");
+          });
+      };
+    }
+
+    var activityButtons = qsa("button", document).filter(function (button) {
+      return (button.textContent || "").replace(/\s+/g, " ").trim().toLowerCase() === "view all activity";
+    });
+    if (activityButtons[0]) {
+      activityButtons[0].dataset.actionBound = "true";
+      activityButtons[0].onclick = function () {
+        var nextLimit = Number(currentQuery.limit || "6") >= 24 ? "6" : "24";
+        reload({ limit: nextLimit });
+      };
+      activityButtons[0].textContent = Number(currentQuery.limit || "6") >= 24 ? "Show Less Activity" : "View All Activity";
     }
   }
 

@@ -102,8 +102,13 @@ Current live mutations:
 
 Live query-driven views:
 
+- Performance: `q`, `limit`
 - Inventory: `q`, `category`, `stock`
 - Automations: `q`, `enabled`
 - Clients: `q`, `status`
 - Inbox: `q`, `channel`
 - Schedule: `q`, `stylist`
+
+Live reports:
+
+- `GET /api/platform/reports/performance`

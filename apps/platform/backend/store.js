@@ -765,6 +765,23 @@ function createPlatformStore() {
     return page;
   }
 
+  function getActivityEntries(options = {}) {
+    const limit = Math.max(1, Number(options.limit) || 6);
+    const search = String(options.q || "").trim();
+    return db.prepare(`
+      SELECT title, meta, time_label, icon, tone
+      FROM activity_events
+      ORDER BY sort_order ASC, created_at DESC
+      LIMIT ?
+    `).all(limit).map((row) => ({
+      title: row.title,
+      meta: row.meta,
+      time: row.time_label,
+      icon: row.icon,
+      tone: row.tone
+    })).filter((row) => matchesQuery(search, [row.title, row.meta, row.time, row.icon, row.tone]));
+  }
+
   function getBasePage(screenFile) {
     return clone(demo.pages[screenFile] || {});
   }
@@ -1077,8 +1094,10 @@ function createPlatformStore() {
     return withLiveQuery(page, { q: search, stylist });
   }
 
-  function getPerformancePage() {
+  function getPerformancePage(options = {}) {
     const page = getBasePage("salon-performance-luminous-core.html");
+    const search = String(options.q || "").trim();
+    const limit = Math.max(1, Number(options.limit) || 6);
     const appointmentStats = db.prepare(`
       SELECT COUNT(*) AS appointments,
              COALESCE(SUM(price_value), 0) AS revenue
@@ -1114,19 +1133,12 @@ function createPlatformStore() {
       appointments: `${row.appointments} appts`,
       avatar: row.avatar
     }));
-    page.activity = db.prepare(`
-      SELECT title, meta, time_label, icon, tone
-      FROM activity_events
-      ORDER BY sort_order ASC, created_at DESC
-      LIMIT 6
-    `).all().map((row) => ({
-      title: row.title,
-      meta: row.meta,
-      time: row.time_label,
-      icon: row.icon,
-      tone: row.tone
-    }));
-    return page;
+    page.activity = getActivityEntries({ q: search, limit });
+    page.activitySummary = {
+      total: db.prepare(`SELECT COUNT(*) AS count FROM activity_events`).get().count,
+      shown: page.activity.length
+    };
+    return withLiveQuery(page, { q: search, limit: String(limit) });
   }
 
   function getClientPreferences(clientId) {
@@ -1296,7 +1308,7 @@ function createPlatformStore() {
 
   function getPage(screenSlug, options = {}) {
     const pageFile = `${screenSlug}.html`;
-    if (pageFile === "salon-performance-luminous-core.html") return getPerformancePage();
+    if (pageFile === "salon-performance-luminous-core.html") return getPerformancePage(options);
     if (pageFile === "services-pricing-luminous-core.html") return getServicesPage();
     if (pageFile === "stylist-schedule-luminous-core.html") return getSchedulePage(options);
     if (pageFile === LIVE_SCREEN_FILES.inventory) return getInventoryPage(options);
@@ -1330,6 +1342,51 @@ function createPlatformStore() {
       file,
       title: demo.pages[file].title || demo.pages[file].searchPlaceholder || file
     }));
+  }
+
+  function getPerformanceReport(options = {}) {
+    const appointmentStats = db.prepare(`
+      SELECT COUNT(*) AS appointments,
+             COALESCE(SUM(price_value), 0) AS revenue
+      FROM appointments
+    `).get();
+    const clientsCount = db.prepare(`SELECT COUNT(*) AS count FROM clients`).get().count;
+    const conversationsCount = db.prepare(`SELECT COUNT(*) AS count FROM conversations`).get().count;
+    const avgTicket = appointmentStats.appointments ? appointmentStats.revenue / appointmentStats.appointments : 0;
+    const activity = getActivityEntries({ q: options.q || "", limit: Math.max(3, Number(options.limit) || 10) });
+    return {
+      generatedAt: getLastUpdated(),
+      metrics: {
+        revenue: formatMoney(appointmentStats.revenue),
+        appointments: appointmentStats.appointments,
+        activeClients: clientsCount,
+        activeInboxThreads: conversationsCount,
+        avgTicket: formatMoney(avgTicket)
+      },
+      topStylists: db.prepare(`
+        SELECT s.name, COALESCE(SUM(a.price_value), 0) AS revenue, COUNT(a.id) AS appointments
+        FROM stylists s
+        LEFT JOIN appointments a ON a.stylist_id = s.id AND a.checked_out = 0
+        GROUP BY s.id
+        ORDER BY revenue DESC, appointments DESC, s.sort_order ASC
+        LIMIT 5
+      `).all().map((row) => ({
+        name: row.name,
+        revenue: formatMoney(row.revenue),
+        appointments: row.appointments
+      })),
+      recentActivity: activity,
+      summaryText: [
+        `Revenue: ${formatMoney(appointmentStats.revenue)}`,
+        `Appointments: ${appointmentStats.appointments}`,
+        `Active clients: ${clientsCount}`,
+        `Active inbox threads: ${conversationsCount}`,
+        `Average ticket: ${formatMoney(avgTicket)}`,
+        "",
+        "Recent activity:",
+        activity.map((item) => `- ${item.title}: ${item.meta} (${item.time})`).join("\n")
+      ].join("\n")
+    };
   }
 
   function updateInventoryItem(sku, updates) {
@@ -2064,6 +2121,7 @@ function createPlatformStore() {
     getSalon,
     getScreen,
     listScreens,
+    getPerformanceReport,
     reset: seedFromDemo,
     health() {
       return {

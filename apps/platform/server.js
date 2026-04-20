@@ -59,6 +59,7 @@ function parseViewOptions(requestUrl) {
   const params = requestUrl.searchParams;
   return {
     q: params.get("q") || "",
+    limit: params.get("limit") || "",
     category: params.get("category") || "",
     stock: params.get("stock") || "",
     enabled: params.get("enabled") || "",
@@ -85,6 +86,10 @@ function handleApiGet(requestUrl, response) {
 
   if (screenSlug === "health") {
     return json(response, 200, store.health());
+  }
+
+  if (screenSlug === "reports/performance") {
+    return json(response, 200, store.getPerformanceReport(parseViewOptions(requestUrl)));
   }
 
   const payload = pagePayload(screenSlug, requestUrl);
