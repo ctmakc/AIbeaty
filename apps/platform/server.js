@@ -65,7 +65,10 @@ function parseViewOptions(requestUrl) {
     enabled: params.get("enabled") || "",
     status: params.get("status") || "",
     channel: params.get("channel") || "",
-    stylist: params.get("stylist") || ""
+    stylist: params.get("stylist") || "",
+    clientId: params.get("clientId") || "",
+    conversationId: params.get("conversationId") || "",
+    appointmentId: params.get("appointmentId") || ""
   };
 }
 

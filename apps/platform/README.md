@@ -118,3 +118,4 @@ Dashboard deep-links:
 - KPI cards route into the live schedule, inbox, and client directory screens
 - stylist performance rows deep-link into filtered schedule views
 - recent activity rows deep-link into the most relevant live screen with prefilled query context
+- live screens accept `clientId`, `conversationId`, and `appointmentId` so a deep-link can open with a specific entity already selected

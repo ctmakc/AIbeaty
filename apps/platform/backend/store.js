@@ -1050,8 +1050,16 @@ function createPlatformStore() {
     };
   }
 
-  function getSelectedAppointment(filteredAppointments) {
-    if (Array.isArray(filteredAppointments) && filteredAppointments.length) {
+  function selectByRequestedId(items, requestedId) {
+    const normalizedId = String(requestedId || "").trim();
+    if (!Array.isArray(items) || !items.length) return "";
+    if (normalizedId && items.some((item) => item && item.id === normalizedId)) return normalizedId;
+    return items[0].id;
+  }
+
+  function getSelectedAppointment(filteredAppointments, requestedAppointmentId) {
+    const selectedAppointmentId = selectByRequestedId(filteredAppointments, requestedAppointmentId);
+    if (selectedAppointmentId) {
       const selectedRow = db.prepare(`
         SELECT a.*, s.name AS stylist_name, c.avatar AS client_avatar, c.status AS client_status,
                c.status_tone AS client_status_tone
@@ -1060,7 +1068,7 @@ function createPlatformStore() {
         LEFT JOIN clients c ON c.id = a.client_id
         WHERE a.id = ?
         LIMIT 1
-      `).get(filteredAppointments[0].id);
+      `).get(selectedAppointmentId);
       return selectedRow ? mapSelectedAppointment(selectedRow) : null;
     }
     const row = db.prepare(`
@@ -1081,6 +1089,7 @@ function createPlatformStore() {
     const page = getBasePage("stylist-schedule-luminous-core.html");
     const search = String(options.q || "").trim();
     const stylist = normalizeQueryValue(options.stylist) || "all";
+    const appointmentId = String(options.appointmentId || "").trim();
     page.stylists = getStylistRows().map((stylist) => ({
       name: stylist.name,
       role: stylist.role,
@@ -1090,8 +1099,8 @@ function createPlatformStore() {
       (stylist === "all" || normalizeQueryValue(page.stylists[appointment.column] && page.stylists[appointment.column].name) === stylist) &&
       matchesQuery(search, [appointment.client, appointment.service, appointment.price, appointment.time, appointment.since, appointment.clientStatus, page.stylists[appointment.column] && page.stylists[appointment.column].name])
     ));
-    page.selectedAppointment = getSelectedAppointment(page.appointments);
-    return withLiveQuery(page, { q: search, stylist });
+    page.selectedAppointment = getSelectedAppointment(page.appointments, appointmentId);
+    return withLiveQuery(page, { q: search, stylist, appointmentId });
   }
 
   function getPerformancePage(options = {}) {
@@ -1164,6 +1173,7 @@ function createPlatformStore() {
     const page = getBasePage(LIVE_SCREEN_FILES.clients);
     const search = String(options.q || "").trim();
     const status = normalizeQueryValue(options.status) || "all";
+    const clientId = String(options.clientId || "").trim();
     page.clients = db.prepare(`
       SELECT id, name, status, status_tone, last_visit, phone, email, avatar, ltv,
              visits_ytd, avg_ticket, formula_base, formula_highlights
@@ -1190,7 +1200,8 @@ function createPlatformStore() {
       matchesQuery(search, [client.name, client.email, client.phone, client.status, client.ltv, client.avgTicket].concat(client.preferences || []))
     ));
     page.subtitle = `Manage your ${page.clients.length.toLocaleString("en-US")} active clients.`;
-    return withLiveQuery(page, { q: search, status });
+    page.selectedClientId = selectByRequestedId(page.clients, clientId);
+    return withLiveQuery(page, { q: search, status, clientId });
   }
 
   function getConversationHistory(conversationId) {
@@ -1243,6 +1254,7 @@ function createPlatformStore() {
     const page = getBasePage(LIVE_SCREEN_FILES.inbox);
     const search = String(options.q || "").trim();
     const channel = normalizeQueryValue(options.channel) || "all";
+    const conversationId = String(options.conversationId || "").trim();
     page.conversations = db.prepare(`
       SELECT id, client_id, name, channel, channel_tone, time_label, preview, status, avatar, avatar_text, ltv, visits,
              visit_cadence, today_service, today_time, today_amount, today_stylist,
@@ -1299,7 +1311,8 @@ function createPlatformStore() {
       ])
     ));
     page.summaryBadge = `${page.conversations.length} Active`;
-    return withLiveQuery(page, { q: search, channel });
+    page.selectedConversationId = selectByRequestedId(page.conversations, conversationId);
+    return withLiveQuery(page, { q: search, channel, conversationId });
   }
 
   function getStaticScreen(screenFile) {

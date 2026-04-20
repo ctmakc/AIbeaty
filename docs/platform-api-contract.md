@@ -111,11 +111,11 @@ Examples:
 - `GET /api/platform/salon-performance-luminous-core?q=<term>&limit=<n>`
 - `GET /api/platform/inventory-management-luminous-core?q=<term>&category=professional|retail&stock=all|low|watch|ok`
 - `GET /api/platform/automations-marketing-luminous-core?q=<term>&enabled=all|enabled|disabled`
-- `GET /api/platform/client-directory-luminous-core?q=<term>&status=all|vip|regular|new|at-risk`
-- `GET /api/platform/unified-inbox-luminous-core?q=<term>&channel=all|whatsapp|instagram`
-- `GET /api/platform/stylist-schedule-luminous-core?q=<term>&stylist=<exact stylist name>`
+- `GET /api/platform/client-directory-luminous-core?q=<term>&status=all|vip|regular|new|at-risk&clientId=<client id>`
+- `GET /api/platform/unified-inbox-luminous-core?q=<term>&channel=all|whatsapp|instagram&conversationId=<conversation id>`
+- `GET /api/platform/stylist-schedule-luminous-core?q=<term>&stylist=<exact stylist name>&appointmentId=<appointment id>`
 
-Filtered live pages return the same page payload shape plus `page.liveQuery`, which the runtime uses to preserve active search/filter state across reloads.
+Filtered live pages return the same page payload shape plus `page.liveQuery`, which the runtime uses to preserve active search/filter state across reloads. Client, inbox, and schedule payloads also expose resolved selected entities via `page.selectedClientId`, `page.selectedConversationId`, and `page.selectedAppointment`.
 
 ## Live reports
 
@@ -128,3 +128,4 @@ Returns a generated live report snapshot with metrics, top stylists, recent acti
 - Performance KPI cards now route into the most relevant live operational screens.
 - Stylist performance rows route into schedule with `stylist=<name>`.
 - Recent activity rows route into inventory, schedule, clients, or inbox with prefilled `q` where possible.
+- Live screens can also open a specific selected client, conversation, or appointment through `clientId`, `conversationId`, and `appointmentId`.

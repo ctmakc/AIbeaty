@@ -371,6 +371,11 @@
     window.location.href = buildScreenHref(file, query);
   }
 
+  function syncCurrentScreenQuery(query) {
+    if (!window.history || !window.history.replaceState || !pageFile) return;
+    window.history.replaceState({}, "", buildScreenHref(pageFile, query));
+  }
+
   function wireClickable(node, handler) {
     if (!node) return;
     node.style.cursor = "pointer";
@@ -980,7 +985,8 @@
   function renderClients(page) {
     var currentQuery = {
       q: page.liveQuery && page.liveQuery.q ? page.liveQuery.q : "",
-      status: page.liveQuery && page.liveQuery.status ? page.liveQuery.status : "all"
+      status: page.liveQuery && page.liveQuery.status ? page.liveQuery.status : "all",
+      clientId: page.liveQuery && page.liveQuery.clientId ? page.liveQuery.clientId : ""
     };
 
     function syncPage(nextPage) {
@@ -1105,7 +1111,7 @@
       }
     }
 
-    var selectedId = page.clients[0] ? page.clients[0].id : null;
+    var selectedId = page.selectedClientId || currentQuery.clientId || (page.clients[0] ? page.clients[0].id : null);
     var filtered = page.clients.slice();
 
     function bindDetailActions(client) {
@@ -1209,6 +1215,8 @@
       var client = filtered.find(function (item) { return item.id === selectedId; }) || filtered[0];
       if (client) {
         selectedId = client.id;
+        currentQuery.clientId = selectedId;
+        syncCurrentScreenQuery(currentQuery);
         renderClientDetail(client);
         bindDetailActions(client);
       }
@@ -1290,7 +1298,8 @@
   function renderInbox(page) {
     var currentQuery = {
       q: page.liveQuery && page.liveQuery.q ? page.liveQuery.q : "",
-      channel: page.liveQuery && page.liveQuery.channel ? page.liveQuery.channel : "all"
+      channel: page.liveQuery && page.liveQuery.channel ? page.liveQuery.channel : "all",
+      conversationId: page.liveQuery && page.liveQuery.conversationId ? page.liveQuery.conversationId : ""
     };
 
     function syncPage(nextPage) {
@@ -1310,7 +1319,7 @@
     setSearchPlaceholder(page.searchPlaceholder);
 
     var listWrap = qs(".flex-1.overflow-y-auto", leftPane);
-    var activeId = page.conversations[0] ? page.conversations[0].id : null;
+    var activeId = page.selectedConversationId || currentQuery.conversationId || (page.conversations[0] ? page.conversations[0].id : null);
     var filtered = page.conversations.slice();
     var paneHeader = qs(".h-16.flex.items-center.justify-between", leftPane);
     if (paneHeader && !qs("[data-create-conversation]", paneHeader)) {
@@ -1534,6 +1543,8 @@
       var current = filtered.find(function (item) { return item.id === activeId; }) || filtered[0];
       if (!current) return;
       activeId = current.id;
+      currentQuery.conversationId = activeId;
+      syncCurrentScreenQuery(currentQuery);
       renderMessages(current);
       renderProfile(current);
       qsa("[data-conversation-id]", listWrap).forEach(function (button) {
@@ -1624,7 +1635,8 @@
   function renderSchedule(page) {
     var currentQuery = {
       q: page.liveQuery && page.liveQuery.q ? page.liveQuery.q : "",
-      stylist: page.liveQuery && page.liveQuery.stylist ? page.liveQuery.stylist : "all"
+      stylist: page.liveQuery && page.liveQuery.stylist ? page.liveQuery.stylist : "all",
+      appointmentId: page.liveQuery && page.liveQuery.appointmentId ? page.liveQuery.appointmentId : ""
     };
 
     function syncPage(nextPage) {
@@ -1707,7 +1719,7 @@
       });
     }
 
-    var currentSelected = page.selectedAppointment;
+    var currentSelected = page.selectedAppointment || null;
     renderCards(page.appointments);
     renderDrawer(currentSelected);
     qsa("[data-schedule-card]").forEach(function (button) {
@@ -1715,6 +1727,7 @@
         var appointmentId = button.dataset.appointmentId;
         var found = page.appointments.find(function (item) { return item.id === appointmentId; });
         if (found) {
+          var fallbackSelected = page.selectedAppointment || {};
           currentSelected = {
             id: found.id,
             client: found.client,
@@ -1723,10 +1736,12 @@
             time: found.time,
             stylist: found.stylist || page.stylists[found.column].name,
             amount: found.price || "$0.00",
-            notes: found.notes || page.selectedAppointment.notes,
-            quietPreference: found.quietPreference || page.selectedAppointment.quietPreference,
-            history: found.history || page.selectedAppointment.history
+            notes: found.notes || fallbackSelected.notes || "",
+            quietPreference: found.quietPreference || fallbackSelected.quietPreference || "",
+            history: found.history || fallbackSelected.history || []
           };
+          currentQuery.appointmentId = currentSelected.id;
+          syncCurrentScreenQuery(currentQuery);
           renderDrawer(currentSelected);
         }
       });
