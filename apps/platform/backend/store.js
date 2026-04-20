@@ -668,6 +668,7 @@ function createPlatformStore() {
       });
     });
 
+    repairMissingEntityLinks();
     touch(now);
   }
 
@@ -747,6 +748,67 @@ function createPlatformStore() {
 
   function resolveClientForAppointment(input, options = {}) {
     return findClientRecord(input, options) || createImplicitClient(input);
+  }
+
+  function syncConversationFromEntities(conversationId) {
+    const conversation = db.prepare(`SELECT * FROM conversations WHERE id = ?`).get(conversationId);
+    if (!conversation) return null;
+    const client = conversation.client_id ? getClientRecordById(conversation.client_id) : null;
+    db.prepare(`
+      UPDATE conversations
+      SET name = ?, avatar = ?, contact_phone = ?, contact_email = ?, ltv = ?, visits = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      client ? client.name : conversation.name,
+      client ? client.avatar : conversation.avatar,
+      client ? client.phone : conversation.contact_phone,
+      client ? client.email : conversation.contact_email,
+      client ? client.ltv : conversation.ltv,
+      client ? client.visits_ytd : conversation.visits,
+      new Date().toISOString(),
+      conversationId
+    );
+    return conversationId;
+  }
+
+  function repairMissingEntityLinks() {
+    const now = new Date().toISOString();
+    db.prepare(`
+      SELECT id, client_name
+      FROM appointments
+      WHERE client_id IS NULL OR client_id = ''
+      ORDER BY sort_order ASC, updated_at DESC
+    `).all().forEach((appointment) => {
+      const client = resolveClientForAppointment({
+        name: appointment.client_name
+      }, { allowPhoneMatch: false });
+      if (!client) return;
+      db.prepare(`
+        UPDATE appointments
+        SET client_id = ?, updated_at = ?
+        WHERE id = ?
+      `).run(client.id, now, appointment.id);
+      syncAppointmentFromEntities(appointment.id);
+    });
+
+    db.prepare(`
+      SELECT id, name, contact_email
+      FROM conversations
+      WHERE client_id IS NULL OR client_id = ''
+      ORDER BY sort_order ASC, updated_at DESC
+    `).all().forEach((conversation) => {
+      const client = resolveClientForAppointment({
+        name: conversation.name,
+        email: conversation.contact_email
+      }, { allowPhoneMatch: false });
+      if (!client) return;
+      db.prepare(`
+        UPDATE conversations
+        SET client_id = ?, updated_at = ?
+        WHERE id = ?
+      `).run(client.id, now, conversation.id);
+      syncConversationFromEntities(conversation.id);
+    });
   }
 
   function buildClientHistoryPreview(clientId) {
@@ -2148,6 +2210,7 @@ function createPlatformStore() {
   runSchema();
   runMigrations();
   ensureSeeded();
+  repairMissingEntityLinks();
 
   return {
     dbFile: DB_FILE,
