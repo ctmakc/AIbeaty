@@ -476,6 +476,11 @@
   }
 
   function renderServices(page) {
+    function syncPage(nextPage) {
+      renderServices(nextPage);
+      bindStaticButtons();
+    }
+
     var title = qs("main h2.text-3xl");
     var subtitle = title && title.parentElement ? title.parentElement.querySelector("p") : null;
     if (title) title.textContent = page.title;
@@ -485,15 +490,17 @@
     var categoryWrap = qs("main .space-y-6");
     var panel = qs(".w-96.shrink-0");
     var editor = page.editor;
+    var selectedServiceId = editor && editor.id ? editor.id : null;
 
     function fillEditor(service, categoryName) {
       if (!panel) return;
       var inputs = qsa("input, textarea, select", panel);
+      selectedServiceId = service.id || selectedServiceId;
       if (inputs[0]) inputs[0].value = service.name;
       if (inputs[1]) inputs[1].value = categoryName;
-      if (inputs[2]) inputs[2].value = editor.description;
+      if (inputs[2]) inputs[2].value = service.description || editor.description;
       if (inputs[3]) inputs[3].value = (service.duration || "60").replace(/\D/g, "");
-      if (inputs[4]) inputs[4].value = editor.processingTime;
+      if (inputs[4]) inputs[4].value = service.processingTime || editor.processingTime;
       if (inputs[5]) inputs[5].value = (service.price || "").replace(/[^0-9.]/g, "");
       if (inputs[6]) inputs[6].value = (service.commission || "").replace("%", "");
     }
@@ -512,6 +519,8 @@
                   : "hover:bg-surface-container-low transition-colors cursor-pointer border border-transparent") +
                 '" data-service-name="' +
                 service.name.toLowerCase() +
+                '" data-service-id="' +
+                (service.id || "") +
                 '" data-category-name="' +
                 category.name +
                 '">' +
@@ -557,10 +566,13 @@
     if (panel && editor) {
       fillEditor(
         {
+          id: editor.id,
           name: editor.name,
           duration: editor.duration + " min",
           price: "$" + editor.price,
-          commission: editor.commission + "%"
+          commission: editor.commission + "%",
+          description: editor.description,
+          processingTime: editor.processingTime
         },
         editor.category
       );
@@ -606,9 +618,64 @@
         });
       });
     }
+
+    if (panel) {
+      var actionButtons = qsa(".p-6.border-t button", panel);
+      var cancelButton = actionButtons[0];
+      var saveButton = actionButtons[1];
+      if (cancelButton) {
+        cancelButton.dataset.actionBound = "true";
+        cancelButton.onclick = function () {
+          notify("Editor changes discarded.");
+          if (editor) {
+            fillEditor(
+              {
+                id: editor.id,
+                name: editor.name,
+                duration: editor.duration + " min",
+                price: "$" + editor.price,
+                commission: editor.commission + "%",
+                description: editor.description,
+                processingTime: editor.processingTime
+              },
+              editor.category
+            );
+          }
+        };
+      }
+      if (saveButton) {
+        saveButton.dataset.actionBound = "true";
+        saveButton.onclick = function () {
+          if (!selectedServiceId) {
+            notify("Select a service first.", "error");
+            return;
+          }
+          var inputs = qsa("input, textarea, select", panel);
+          mutateJson(apiBase.replace(/\/$/, "") + "/services/" + encodeURIComponent(selectedServiceId), "PATCH", {
+            name: inputs[0] ? inputs[0].value.trim() : "",
+            category: inputs[1] ? inputs[1].value.trim() : "",
+            description: inputs[2] ? inputs[2].value.trim() : "",
+            duration: inputs[3] ? inputs[3].value.trim() : "",
+            processingTime: inputs[4] ? inputs[4].value.trim() : "",
+            price: inputs[5] ? inputs[5].value.trim() : "",
+            commission: inputs[6] ? inputs[6].value.trim() : ""
+          }).then(function (payload) {
+            notify("Service saved on live backend.");
+            syncPage(payload.page);
+          }).catch(function () {
+            notify("Service save failed.", "error");
+          });
+        };
+      }
+    }
   }
 
   function renderClients(page) {
+    function syncPage(nextPage) {
+      renderClients(nextPage);
+      bindStaticButtons();
+    }
+
     var title = qs("main h1.text-3xl");
     var subtitle = title && title.parentElement ? title.parentElement.querySelector("p") : null;
     if (title) title.textContent = page.title;
@@ -618,6 +685,15 @@
     var listWrap = qs(".flex-1.overflow-y-auto.pr-2.space-y-3.pb-8");
     var detail = qs(".hidden.lg\\:flex.flex-1.flex-col.h-full");
     if (!listWrap || !detail) return;
+    var listHeader = listWrap.parentElement;
+    var headerActions = listHeader ? qs(".flex.justify-between.items-end.mb-6.shrink-0", listHeader) : null;
+    if (headerActions && !qs("[data-create-client]", headerActions)) {
+      var createButton = document.createElement("button");
+      createButton.className = "px-4 py-2 bg-gradient-to-r from-primary to-primary-dim text-on-primary rounded-md font-medium text-sm hover:opacity-90 transition-opacity shadow-sm";
+      createButton.textContent = "New Client";
+      createButton.dataset.createClient = "true";
+      headerActions.appendChild(createButton);
+    }
 
     function renderClientList(clients, selectedId) {
       listWrap.innerHTML = clients.length
@@ -715,12 +791,95 @@
     var selectedId = page.clients[0] ? page.clients[0].id : null;
     var filtered = page.clients.slice();
 
+    function bindDetailActions(client) {
+      var headerButtons = qsa(".p-8.border-b button", detail);
+      var editProfileButton = headerButtons[0];
+      var bookButton = headerButtons[1];
+      var formulaEditButton = qsa("section button", detail)[0];
+
+      if (editProfileButton) {
+        editProfileButton.dataset.actionBound = "true";
+        editProfileButton.onclick = function () {
+          var nextName = window.prompt("Client name", client.name);
+          if (nextName === null || !nextName.trim()) return;
+          var nextEmail = window.prompt("Email", client.email);
+          if (nextEmail === null || !nextEmail.trim()) return;
+          var nextPhone = window.prompt("Phone", client.phone);
+          if (nextPhone === null || !nextPhone.trim()) return;
+          var nextStatus = window.prompt("Status (VIP, REGULAR, NEW, AT-RISK)", client.status);
+          if (nextStatus === null || !nextStatus.trim()) return;
+          var nextPreferences = window.prompt("Preferences (comma separated)", (client.preferences || []).join(", "));
+          if (nextPreferences === null) return;
+          mutateJson(apiBase.replace(/\/$/, "") + "/clients/" + encodeURIComponent(client.id), "PATCH", {
+            name: nextName,
+            email: nextEmail,
+            phone: nextPhone,
+            status: nextStatus,
+            preferences: nextPreferences
+          }).then(function (payload) {
+            notify("Client updated on live backend.");
+            syncPage(payload.page);
+          }).catch(function () {
+            notify("Client update failed.", "error");
+          });
+        };
+      }
+
+      if (bookButton) {
+        bookButton.dataset.actionBound = "true";
+        bookButton.onclick = function () {
+          var service = window.prompt("Service", "Signature Color Refresh");
+          if (service === null || !service.trim()) return;
+          var stylist = window.prompt("Stylist", "Sarah J.");
+          if (stylist === null || !stylist.trim()) return;
+          var date = window.prompt("Booking date (YYYY-MM-DD)", new Date().toISOString().slice(0, 10));
+          if (date === null || !date.trim()) return;
+          var slot = window.prompt("Time slot (HH:MM-HH:MM)", "11:00-12:00");
+          if (slot === null || !slot.trim()) return;
+          var amount = window.prompt("Ticket amount", String((client.avgTicket || "$0").replace(/[^0-9.]/g, "") || "120"));
+          if (amount === null || !amount.trim()) return;
+          mutateJson(apiBase.replace(/\/$/, "") + "/clients/" + encodeURIComponent(client.id) + "/bookings", "POST", {
+            service: service,
+            stylist: stylist,
+            date: date,
+            slot: slot,
+            amount: amount
+          }).then(function (payload) {
+            notify("Booking saved on live backend.");
+            syncPage(payload.page);
+          }).catch(function () {
+            notify("Booking creation failed.", "error");
+          });
+        };
+      }
+
+      if (formulaEditButton) {
+        formulaEditButton.dataset.actionBound = "true";
+        formulaEditButton.onclick = function () {
+          var formulaBase = window.prompt("Current base formula", client.formulaBase);
+          if (formulaBase === null) return;
+          var formulaHighlights = window.prompt("Highlights / notes", client.formulaHighlights);
+          if (formulaHighlights === null) return;
+          mutateJson(apiBase.replace(/\/$/, "") + "/clients/" + encodeURIComponent(client.id), "PATCH", {
+            formulaBase: formulaBase,
+            formulaHighlights: formulaHighlights
+          }).then(function (payload) {
+            notify("Formula notes saved on live backend.");
+            syncPage(payload.page);
+          }).catch(function () {
+            notify("Formula update failed.", "error");
+          });
+        };
+      }
+    }
+
     function update() {
       renderClientList(filtered, selectedId);
       var client = filtered.find(function (item) { return item.id === selectedId; }) || filtered[0];
       if (client) {
         selectedId = client.id;
         renderClientDetail(client);
+        bindDetailActions(client);
       }
       qsa("[data-client-id]", listWrap).forEach(function (button) {
         button.addEventListener("click", function () {
@@ -731,6 +890,35 @@
     }
 
     update();
+
+    var createClientButton = qs("[data-create-client]", headerActions);
+    if (createClientButton) {
+      createClientButton.dataset.actionBound = "true";
+      createClientButton.onclick = function () {
+        var name = window.prompt("Client name", "");
+        if (name === null || !name.trim()) return;
+        var email = window.prompt("Email", "");
+        if (email === null || !email.trim()) return;
+        var phone = window.prompt("Phone", "");
+        if (phone === null || !phone.trim()) return;
+        var status = window.prompt("Status (VIP, REGULAR, NEW, AT-RISK)", "NEW");
+        if (status === null || !status.trim()) return;
+        var preferences = window.prompt("Preferences (comma separated)", "Text confirmations");
+        if (preferences === null) return;
+        mutateJson(apiBase.replace(/\/$/, "") + "/clients", "POST", {
+          name: name,
+          email: email,
+          phone: phone,
+          status: status,
+          preferences: preferences
+        }).then(function (payload) {
+          notify("Client created on live backend.");
+          syncPage(payload.page);
+        }).catch(function () {
+          notify("Client creation failed.", "error");
+        });
+      };
+    }
 
     var search = qs("header input[type='text']");
     if (search) {
@@ -746,6 +934,11 @@
   }
 
   function renderInbox(page) {
+    function syncPage(nextPage) {
+      renderInbox(nextPage);
+      bindStaticButtons();
+    }
+
     var leftPane = qs("main > aside");
     var centerPane = qsa("main > section")[0];
     var rightPane = qsa("main > aside")[1];
@@ -755,6 +948,14 @@
     var listWrap = qs(".flex-1.overflow-y-auto", leftPane);
     var activeId = page.conversations[0] ? page.conversations[0].id : null;
     var filtered = page.conversations.slice();
+    var paneHeader = qs(".h-16.flex.items-center.justify-between", leftPane);
+    if (paneHeader && !qs("[data-create-conversation]", paneHeader)) {
+      var newThreadButton = document.createElement("button");
+      newThreadButton.className = "px-3 py-1.5 rounded-md bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/15 transition-colors";
+      newThreadButton.textContent = "New Thread";
+      newThreadButton.dataset.createConversation = "true";
+      paneHeader.insertBefore(newThreadButton, paneHeader.lastElementChild);
+    }
 
     function renderConversationList(items, selectedId) {
       listWrap.innerHTML = items.length
@@ -832,16 +1033,23 @@
         });
         var sendButton = qsa("button", inputArea).slice(-1)[0];
         if (sendButton && textarea) {
+          sendButton.dataset.actionBound = "true";
           sendButton.onclick = function () {
             var text = textarea.value.trim();
             if (!text) {
               notify("Type a reply first.");
               return;
             }
-            conversation.messages.push({ type: "outgoing", text: text, meta: "Just now • Pending sync" });
-            textarea.value = "";
-            renderMessages(conversation);
-            notify("Message queued locally. Wire this to outbound messaging backend next.");
+            mutateJson(apiBase.replace(/\/$/, "") + "/inbox/conversations/" + encodeURIComponent(conversation.id) + "/messages", "POST", {
+              text: text,
+              type: "outgoing"
+            }).then(function (payload) {
+              textarea.value = "";
+              notify("Reply sent through live backend.");
+              syncPage(payload.page);
+            }).catch(function () {
+              notify("Reply send failed.", "error");
+            });
           };
         }
       }
@@ -879,6 +1087,70 @@
               .join("")
           : '<div class="aibeaty-empty">No history yet.</div>';
       }
+
+      var actionButtons = qsa("button", rightPane);
+      var viewProfileButton = actionButtons.filter(function (button) {
+        return button.textContent.trim().toLowerCase() === "view profile";
+      })[0];
+      if (viewProfileButton) {
+        viewProfileButton.textContent = "Book Visit";
+        viewProfileButton.dataset.actionBound = "true";
+        viewProfileButton.onclick = function () {
+          var defaultService = conversation.todayVisit && conversation.todayVisit.service && conversation.todayVisit.service !== "No service booked"
+            ? conversation.todayVisit.service
+            : "Consultation";
+          var service = window.prompt("Service", defaultService);
+          if (service === null || !service.trim()) return;
+          var defaultStylist = conversation.todayVisit && conversation.todayVisit.stylist && conversation.todayVisit.stylist !== "TBD"
+            ? conversation.todayVisit.stylist
+            : "Front Desk";
+          var stylist = window.prompt("Stylist", defaultStylist);
+          if (stylist === null || !stylist.trim()) return;
+          var defaultSlot = conversation.todayVisit && conversation.todayVisit.time && conversation.todayVisit.time !== "No active booking"
+            ? conversation.todayVisit.time
+            : "11:00-12:00";
+          var slot = window.prompt("Time slot", defaultSlot);
+          if (slot === null || !slot.trim()) return;
+          var defaultAmount = conversation.todayVisit && conversation.todayVisit.amount && conversation.todayVisit.amount !== "$0"
+            ? conversation.todayVisit.amount.replace(/^\$/, "")
+            : "95";
+          var amount = window.prompt("Amount", defaultAmount);
+          if (amount === null || !amount.trim()) return;
+          mutateJson(apiBase.replace(/\/$/, "") + "/inbox/conversations/" + encodeURIComponent(conversation.id) + "/bookings", "POST", {
+            service: service,
+            stylist: stylist,
+            slot: slot,
+            amount: amount
+          }).then(function (payload) {
+            notify("Inbox booking created on live backend.");
+            syncPage(payload.page);
+          }).catch(function () {
+            notify("Inbox booking failed.", "error");
+          });
+        };
+      }
+      var editNotesButton = actionButtons.filter(function (button) {
+        return button.textContent.trim().toLowerCase() === "edit notes";
+      })[0];
+      if (editNotesButton) {
+        editNotesButton.dataset.actionBound = "true";
+        editNotesButton.onclick = function () {
+          var currentNote = conversation.history[0] ? conversation.history[0].notes : "";
+          var nextNote = window.prompt("Update latest client note", currentNote);
+          if (nextNote === null || !nextNote.trim()) return;
+          var nextPreference = window.prompt("Drink / contact preference", conversation.contact.preference);
+          if (nextPreference === null || !nextPreference.trim()) return;
+          mutateJson(apiBase.replace(/\/$/, "") + "/inbox/conversations/" + encodeURIComponent(conversation.id), "PATCH", {
+            note: nextNote,
+            preference: nextPreference
+          }).then(function (payload) {
+            notify("Conversation notes saved on live backend.");
+            syncPage(payload.page);
+          }).catch(function () {
+            notify("Conversation update failed.", "error");
+          });
+        };
+      }
     }
 
     function update() {
@@ -897,6 +1169,46 @@
     }
 
     update();
+
+    var createConversationButton = qs("[data-create-conversation]", paneHeader);
+    if (createConversationButton) {
+      createConversationButton.dataset.actionBound = "true";
+      createConversationButton.onclick = function () {
+        var name = window.prompt("Client or conversation name", "");
+        if (name === null || !name.trim()) return;
+        var channel = window.prompt("Channel (WhatsApp or Instagram)", "WhatsApp");
+        if (channel === null || !channel.trim()) return;
+        var email = window.prompt("Email", "");
+        if (email === null || !email.trim()) return;
+        var phone = window.prompt("Phone", "");
+        if (phone === null || !phone.trim()) return;
+        var message = window.prompt("Initial message", "Hi, reaching out from Precision Studio.");
+        if (message === null || !message.trim()) return;
+        mutateJson(apiBase.replace(/\/$/, "") + "/inbox/conversations", "POST", {
+          name: name,
+          channel: channel,
+          contact: {
+            email: email,
+            phone: phone,
+            preference: "Text updates"
+          },
+          preview: message,
+          messages: [
+            {
+              type: "outgoing",
+              text: message,
+              meta: "Just now • Sent"
+            }
+          ]
+        }).then(function (payload) {
+          notify("Conversation created on live backend.");
+          syncPage(payload.page);
+        }).catch(function () {
+          notify("Conversation creation failed.", "error");
+        });
+      };
+    }
+
     var search = qs("header input[type='text']");
     if (search) {
       search.addEventListener("input", function () {
@@ -911,6 +1223,11 @@
   }
 
   function renderSchedule(page) {
+    function syncPage(nextPage) {
+      renderSchedule(nextPage);
+      bindStaticButtons();
+    }
+
     setSearchPlaceholder(page.searchPlaceholder);
     var dateTitle = qs("header h2.font-headline");
     if (dateTitle) dateTitle.textContent = page.title;
@@ -930,6 +1247,7 @@
     var drawer = qs("main > aside");
     function renderDrawer(selected) {
       if (!drawer || !selected) return;
+      drawer.dataset.selectedAppointmentId = selected.id || "";
       var headerName = qs("h2.font-headline.font-bold.text-xl", drawer);
       var since = qs(".text-sm.text-on-surface-variant.mt-0\\.5", drawer);
       var serviceRows = qsa(".bg-surface-container-lowest .flex.justify-between.text-sm", drawer);
@@ -969,7 +1287,7 @@
               : appointment.tone === "tertiary"
                 ? "bg-tertiary-container/30 border-l-4 border-tertiary hover:shadow-md"
                 : "bg-surface-container-high border-l-4 border-outline opacity-70 hover:shadow-md") +
-          '" style="top:' + appointment.top + "px;height:" + appointment.height + 'px" data-schedule-card data-client="' + appointment.client + '">' +
+          '" style="top:' + appointment.top + "px;height:" + appointment.height + 'px" data-schedule-card data-appointment-id="' + appointment.id + '" data-client="' + appointment.client + '">' +
           (appointment.active ? '<div class="absolute top-2 right-2 flex gap-1"><span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span></div>' : "") +
           '<div class="flex justify-between items-start mb-0.5"><h4 class="font-headline font-bold ' + (appointment.tone === "primary" ? "text-primary" : "text-on-surface") + ' text-sm pr-4">' + appointment.service + "</h4>" +
           (appointment.price ? '<span class="text-xs font-semibold ' + (appointment.tone === "primary" ? "text-primary bg-surface-container-high" : "text-secondary bg-surface-container-lowest") + ' px-1.5 py-0.5 rounded ghost-border">' + appointment.price + "</span>" : appointment.badge ? '<span class="text-[10px] uppercase font-bold text-error bg-error-container/20 px-1 rounded">' + appointment.badge + "</span>" : "") +
@@ -980,26 +1298,27 @@
       });
     }
 
-    var selected = page.selectedAppointment;
+    var currentSelected = page.selectedAppointment;
     renderCards(page.appointments);
-    renderDrawer(selected);
+    renderDrawer(currentSelected);
     qsa("[data-schedule-card]").forEach(function (button) {
       button.addEventListener("click", function () {
-        var name = button.dataset.client;
-        var found = page.appointments.find(function (item) { return item.client === name; });
+        var appointmentId = button.dataset.appointmentId;
+        var found = page.appointments.find(function (item) { return item.id === appointmentId; });
         if (found) {
-          var next = {
+          currentSelected = {
+            id: found.id,
             client: found.client,
-            since: found.tags && found.tags.indexOf("VIP") !== -1 ? "Since Oct 2021 • VIP" : "Recent client",
+            since: found.since || (found.tags && found.tags.indexOf("VIP") !== -1 ? "Since Oct 2021 • VIP" : "Recent client"),
             service: found.service,
             time: found.time,
             stylist: found.stylist || page.stylists[found.column].name,
             amount: found.price || "$0.00",
-            notes: page.selectedAppointment.notes,
-            quietPreference: page.selectedAppointment.quietPreference,
-            history: page.selectedAppointment.history
+            notes: found.notes || page.selectedAppointment.notes,
+            quietPreference: found.quietPreference || page.selectedAppointment.quietPreference,
+            history: found.history || page.selectedAppointment.history
           };
-          renderDrawer(next);
+          renderDrawer(currentSelected);
         }
       });
     });
@@ -1014,20 +1333,22 @@
         renderCards(filtered);
         qsa("[data-schedule-card]").forEach(function (button) {
           button.addEventListener("click", function () {
-            var name = button.dataset.client;
-            var found = filtered.find(function (item) { return item.client === name; });
+            var appointmentId = button.dataset.appointmentId;
+            var found = filtered.find(function (item) { return item.id === appointmentId; });
             if (found) {
-              renderDrawer({
+              currentSelected = {
+                id: found.id,
                 client: found.client,
-                since: found.tags && found.tags.indexOf("VIP") !== -1 ? "Since Oct 2021 • VIP" : "Recent client",
+                since: found.since || (found.tags && found.tags.indexOf("VIP") !== -1 ? "Since Oct 2021 • VIP" : "Recent client"),
                 service: found.service,
                 time: found.time,
                 stylist: found.stylist || page.stylists[found.column].name,
                 amount: found.price || "$0.00",
-                notes: page.selectedAppointment.notes,
-                quietPreference: page.selectedAppointment.quietPreference,
-                history: page.selectedAppointment.history
-              });
+                notes: found.notes || page.selectedAppointment.notes,
+                quietPreference: found.quietPreference || page.selectedAppointment.quietPreference,
+                history: found.history || page.selectedAppointment.history
+              };
+              renderDrawer(currentSelected);
             }
           });
         });
@@ -1039,6 +1360,86 @@
       toggleButtons[1].addEventListener("click", function () {
         notify("Week view is queued after backend schedule aggregation lands.");
       });
+    }
+
+    var shellButtons = qsa("button", document);
+    var newBookingButton = shellButtons.filter(function (button) {
+      return button.textContent.trim().toLowerCase() === "new booking";
+    })[0];
+    if (newBookingButton) {
+      newBookingButton.dataset.actionBound = "true";
+      newBookingButton.onclick = function () {
+        var client = window.prompt("Client", "Walk-in Client");
+        if (client === null || !client.trim()) return;
+        var service = window.prompt("Service", "Women's Precision Cut");
+        if (service === null || !service.trim()) return;
+        var stylist = window.prompt("Stylist", page.stylists[0] ? page.stylists[0].name : "Sarah Jenkins");
+        if (stylist === null || !stylist.trim()) return;
+        var slot = window.prompt("Time slot (HH:MM-HH:MM)", "14:00-15:00");
+        if (slot === null || !slot.trim()) return;
+        var amount = window.prompt("Amount", "120");
+        if (amount === null || !amount.trim()) return;
+        mutateJson(apiBase.replace(/\/$/, "") + "/schedule/appointments", "POST", {
+          client: client,
+          service: service,
+          stylist: stylist,
+          date: slot,
+          amount: amount,
+          since: "New client",
+          notes: "Booked from live schedule panel.",
+          quietPreference: "No special preference recorded."
+        }).then(function (payload) {
+          notify("Appointment created on live backend.");
+          syncPage(payload.page);
+        }).catch(function () {
+          notify("Appointment creation failed.", "error");
+        });
+      };
+    }
+
+    if (drawer) {
+      var drawerButtons = qsa("button", drawer);
+      var checkoutButton = drawerButtons.filter(function (button) {
+        return button.textContent.trim().toLowerCase() === "check out";
+      })[0];
+      var editButton = drawerButtons.filter(function (button) {
+        return button.textContent.trim().toLowerCase() === "edit";
+      })[0];
+      if (checkoutButton) {
+        checkoutButton.dataset.actionBound = "true";
+        checkoutButton.onclick = function () {
+          var appointmentId = drawer.dataset.selectedAppointmentId;
+          if (!appointmentId) return;
+          mutateJson(apiBase.replace(/\/$/, "") + "/schedule/appointments/" + encodeURIComponent(appointmentId) + "/checkout", "POST", {})
+            .then(function (payload) {
+              notify("Appointment checked out on live backend.");
+              syncPage(payload.page);
+            })
+            .catch(function () {
+              notify("Checkout failed.", "error");
+            });
+        };
+      }
+      if (editButton) {
+        editButton.dataset.actionBound = "true";
+        editButton.onclick = function () {
+          var appointmentId = drawer.dataset.selectedAppointmentId;
+          if (!appointmentId || !currentSelected) return;
+          var nextNotes = window.prompt("Update formula / appointment notes", currentSelected.notes);
+          if (nextNotes === null || !nextNotes.trim()) return;
+          var nextPreference = window.prompt("Update quiet preference", currentSelected.quietPreference);
+          if (nextPreference === null || !nextPreference.trim()) return;
+          mutateJson(apiBase.replace(/\/$/, "") + "/schedule/appointments/" + encodeURIComponent(appointmentId), "PATCH", {
+            notes: nextNotes,
+            quietPreference: nextPreference
+          }).then(function (payload) {
+            notify("Appointment notes saved on live backend.");
+            syncPage(payload.page);
+          }).catch(function () {
+            notify("Appointment update failed.", "error");
+          });
+        };
+      }
     }
   }
 

@@ -31,7 +31,8 @@ function slugify(value) {
 
 function createId(prefix, value) {
   const stem = slugify(value) || prefix;
-  return `${prefix}-${stem}-${Date.now().toString(36)}`;
+  const entropy = Math.random().toString(36).slice(2, 8);
+  return `${prefix}-${stem}-${Date.now().toString(36)}-${entropy}`;
 }
 
 function parseNumberLabel(label, fallbackUnit) {

@@ -12,6 +12,12 @@ Static HTML screens in `apps/platform/screens/` now expect page-shaped JSON payl
 - demo fallback:
   - `apps/platform/data/demo-platform.json`
 
+## Storage
+
+- live modules persist in SQLite at `apps/platform/data/platform.db`
+- `npm run platform:state:reset` reseeds SQLite from `apps/platform/data/demo-platform.json`
+- `/api/platform/health` reports the active storage backend
+
 ## Endpoint shape
 
 Each screen requests:
@@ -72,3 +78,30 @@ Examples:
 
 - The runtime keeps the Stitch HTML shell but swaps hardcoded product data for JSON-driven content.
 - If a live endpoint is missing or returns non-200, the page falls back to demo data automatically.
+
+## Live mutation endpoints
+
+- Inventory
+  - `PATCH /api/platform/inventory/items/:sku`
+  - `POST /api/platform/inventory/restock-orders`
+- Automations
+  - `PATCH /api/platform/automations/workflows/:name`
+  - `POST /api/platform/automations/builder/test-run`
+  - `POST /api/platform/automations/builder/activate`
+- Clients
+  - `POST /api/platform/clients`
+  - `PATCH /api/platform/clients/:id`
+  - `DELETE /api/platform/clients/:id`
+  - `POST /api/platform/clients/:id/bookings`
+- Inbox
+  - `POST /api/platform/inbox/conversations`
+  - `PATCH /api/platform/inbox/conversations/:id`
+  - `DELETE /api/platform/inbox/conversations/:id`
+  - `POST /api/platform/inbox/conversations/:id/messages`
+  - `POST /api/platform/inbox/conversations/:id/bookings`
+- Services
+  - `PATCH /api/platform/services/:id`
+- Schedule
+  - `POST /api/platform/schedule/appointments`
+  - `PATCH /api/platform/schedule/appointments/:id`
+  - `POST /api/platform/schedule/appointments/:id/checkout`

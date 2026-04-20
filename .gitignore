@@ -9,6 +9,8 @@ coverage/
 .wrangler/
 .vite/
 apps/platform/data/platform-state.json
+apps/platform/data/platform.db
+apps/platform/data/platform.db-*
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

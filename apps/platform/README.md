@@ -24,7 +24,11 @@ npm run platform:serve
 
 Then open `http://localhost:4174`.
 
+The root path now opens the dashboard screen directly instead of the old Stitch import catalog.
+
 `platform:serve` now rebuilds the local Tailwind bundle first, serves the static platform shell, and exposes `/api/platform/*` from the same process on `4174`.
+
+The local backend is now SQLite-backed. Live entities persist in `apps/platform/data/platform.db`, while `demo-platform.json` remains the seed/fallback source for non-live screens and resets.
 
 ## Note
 
@@ -73,6 +77,8 @@ State reset:
 npm run platform:state:reset
 ```
 
+This rebuilds the SQLite-backed live state from the demo seed.
+
 Current live mutations:
 
 - `PATCH /api/platform/inventory/items/:sku`
@@ -80,3 +86,16 @@ Current live mutations:
 - `PATCH /api/platform/automations/workflows/:name`
 - `POST /api/platform/automations/builder/test-run`
 - `POST /api/platform/automations/builder/activate`
+- `POST /api/platform/clients`
+- `PATCH /api/platform/clients/:id`
+- `DELETE /api/platform/clients/:id`
+- `POST /api/platform/clients/:id/bookings`
+- `POST /api/platform/inbox/conversations`
+- `PATCH /api/platform/inbox/conversations/:id`
+- `DELETE /api/platform/inbox/conversations/:id`
+- `POST /api/platform/inbox/conversations/:id/messages`
+- `POST /api/platform/inbox/conversations/:id/bookings`
+- `PATCH /api/platform/services/:id`
+- `POST /api/platform/schedule/appointments`
+- `PATCH /api/platform/schedule/appointments/:id`
+- `POST /api/platform/schedule/appointments/:id/checkout`
