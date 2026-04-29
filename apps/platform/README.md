@@ -94,11 +94,17 @@ Current live mutations:
 - `PATCH /api/platform/inbox/conversations/:id`
 - `DELETE /api/platform/inbox/conversations/:id`
 - `POST /api/platform/inbox/conversations/:id/messages`
+- `POST /api/platform/inbox/conversations/:id/recovery-offer`
 - `POST /api/platform/inbox/conversations/:id/bookings`
 - `PATCH /api/platform/services/:id`
 - `POST /api/platform/schedule/appointments`
 - `PATCH /api/platform/schedule/appointments/:id`
+- `POST /api/platform/schedule/appointments/:id/deposit`
+- `POST /api/platform/schedule/appointments/:id/reschedule`
+- `POST /api/platform/schedule/appointments/:id/cancel`
 - `POST /api/platform/schedule/appointments/:id/checkout`
+- `POST /api/platform/schedule/appointments/:id/no-show`
+- `POST /api/platform/schedule/appointments/:id/refund`
 
 Live query-driven views:
 
@@ -123,3 +129,7 @@ Dashboard deep-links:
 - client, inbox, and schedule detail panes now cross-link using `clientId` to keep the same guest selected across screens
 - dashboard activity now opens a live modal feed with search, tone filters, export, and route-aware deep-links
 - schedule now supports real `Day` and `Week` modes backed by persisted appointment day offsets
+- checkout now captures payment method + tip, persists receipt data in SQLite, and exposes that receipt back into schedule, client, and inbox context
+- schedule billing now tracks invoice/deposit/refund state so operators can capture deposits before checkout and issue refunds after payment without leaving the drawer
+- schedule lifecycle now tracks rescheduled, canceled, no-show, and completed visits, with inbox/client/activity updates driven from the same appointment state
+- no-show/cancel now push live recovery context into inbox, expose one-click recovery offers, and feed recovered bookings back into the `No-Show Recovery` workflow metrics

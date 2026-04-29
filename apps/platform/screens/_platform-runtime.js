@@ -305,6 +305,49 @@
     });
   }
 
+  function presentReceipt(options) {
+    ensureRuntimeStyle();
+    options = options || {};
+    var receipt = options.receipt || null;
+    if (!receipt) {
+      notify("No receipt available yet.", "error");
+      return Promise.resolve(null);
+    }
+    return new Promise(function (resolve) {
+      var backdrop = document.createElement("div");
+      backdrop.className = "aibeaty-modal-backdrop";
+      backdrop.innerHTML =
+        '<div class="aibeaty-modal" role="dialog" aria-modal="true">' +
+        '<div class="aibeaty-modal__header"><div class="font-headline font-bold text-xl text-on-surface">' + escapeHtml(options.title || "Receipt") + '</div>' +
+        '<div class="text-sm text-on-surface-variant mt-2">' + escapeHtml(options.description || (receipt.number + " • " + receipt.issuedLabel)) + '</div></div>' +
+        '<div class="aibeaty-modal__body">' +
+        '<div class="rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-5 space-y-4">' +
+        '<div class="flex items-start justify-between gap-4"><div><div class="text-xs font-bold uppercase tracking-[0.14em] text-primary">Receipt</div><div class="text-lg font-headline font-bold text-on-surface mt-1">' + escapeHtml(receipt.number || "Receipt") + '</div><div class="text-xs text-on-surface-variant mt-1">' + escapeHtml(receipt.invoiceNumber || "") + "</div></div><div class=\"text-right text-sm text-on-surface-variant\"><div>" + escapeHtml(receipt.paymentMethod || "Card") + '</div><div class="mt-1">' + escapeHtml(receipt.issuedLabel || "") + '</div><div class="mt-1 text-xs">' + escapeHtml(receipt.paymentStatus || "") + '</div></div></div>' +
+        '<div class="rounded-xl bg-white border border-outline-variant/10 divide-y divide-outline-variant/10">' +
+        '<div class="flex items-center justify-between px-4 py-3 text-sm"><span class="text-on-surface-variant">Client</span><span class="font-semibold text-on-surface">' + escapeHtml(receipt.client || options.client || "Guest") + '</span></div>' +
+        '<div class="flex items-center justify-between px-4 py-3 text-sm"><span class="text-on-surface-variant">Service</span><span class="font-semibold text-on-surface text-right">' + escapeHtml(receipt.service || options.service || "Visit") + '</span></div>' +
+        '<div class="flex items-center justify-between px-4 py-3 text-sm"><span class="text-on-surface-variant">Stylist</span><span class="font-semibold text-on-surface">' + escapeHtml(receipt.stylist || options.stylist || "Team") + '</span></div>' +
+        '<div class="flex items-center justify-between px-4 py-3 text-sm"><span class="text-on-surface-variant">Time</span><span class="font-semibold text-on-surface">' + escapeHtml(receipt.time || options.time || "") + '</span></div>' +
+        '<div class="flex items-center justify-between px-4 py-3 text-sm"><span class="text-on-surface-variant">Service Total</span><span class="font-semibold text-on-surface">' + escapeHtml(receipt.serviceAmount || "$0") + '</span></div>' +
+        '<div class="flex items-center justify-between px-4 py-3 text-sm"><span class="text-on-surface-variant">Deposit</span><span class="font-semibold text-on-surface">' + escapeHtml(receipt.depositPaid || "$0") + '</span></div>' +
+        '<div class="flex items-center justify-between px-4 py-3 text-sm"><span class="text-on-surface-variant">Tip</span><span class="font-semibold text-on-surface">' + escapeHtml(receipt.tipAmount || "$0") + '</span></div>' +
+        '<div class="flex items-center justify-between px-4 py-3 text-sm"><span class="text-on-surface-variant">Refunded</span><span class="font-semibold text-on-surface">' + escapeHtml(receipt.refundedAmount || "$0") + '</span></div>' +
+        '<div class="flex items-center justify-between px-4 py-3 text-sm font-bold"><span class="text-on-surface">Paid</span><span class="text-primary">' + escapeHtml(receipt.totalPaid || "$0") + '</span></div>' +
+        '</div></div></div>' +
+        '<div class="aibeaty-modal__footer aibeaty-modal__actions"><button type="button" class="aibeaty-modal__cancel">Close</button></div></div>';
+      document.body.appendChild(backdrop);
+      var cancel = qs(".aibeaty-modal__cancel", backdrop);
+      function done(result) {
+        backdrop.remove();
+        resolve(result);
+      }
+      if (cancel) cancel.addEventListener("click", function () { done(null); });
+      backdrop.addEventListener("click", function (event) {
+        if (event.target === backdrop) done(null);
+      });
+    });
+  }
+
   function setStatus(state) {
     ensureRuntimeStyle();
     var header = document.querySelector("header");
@@ -1330,6 +1373,26 @@
         };
       }
 
+      var receiptButton = ensureActionButton(
+        actionRow,
+        "client-open-receipt",
+        "Latest Receipt",
+        "px-4 py-2 bg-surface-container-lowest border border-outline-variant/20 rounded-md text-xs font-semibold text-primary hover:bg-primary-container/10 transition-colors shadow-sm"
+      );
+      if (receiptButton) {
+        receiptButton.style.display = client.latestReceipt ? "" : "none";
+        receiptButton.onclick = function () {
+          if (!client.latestReceipt) {
+            notify("No receipt available for this client yet.", "error");
+            return;
+          }
+          presentReceipt({
+            title: "Latest Client Receipt",
+            receipt: client.latestReceipt
+          });
+        };
+      }
+
       if (formulaEditButton) {
         formulaEditButton.dataset.actionBound = "true";
         formulaEditButton.onclick = function () {
@@ -1750,6 +1813,60 @@
           });
         };
       }
+      var receiptButton = ensureActionButton(
+        actionRow,
+        "inbox-open-receipt",
+        "Receipt",
+        "px-4 py-1.5 bg-surface-container-lowest border border-outline-variant/20 rounded-md text-xs font-semibold text-primary hover:bg-primary-container/10 transition-colors shadow-sm"
+      );
+      if (receiptButton) {
+        receiptButton.style.display = conversation.todayVisit && conversation.todayVisit.receipt ? "" : "none";
+        receiptButton.onclick = function () {
+          if (!conversation.todayVisit || !conversation.todayVisit.receipt) {
+            notify("No receipt available for this thread yet.", "error");
+            return;
+          }
+          presentReceipt({
+            title: "Latest Receipt",
+            receipt: conversation.todayVisit.receipt
+          });
+        };
+      }
+      var recoveryButton = ensureActionButton(
+        actionRow,
+        "inbox-send-recovery",
+        "Send Recovery Offer",
+        "px-4 py-1.5 bg-surface-container-lowest border border-outline-variant/20 rounded-md text-xs font-semibold text-secondary hover:bg-secondary-container/10 transition-colors shadow-sm"
+      );
+      if (recoveryButton) {
+        recoveryButton.style.display = conversation.recoveryState ? "" : "none";
+        recoveryButton.onclick = function () {
+          if (!conversation.recoveryState) {
+            notify("This thread is not in recovery mode.", "error");
+            return;
+          }
+          presentForm({
+            title: "Send Recovery Offer",
+            description: conversation.name + " • " + (conversation.recoveryState === "no_show" ? "No-show recovery" : "Canceled visit recovery"),
+            submitLabel: "Send Offer",
+            fields: [
+              { name: "offerPercent", label: "Offer Percent", value: "10", type: "number" },
+              { name: "text", label: "Message", type: "textarea", value: "" }
+            ]
+          }).then(function (values) {
+            if (!values) return;
+            mutateJson(apiBase.replace(/\/$/, "") + "/inbox/conversations/" + encodeURIComponent(conversation.id) + "/recovery-offer", "POST", {
+              offerPercent: values.offerPercent,
+              text: values.text
+            }).then(function (payload) {
+              notify("Recovery offer sent on live backend.");
+              reload({ conversationId: payload.conversationId || conversation.id, clientId: conversation.clientId || currentQuery.clientId || "" });
+            }).catch(function () {
+              notify("Recovery send failed.", "error");
+            });
+          });
+        };
+      }
       var editNotesButton = actionButtons.filter(function (button) {
         return button.textContent.trim().toLowerCase() === "edit notes";
       })[0];
@@ -2008,6 +2125,7 @@
     var columns = qsa(".flex-1.grid.grid-cols-3.divide-x.divide-outline-variant\\/20.relative > div.relative.px-2");
     function renderDrawer(selected) {
       if (!drawer) return;
+      var drawerLabel = qs(".p-5.border-b span.text-\\[10px\\]", drawer);
       if (!selected) {
         drawer.dataset.selectedAppointmentId = "";
         var emptyHeaderName = qs("h2.font-headline.font-bold.text-xl", drawer);
@@ -2018,6 +2136,7 @@
         var emptyHistoryWrap = qs(".space-y-3.relative", drawer);
         if (emptyHeaderName) emptyHeaderName.textContent = currentQuery.clientId ? "No linked appointment" : "No appointment selected";
         if (emptySince) emptySince.textContent = currentQuery.clientId ? "This client has no active appointment in the current schedule view." : "Choose an appointment card to inspect details.";
+        if (drawerLabel) drawerLabel.textContent = "Active Appointment";
         emptyServiceRows.forEach(function (row) {
           var spans = qsa("span", row);
           if (spans[1]) spans[1].textContent = "--";
@@ -2035,16 +2154,29 @@
       var headerName = qs("h2.font-headline.font-bold.text-xl", drawer);
       var since = qs(".text-sm.text-on-surface-variant.mt-0\\.5", drawer);
       var serviceRows = qsa(".bg-surface-container-lowest .flex.justify-between.text-sm", drawer);
+      var receipt = selected.receipt || null;
       if (headerName) headerName.textContent = selected.client;
-      if (since) since.textContent = selected.since;
+      if (since) since.textContent = selected.checkedOut && receipt ? (receipt.number + " • " + receipt.paymentMethod + " • " + receipt.issuedLabel) : selected.since;
+      if (drawerLabel) drawerLabel.textContent = selected.checkedOut ? "Checked Out" : "Active Appointment";
       if (serviceRows[0]) qsa("span", serviceRows[0])[1].textContent = selected.service;
-      if (serviceRows[1]) qsa("span", serviceRows[1])[1].textContent = selected.time;
-      if (serviceRows[2]) qsa("span", serviceRows[2])[1].textContent = selected.stylist;
+      if (serviceRows[1]) qsa("span", serviceRows[1])[1].textContent = selected.checkedOut && receipt ? receipt.issuedLabel : selected.time;
+      if (serviceRows[2]) qsa("span", serviceRows[2])[1].textContent = selected.checkedOut && receipt ? (selected.stylist + " • " + receipt.paymentMethod) : selected.stylist;
       var amount = qs(".pt-2.mt-2.border-t.border-dashed span:last-child", drawer);
-      if (amount) amount.textContent = selected.amount;
+      if (amount) amount.textContent = selected.checkedOut && receipt ? receipt.totalPaid : selected.amount;
       var notes = qsa("p.text-sm.text-on-surface.leading-relaxed", drawer)[0];
       if (notes) {
-        notes.innerHTML = '<span class="font-semibold text-tertiary-dim block mb-1">Color Formula:</span>' + selected.notes + '<br/><br/><span class="italic text-on-surface-variant text-xs">' + selected.quietPreference + "</span>";
+        notes.innerHTML = '<span class="font-semibold text-tertiary-dim block mb-1">' + (selected.checkedOut ? "Visit Notes:" : "Color Formula:") + '</span>' + selected.notes + '<br/><br/><span class="italic text-on-surface-variant text-xs">' + selected.quietPreference + "</span>";
+      }
+      var paymentSummary = selected.paymentSummary || selected.invoice || null;
+      if (notes && paymentSummary) {
+        notes.innerHTML += '<br/><br/><span class="font-semibold text-secondary block mb-1">Invoice:</span><span class="text-xs text-on-surface-variant">' +
+          escapeHtml(paymentSummary.invoiceNumber + " • " + paymentSummary.status + " • Deposit " + paymentSummary.depositPaid + " / " + paymentSummary.depositRequired + " • Balance " + paymentSummary.balanceDue) +
+          "</span>";
+      }
+      if (notes) {
+        notes.innerHTML += '<br/><br/><span class="font-semibold text-primary block mb-1">Visit State:</span><span class="text-xs text-on-surface-variant">' +
+          escapeHtml((selected.appointmentStatusLabel || "Scheduled") + (selected.checkedOut ? " • Completed" : "")) +
+          "</span>";
       }
       var historyWrap = qs(".space-y-3.relative", drawer);
       if (historyWrap) {
@@ -2178,14 +2310,30 @@
         checkoutButton.onclick = function () {
           var appointmentId = drawer.dataset.selectedAppointmentId;
           if (!appointmentId) return;
-          mutateJson(apiBase.replace(/\/$/, "") + "/schedule/appointments/" + encodeURIComponent(appointmentId) + "/checkout", "POST", {})
-            .then(function (payload) {
+          if (currentSelected && currentSelected.checkedOut) return;
+          presentForm({
+            title: "Complete Checkout",
+            description: currentSelected ? (currentSelected.client + " • " + currentSelected.service) : "Appointment",
+            submitLabel: "Capture Payment",
+            fields: [
+              { name: "paymentMethod", label: "Payment Method", type: "select", value: "Card", options: ["Card", "Cash", "Split Payment"] },
+              { name: "tipAmount", label: "Tip Amount", value: "0", type: "number" }
+            ]
+          }).then(function (values) {
+            if (!values) return;
+            mutateJson(apiBase.replace(/\/$/, "") + "/schedule/appointments/" + encodeURIComponent(appointmentId) + "/checkout", "POST", {
+              paymentMethod: values.paymentMethod,
+              tipAmount: values.tipAmount
+            }).then(function (payload) {
               notify("Appointment checked out on live backend.");
-              reload({ appointmentId: payload.appointmentId || "" });
-            })
-            .catch(function () {
+              reload({
+                appointmentId: payload.appointmentId || appointmentId,
+                clientId: currentSelected && currentSelected.clientId ? currentSelected.clientId : (currentQuery.clientId || "")
+              });
+            }).catch(function () {
               notify("Checkout failed.", "error");
             });
+          });
         };
       }
       if (editButton) {
@@ -2240,6 +2388,195 @@
             navigateToScreen("unified-inbox-luminous-core.html", { clientId: currentSelected.clientId });
           };
         }
+        var depositButton = ensureActionButton(
+          historyButton.parentElement,
+          "schedule-capture-deposit",
+          "Take Deposit",
+          "mt-2 w-full py-1.5 text-xs font-medium text-secondary hover:bg-secondary-container/20 rounded-md transition-colors"
+        );
+        if (depositButton) {
+          depositButton.style.display = currentSelected && !currentSelected.checkedOut && currentSelected.appointmentStatus !== "canceled" ? "" : "none";
+          depositButton.onclick = function () {
+            if (!currentSelected || currentSelected.checkedOut) return;
+            presentForm({
+              title: "Capture Deposit",
+              description: currentSelected.client + " • " + currentSelected.service,
+              submitLabel: "Capture Deposit",
+              fields: [
+                { name: "paymentMethod", label: "Payment Method", type: "select", value: "Card", options: ["Card", "Cash", "Split Payment"] },
+                { name: "amount", label: "Deposit Amount", value: currentSelected.paymentSummary && currentSelected.paymentSummary.depositRequiredValue ? String(currentSelected.paymentSummary.depositRequiredValue) : "0", type: "number" }
+              ]
+            }).then(function (values) {
+              if (!values) return;
+              mutateJson(apiBase.replace(/\/$/, "") + "/schedule/appointments/" + encodeURIComponent(currentSelected.id) + "/deposit", "POST", {
+                paymentMethod: values.paymentMethod,
+                amount: values.amount
+              }).then(function (payload) {
+                notify("Deposit captured on live backend.");
+                reload({ appointmentId: payload.appointmentId || currentSelected.id, clientId: currentSelected.clientId || currentQuery.clientId || "" });
+              }).catch(function () {
+                notify("Deposit capture failed.", "error");
+              });
+            });
+          };
+        }
+        var receiptButton = ensureActionButton(
+          historyButton.parentElement,
+          "schedule-open-receipt",
+          "View Receipt",
+          "mt-2 w-full py-1.5 text-xs font-medium text-primary hover:bg-primary-container/20 rounded-md transition-colors"
+        );
+        if (receiptButton) {
+          receiptButton.style.display = currentSelected && currentSelected.receipt ? "" : "none";
+          receiptButton.onclick = function () {
+            if (!currentSelected || !currentSelected.receipt) {
+              notify("No receipt generated yet.", "error");
+              return;
+            }
+            presentReceipt({
+              title: "Visit Receipt",
+              receipt: Object.assign({}, currentSelected.receipt, {
+                client: currentSelected.client,
+                service: currentSelected.service,
+                stylist: currentSelected.stylist,
+                time: currentSelected.time
+              })
+            });
+          };
+        }
+        var refundButton = ensureActionButton(
+          historyButton.parentElement,
+          "schedule-refund",
+          "Refund",
+          "mt-2 w-full py-1.5 text-xs font-medium text-tertiary hover:bg-tertiary-container/20 rounded-md transition-colors"
+        );
+        if (refundButton) {
+          refundButton.style.display = currentSelected && currentSelected.checkedOut ? "" : "none";
+          refundButton.onclick = function () {
+            if (!currentSelected || !currentSelected.checkedOut || !currentSelected.paymentSummary) return;
+            presentForm({
+              title: "Issue Refund",
+              description: currentSelected.client + " • " + currentSelected.paymentSummary.refundableAmount + " refundable",
+              submitLabel: "Issue Refund",
+              fields: [
+                { name: "amount", label: "Refund Amount", value: String(currentSelected.paymentSummary.refundableValue || 0), type: "number" }
+              ]
+            }).then(function (values) {
+              if (!values) return;
+              mutateJson(apiBase.replace(/\/$/, "") + "/schedule/appointments/" + encodeURIComponent(currentSelected.id) + "/refund", "POST", {
+                amount: values.amount
+              }).then(function (payload) {
+                notify("Refund issued on live backend.");
+                reload({ appointmentId: payload.appointmentId || currentSelected.id, clientId: currentSelected.clientId || currentQuery.clientId || "" });
+              }).catch(function () {
+                notify("Refund failed.", "error");
+              });
+            });
+          };
+        }
+        var rescheduleButton = ensureActionButton(
+          historyButton.parentElement,
+          "schedule-reschedule",
+          "Reschedule",
+          "mt-2 w-full py-1.5 text-xs font-medium text-on-surface hover:bg-surface-container-low rounded-md transition-colors"
+        );
+        if (rescheduleButton) {
+          rescheduleButton.style.display = currentSelected && !currentSelected.checkedOut && currentSelected.appointmentStatus !== "canceled" ? "" : "none";
+          rescheduleButton.onclick = function () {
+            if (!currentSelected || currentSelected.checkedOut || currentSelected.appointmentStatus === "canceled") return;
+            presentForm({
+              title: "Reschedule Appointment",
+              description: currentSelected.client + " • " + currentSelected.service,
+              submitLabel: "Save Schedule",
+              fields: [
+                { name: "stylist", label: "Stylist", type: "select", value: currentSelected.stylist, options: page.stylists.map(function (item) { return item.name; }) },
+                { name: "slot", label: "Time Slot", value: currentSelected.time },
+                { name: "dayOffset", label: "Day Offset", value: String(currentSelected.dayOffset || currentQuery.dayOffset || "0"), type: "number" }
+              ]
+            }).then(function (values) {
+              if (!values) return;
+              mutateJson(apiBase.replace(/\/$/, "") + "/schedule/appointments/" + encodeURIComponent(currentSelected.id) + "/reschedule", "POST", {
+                stylist: values.stylist,
+                date: values.slot,
+                dayOffset: values.dayOffset
+              }).then(function (payload) {
+                notify("Appointment rescheduled on live backend.");
+                reload({
+                  appointmentId: payload.appointmentId || currentSelected.id,
+                  clientId: currentSelected.clientId || currentQuery.clientId || "",
+                  dayOffset: values.dayOffset,
+                  weekOffset: String(Math.floor(Number(values.dayOffset || 0) / 7))
+                });
+              }).catch(function () {
+                notify("Reschedule failed.", "error");
+              });
+            });
+          };
+        }
+        var noShowButton = ensureActionButton(
+          historyButton.parentElement,
+          "schedule-no-show",
+          "Mark No-Show",
+          "mt-2 w-full py-1.5 text-xs font-medium text-tertiary hover:bg-tertiary-container/20 rounded-md transition-colors"
+        );
+        if (noShowButton) {
+          noShowButton.style.display = currentSelected && !currentSelected.checkedOut && currentSelected.appointmentStatus !== "canceled" ? "" : "none";
+          noShowButton.onclick = function () {
+            if (!currentSelected || currentSelected.checkedOut || currentSelected.appointmentStatus === "canceled") return;
+            presentForm({
+              title: "Mark No-Show",
+              description: currentSelected.client + " • " + currentSelected.time,
+              submitLabel: "Mark No-Show",
+              fields: [
+                { name: "note", label: "Note", value: "No-show confirmed by front desk." }
+              ]
+            }).then(function (values) {
+              if (!values) return;
+              mutateJson(apiBase.replace(/\/$/, "") + "/schedule/appointments/" + encodeURIComponent(currentSelected.id) + "/no-show", "POST", {
+                note: values.note
+              }).then(function (payload) {
+                notify("Appointment marked no-show.");
+                reload({ appointmentId: payload.appointmentId || currentSelected.id, clientId: currentSelected.clientId || currentQuery.clientId || "" });
+              }).catch(function () {
+                notify("No-show update failed.", "error");
+              });
+            });
+          };
+        }
+        var cancelVisitButton = ensureActionButton(
+          historyButton.parentElement,
+          "schedule-cancel-visit",
+          "Cancel Visit",
+          "mt-2 w-full py-1.5 text-xs font-medium text-error hover:bg-error-container/20 rounded-md transition-colors"
+        );
+        if (cancelVisitButton) {
+          cancelVisitButton.style.display = currentSelected && !currentSelected.checkedOut && currentSelected.appointmentStatus !== "canceled" ? "" : "none";
+          cancelVisitButton.onclick = function () {
+            if (!currentSelected || currentSelected.checkedOut || currentSelected.appointmentStatus === "canceled") return;
+            presentForm({
+              title: "Cancel Appointment",
+              description: currentSelected.client + " • " + currentSelected.service,
+              submitLabel: "Cancel Visit",
+              fields: [
+                { name: "reason", label: "Reason", value: "Client requested cancellation." }
+              ]
+            }).then(function (values) {
+              if (!values) return;
+              mutateJson(apiBase.replace(/\/$/, "") + "/schedule/appointments/" + encodeURIComponent(currentSelected.id) + "/cancel", "POST", {
+                reason: values.reason
+              }).then(function (payload) {
+                notify("Appointment canceled on live backend.");
+                reload({ appointmentId: payload.appointmentId || currentSelected.id, clientId: currentSelected.clientId || currentQuery.clientId || "" });
+              }).catch(function () {
+                notify("Cancellation failed.", "error");
+              });
+            });
+          };
+        }
+      }
+      if (checkoutButton) {
+        checkoutButton.textContent = currentSelected && currentSelected.checkedOut ? "Checked Out" : "Check Out";
+        setButtonDisabled(checkoutButton, Boolean(currentSelected && (currentSelected.checkedOut || currentSelected.appointmentStatus === "canceled" || currentSelected.appointmentStatus === "no_show")));
       }
     }
 

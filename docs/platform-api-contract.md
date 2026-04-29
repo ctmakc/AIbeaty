@@ -94,17 +94,23 @@ Examples:
   - `DELETE /api/platform/clients/:id`
   - `POST /api/platform/clients/:id/bookings`
 - Inbox
-  - `POST /api/platform/inbox/conversations`
-  - `PATCH /api/platform/inbox/conversations/:id`
-  - `DELETE /api/platform/inbox/conversations/:id`
-  - `POST /api/platform/inbox/conversations/:id/messages`
-  - `POST /api/platform/inbox/conversations/:id/bookings`
+- `POST /api/platform/inbox/conversations`
+- `PATCH /api/platform/inbox/conversations/:id`
+- `DELETE /api/platform/inbox/conversations/:id`
+- `POST /api/platform/inbox/conversations/:id/messages`
+- `POST /api/platform/inbox/conversations/:id/recovery-offer`
+- `POST /api/platform/inbox/conversations/:id/bookings`
 - Services
   - `PATCH /api/platform/services/:id`
 - Schedule
-  - `POST /api/platform/schedule/appointments`
-  - `PATCH /api/platform/schedule/appointments/:id`
-  - `POST /api/platform/schedule/appointments/:id/checkout`
+- `POST /api/platform/schedule/appointments`
+- `PATCH /api/platform/schedule/appointments/:id`
+- `POST /api/platform/schedule/appointments/:id/deposit`
+- `POST /api/platform/schedule/appointments/:id/reschedule`
+- `POST /api/platform/schedule/appointments/:id/cancel`
+- `POST /api/platform/schedule/appointments/:id/checkout`
+- `POST /api/platform/schedule/appointments/:id/no-show`
+- `POST /api/platform/schedule/appointments/:id/refund`
 
 ## Live view query params
 
@@ -118,6 +124,12 @@ Examples:
 Filtered live pages return the same page payload shape plus `page.liveQuery`, which the runtime uses to preserve active search/filter state across reloads. Client, inbox, and schedule payloads also expose resolved selected entities via `page.selectedClientId`, `page.selectedConversationId`, and `page.selectedAppointment`.
 
 Schedule payloads also expose `page.weekView` when the runtime requests week mode so the UI can render a week planner and drill back into a selected day.
+Selected appointments can now also expose:
+
+- `page.selectedAppointment.receipt` after checkout so the runtime can keep the drawer open on a checked-out visit and show a receipt modal
+- `page.selectedAppointment.paymentSummary` for invoice/deposit/balance/refund state before and after payment
+- `page.selectedAppointment.appointmentStatus` / `appointmentStatusLabel` for live lifecycle state in the drawer
+- inbox conversations can also expose `conversation.recoveryState` and `conversation.recoverySentCount` when lifecycle events trigger recovery mode
 
 ## Live reports
 
@@ -125,6 +137,93 @@ Schedule payloads also expose `page.weekView` when the runtime requests week mod
 - `GET /api/platform/reports/activity?q=<term>&tone=all|secondary|tertiary|error&limit=<n>`
 
 Returns a generated live report snapshot with metrics, top stylists, recent activity, and a ready-to-copy `summaryText`.
+
+`POST /api/platform/schedule/appointments/:id/checkout` now accepts optional JSON like:
+
+```json
+{
+  "paymentMethod": "Card",
+  "tipAmount": "20"
+}
+```
+
+The checkout mutation persists payment metadata on the appointment row, updates the linked client + inbox state, and makes the latest receipt available through:
+
+- `page.selectedAppointment.receipt` on schedule
+- `client.latestReceipt` on clients
+- `conversation.todayVisit.receipt` on inbox
+
+`POST /api/platform/schedule/appointments/:id/deposit` accepts optional JSON like:
+
+```json
+{
+  "paymentMethod": "Card",
+  "amount": "45"
+}
+```
+
+This updates `page.selectedAppointment.paymentSummary.depositPaid`, invoice status, and the linked inbox status for the client thread.
+
+`POST /api/platform/schedule/appointments/:id/reschedule` accepts optional JSON like:
+
+```json
+{
+  "stylist": "Sarah Jenkins",
+  "date": "16:00-17:00",
+  "dayOffset": "2"
+}
+```
+
+This moves the appointment to a new slot/day, resets its lifecycle back to `scheduled`, and updates the linked inbox thread with the new visit time.
+
+`POST /api/platform/schedule/appointments/:id/cancel` accepts optional JSON like:
+
+```json
+{
+  "reason": "Client requested cancellation."
+}
+```
+
+This marks the appointment as `canceled`, removes it from the active schedule grid, keeps it addressable by `appointmentId`, and updates linked inbox/client context.
+
+`POST /api/platform/schedule/appointments/:id/no-show` accepts optional JSON like:
+
+```json
+{
+  "note": "No-show confirmed by front desk."
+}
+```
+
+This marks the appointment as `no_show`, keeps it visible in schedule with a no-show badge, disables checkout, and updates linked inbox follow-up state.
+
+When `no-show` or `cancel` transitions happen, the linked inbox thread is automatically moved into recovery mode:
+
+- `conversation.status` becomes a recovery-ready status
+- `conversation.recoveryState` is set to `no_show` or `canceled`
+- `conversation.suggestions` are replaced with rebooking-oriented recovery prompts
+
+`POST /api/platform/inbox/conversations/:id/recovery-offer` accepts optional JSON like:
+
+```json
+{
+  "offerPercent": "12",
+  "text": "We missed you. Rebook within 48h and we'll apply 12% off."
+}
+```
+
+This sends an outbound recovery message on the thread, increments `conversation.recoverySentCount`, and updates `No-Show Recovery` workflow sent metrics.
+
+If a booking is later created from that recovery thread, the same workflow now increments converted count and recovered revenue as well.
+
+`POST /api/platform/schedule/appointments/:id/refund` accepts optional JSON like:
+
+```json
+{
+  "amount": "40"
+}
+```
+
+This updates appointment refund state, client LTV/avg ticket, inbox status, and the receipt/payment summary exposed back to schedule, client, and inbox views.
 
 The activity report returns `entries[]` with `title`, `meta`, `time`, `icon`, `tone`, and `route` metadata so the UI can open the most relevant live screen directly from an activity row.
 

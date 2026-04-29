@@ -54,6 +54,38 @@ function formatMoney(value) {
   })}`;
 }
 
+function formatPaymentMethod(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "cash") return "Cash";
+  if (normalized === "card") return "Card";
+  if (normalized === "split") return "Split Payment";
+  return "Card";
+}
+
+function normalizePaymentStatus(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "deposit_pending") return "Deposit Pending";
+  if (normalized === "deposit_paid") return "Deposit Paid";
+  if (normalized === "deposit_partial") return "Deposit Partial";
+  if (normalized === "paid") return "Paid";
+  if (normalized === "partially_refunded") return "Partially Refunded";
+  if (normalized === "refunded") return "Refunded";
+  return "Unpaid";
+}
+
+function normalizeAppointmentState(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "no_show") return "No-Show";
+  if (normalized === "canceled") return "Canceled";
+  if (normalized === "completed") return "Completed";
+  return "Scheduled";
+}
+
+function formatPercent(value) {
+  const amount = Number(value || 0);
+  return `${Math.max(0, Math.round(amount))}%`;
+}
+
 function formatDisplayDate(value) {
   const date = value ? new Date(value) : new Date();
   if (Number.isNaN(date.getTime())) return String(value || "");
@@ -369,7 +401,25 @@ function createPlatformStore() {
     ensureColumn("appointments", "client_id", "TEXT NOT NULL DEFAULT ''");
     ensureColumn("appointments", "service_id", "TEXT NOT NULL DEFAULT ''");
     ensureColumn("appointments", "day_offset", "INTEGER NOT NULL DEFAULT 0");
+    ensureColumn("appointments", "checkout_at", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn("appointments", "payment_method", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn("appointments", "tip_value", "REAL NOT NULL DEFAULT 0");
+    ensureColumn("appointments", "tip_label", "TEXT NOT NULL DEFAULT '$0'");
+    ensureColumn("appointments", "total_paid_value", "REAL NOT NULL DEFAULT 0");
+    ensureColumn("appointments", "total_paid_label", "TEXT NOT NULL DEFAULT '$0'");
+    ensureColumn("appointments", "receipt_number", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn("appointments", "invoice_number", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn("appointments", "payment_status", "TEXT NOT NULL DEFAULT 'unpaid'");
+    ensureColumn("appointments", "deposit_required_value", "REAL NOT NULL DEFAULT 0");
+    ensureColumn("appointments", "deposit_required_label", "TEXT NOT NULL DEFAULT '$0'");
+    ensureColumn("appointments", "deposit_paid_value", "REAL NOT NULL DEFAULT 0");
+    ensureColumn("appointments", "deposit_paid_label", "TEXT NOT NULL DEFAULT '$0'");
+    ensureColumn("appointments", "refunded_value", "REAL NOT NULL DEFAULT 0");
+    ensureColumn("appointments", "refunded_label", "TEXT NOT NULL DEFAULT '$0'");
+    ensureColumn("appointments", "appointment_status", "TEXT NOT NULL DEFAULT 'scheduled'");
     ensureColumn("conversations", "client_id", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn("conversations", "recovery_state", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn("conversations", "recovery_sent_count", "INTEGER NOT NULL DEFAULT 0");
   }
 
   function touch(now = new Date().toISOString()) {
@@ -543,8 +593,8 @@ function createPlatformStore() {
           id, stylist_id, client_id, service_id, service_name, client_name, avatar, tone, start_minutes, end_minutes, badge,
           price_label, price_value, active, tags_json, notes, quiet_preference, history_json,
           day_offset,
-          since_label, checked_out, sort_order, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+          since_label, checked_out, checkout_at, payment_method, tip_value, tip_label, total_paid_value, total_paid_label, receipt_number, invoice_number, payment_status, deposit_required_value, deposit_required_label, deposit_paid_value, deposit_paid_label, refunded_value, refunded_label, appointment_status, sort_order, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', '', 0, '$0', 0, '$0', '', '', 'unpaid', 0, '$0', 0, '$0', 0, '$0', 'scheduled', ?, ?)
       `).run(
         createId("appointment", `${appointment.client}-${appointment.service}`),
         stylist ? stylist.id : stylistRows[0].id,
@@ -591,7 +641,7 @@ function createPlatformStore() {
     const clientsPage = demo.pages[LIVE_SCREEN_FILES.clients];
     clientsPage.clients.forEach((client, index) => {
       db.prepare(`
-        INSERT INTO clients (
+        INSERT OR REPLACE INTO clients (
           id, name, status, status_tone, last_visit, phone, email, avatar, ltv, visits_ytd,
           avg_ticket, formula_base, formula_highlights, sort_order, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -637,7 +687,7 @@ function createPlatformStore() {
     const inboxPage = demo.pages[LIVE_SCREEN_FILES.inbox];
     inboxPage.conversations.forEach((conversation, index) => {
       db.prepare(`
-      INSERT INTO conversations (
+      INSERT OR REPLACE INTO conversations (
         id, client_id, name, channel, channel_tone, time_label, preview, status, avatar, avatar_text, ltv,
         visits, visit_cadence, today_service, today_time, today_amount, today_stylist,
         contact_phone, contact_email, contact_preference, sort_order, created_at, updated_at
@@ -1098,6 +1148,155 @@ function createPlatformStore() {
     );
   }
 
+  function setConversationSuggestions(conversationId, suggestions) {
+    db.prepare(`DELETE FROM conversation_suggestions WHERE conversation_id = ?`).run(conversationId);
+    (suggestions || []).forEach((suggestion, index) => {
+      db.prepare(`
+        INSERT INTO conversation_suggestions (id, conversation_id, text_value, sort_order)
+        VALUES (?, ?, ?, ?)
+      `).run(createId("suggestion", `${conversationId}-${index}`), conversationId, String(suggestion).trim(), index);
+    });
+  }
+
+  function updateWorkflowMetrics(name, delta = {}) {
+    const workflow = db.prepare(`
+      SELECT * FROM workflows WHERE lower(name) = lower(?) LIMIT 1
+    `).get(name);
+    if (!workflow) return null;
+    const nextSent = Number(String(workflow.sent || "0").replace(/[^0-9.]/g, "")) + Number(delta.sent || 0);
+    const nextConverted = Number(String(workflow.converted || "0").replace(/[^0-9.]/g, "")) + Number(delta.converted || 0);
+    const nextRevenue = parseMoney(workflow.revenue || 0) + Number(delta.revenue || 0);
+    const nextConversion = nextSent > 0 ? (nextConverted / nextSent) * 100 : 0;
+    db.prepare(`
+      UPDATE workflows
+      SET sent = ?, converted = ?, conversion_rate = ?, revenue = ?
+      WHERE lower(name) = lower(?)
+    `).run(
+      String(nextSent),
+      String(nextConverted),
+      formatPercent(nextConversion),
+      `+$${Math.round(nextRevenue).toLocaleString("en-US")}`,
+      name
+    );
+    return name;
+  }
+
+  function buildRecoverySuggestions(kind, serviceName) {
+    if (kind === "no_show") {
+      return [
+        `We missed you for ${serviceName}. Want me to reopen a priority slot this week?`,
+        "I can send a 10% no-show recovery offer if you'd like to rebook now.",
+        "Reply with your best day and I’ll hold a recovery slot."
+      ];
+    }
+    return [
+      `We can reopen your ${serviceName} booking whenever you're ready.`,
+      "I can send a quick rebooking offer and hold the next available slot.",
+      "Tell me your preferred day and I’ll rebuild the appointment."
+    ];
+  }
+
+  function upsertRecoveryForClient(clientId, options = {}) {
+    if (!clientId) return null;
+    const conversation = db.prepare(`
+      SELECT * FROM conversations
+      WHERE client_id = ?
+      ORDER BY sort_order ASC, updated_at DESC
+      LIMIT 1
+    `).get(clientId);
+    if (!conversation) return null;
+    const kind = options.kind === "no_show" ? "no_show" : "canceled";
+    const serviceName = options.serviceName || conversation.today_service || "your visit";
+    const status = kind === "no_show" ? "No-show recovery ready" : "Canceled visit recovery ready";
+    const suggestions = buildRecoverySuggestions(kind, serviceName);
+    const now = new Date().toISOString();
+    db.prepare(`
+      UPDATE conversations
+      SET status = ?, preview = ?, recovery_state = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      status,
+      `${serviceName} needs recovery outreach`,
+      kind,
+      now,
+      conversation.id
+    );
+    setConversationSuggestions(conversation.id, suggestions);
+    const currentMax = db.prepare(`
+      SELECT COALESCE(MAX(sort_order), -1) AS max_sort_order
+      FROM conversation_messages
+      WHERE conversation_id = ?
+    `).get(conversation.id).max_sort_order;
+    db.prepare(`
+      INSERT INTO conversation_messages (id, conversation_id, type, text_value, meta, sort_order, created_at)
+      VALUES (?, ?, 'system', ?, 'Just now', ?, ?)
+    `).run(
+      createId("message", `${conversation.id}-recovery-ready`),
+      conversation.id,
+      kind === "no_show"
+        ? `Recovery sequence ready for missed visit: ${serviceName}.`
+        : `Recovery sequence ready for canceled visit: ${serviceName}.`,
+      currentMax + 1,
+      now
+    );
+    touch(now);
+    return conversation.id;
+  }
+
+  function sendRecoveryOffer(conversationId, payload = {}) {
+    const conversation = db.prepare(`SELECT * FROM conversations WHERE id = ?`).get(conversationId);
+    if (!conversation) return null;
+    const recoveryState = String(conversation.recovery_state || "").trim().toLowerCase();
+    if (!recoveryState) return { error: "no_recovery_state" };
+    const offerPercent = Math.max(0, Number(payload.offerPercent || 10));
+    const serviceName = conversation.today_service || "your visit";
+    const text = String(payload.text || "").trim() || (
+      recoveryState === "no_show"
+        ? `We missed you for ${serviceName}. Rebook within 48h and we'll apply ${offerPercent}% off your next visit.`
+        : `Your ${serviceName} booking is easy to reopen. Rebook this week and we'll apply ${offerPercent}% off.`
+    );
+    const currentMax = db.prepare(`
+      SELECT COALESCE(MAX(sort_order), -1) AS max_sort_order
+      FROM conversation_messages
+      WHERE conversation_id = ?
+    `).get(conversationId).max_sort_order;
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO conversation_messages (id, conversation_id, type, text_value, meta, sort_order, created_at)
+      VALUES (?, ?, 'outgoing', ?, 'Just now • Sent recovery', ?, ?)
+    `).run(
+      createId("message", `${conversationId}-recovery-offer`),
+      conversationId,
+      text,
+      currentMax + 1,
+      now
+    );
+    db.prepare(`
+      UPDATE conversations
+      SET preview = ?, time_label = 'Now', status = ?, recovery_sent_count = recovery_sent_count + 1, updated_at = ?
+      WHERE id = ?
+    `).run(
+      text,
+      recoveryState === "no_show" ? "No-show recovery sent" : "Canceled visit recovery sent",
+      now,
+      conversationId
+    );
+    setConversationSuggestions(conversationId, [
+      "Ready to reopen your slot if you want a priority time.",
+      "If you tell me your preferred day, I can rebook it now.",
+      "I can also convert this into a lighter service if timing changed."
+    ]);
+    updateWorkflowMetrics("No-Show Recovery", { sent: 1 });
+    logActivity({
+      title: "Recovery Offer Sent",
+      meta: `${conversation.name} • ${serviceName} • ${offerPercent}%`,
+      icon: "sms",
+      tone: "secondary"
+    });
+    touch(now);
+    return conversationId;
+  }
+
   function getServiceCategories() {
     const categories = db.prepare(`
       SELECT id, name, badge, icon, tone FROM service_categories ORDER BY sort_order ASC
@@ -1190,22 +1389,22 @@ function createPlatformStore() {
              c.last_visit AS client_last_visit
       FROM appointments a
       LEFT JOIN clients c ON c.id = a.client_id
-      WHERE checked_out = 0
+      WHERE checked_out = 0 AND appointment_status != 'canceled'
       ORDER BY start_minutes ASC, sort_order ASC
     `).all().map((row) => ({
       id: row.id,
       column: stylistIndex.get(row.stylist_id) || 0,
       top: minutesToTop(row.start_minutes),
       height: Math.max(72, (row.end_minutes - row.start_minutes) * 1.6),
-      tone: row.tone,
+      tone: row.appointment_status === "no_show" ? "no-show" : row.tone,
       service: row.service_name,
       price: row.price_label,
       time: formatTimeRange(row.start_minutes, row.end_minutes),
       client: row.client_name,
       avatar: row.client_avatar || row.avatar,
-      badge: row.badge || undefined,
-      tags: JSON.parse(row.tags_json || "[]"),
-      active: Boolean(row.active),
+      badge: row.appointment_status === "no_show" ? "No-Show" : (row.badge || undefined),
+      tags: row.appointment_status === "no_show" ? ["No-Show"].concat(JSON.parse(row.tags_json || "[]").filter((tag) => tag !== "No-Show")) : JSON.parse(row.tags_json || "[]"),
+      active: Boolean(row.active) && row.appointment_status === "scheduled",
       stylistId: row.stylist_id,
       clientId: row.client_id,
       serviceId: row.service_id,
@@ -1215,11 +1414,75 @@ function createPlatformStore() {
       since: row.since_label,
       dayOffset: Number(row.day_offset || 0),
       clientStatus: row.client_status || "",
-      clientStatusTone: row.client_status_tone || ""
+      clientStatusTone: row.client_status_tone || "",
+      checkedOut: Boolean(row.checked_out),
+      appointmentStatus: row.appointment_status || "scheduled"
     }));
   }
 
+  function buildPaymentSummary(row) {
+    if (!row) return null;
+    const serviceValue = Number(row.price_value || 0);
+    const tipValue = Number(row.tip_value || 0);
+    const depositRequiredValue = Number(row.deposit_required_value || 0);
+    const depositPaidValue = Number(row.deposit_paid_value || 0);
+    const refundedValue = Number(row.refunded_value || 0);
+    const totalPaidValue = Number(row.total_paid_value || 0);
+    const grossTotalValue = serviceValue + tipValue;
+    const collectedValue = row.checked_out ? totalPaidValue : depositPaidValue;
+    const refundableValue = Math.max(0, totalPaidValue - refundedValue);
+    const balanceDueValue = Math.max(0, grossTotalValue - totalPaidValue);
+    return {
+      invoiceNumber: row.invoice_number || `INV-${String(row.id || "").slice(-6).toUpperCase()}`,
+      status: normalizePaymentStatus(row.payment_status),
+      statusCode: String(row.payment_status || "unpaid"),
+      serviceAmount: row.price_label || formatMoney(serviceValue),
+      serviceValue,
+      depositRequired: row.deposit_required_label || formatMoney(depositRequiredValue),
+      depositRequiredValue,
+      depositPaid: row.deposit_paid_label || formatMoney(depositPaidValue),
+      depositPaidValue,
+      tipAmount: row.tip_label || formatMoney(tipValue),
+      tipValue,
+      refundedAmount: row.refunded_label || formatMoney(refundedValue),
+      refundedValue,
+      totalPaid: row.total_paid_label || formatMoney(totalPaidValue),
+      totalPaidValue,
+      collectedAmount: formatMoney(collectedValue),
+      collectedValue,
+      refundableAmount: formatMoney(refundableValue),
+      refundableValue,
+      balanceDue: formatMoney(balanceDueValue),
+      balanceDueValue
+    };
+  }
+
+  function buildReceipt(row) {
+    if (!row || !Number(row.checked_out)) return null;
+    const paymentSummary = buildPaymentSummary(row);
+    const tipValue = paymentSummary ? paymentSummary.tipValue : Number(row.tip_value || 0);
+    const subtotalValue = paymentSummary ? paymentSummary.serviceValue : Number(row.price_value || 0);
+    const totalPaidValue = paymentSummary ? paymentSummary.totalPaidValue : Number(row.total_paid_value || subtotalValue + tipValue);
+    return {
+      number: row.receipt_number || `RCPT-${String(row.id || "").slice(-6).toUpperCase()}`,
+      issuedAt: row.checkout_at || row.updated_at || getLastUpdated(),
+      issuedLabel: formatDisplayDate(row.checkout_at || row.updated_at || getLastUpdated()),
+      paymentMethod: formatPaymentMethod(row.payment_method),
+      serviceAmount: row.price_label || formatMoney(subtotalValue),
+      tipAmount: row.tip_label || formatMoney(tipValue),
+      totalPaid: row.total_paid_label || formatMoney(totalPaidValue),
+      tipValue,
+      totalPaidValue,
+      serviceValue: subtotalValue,
+      invoiceNumber: paymentSummary ? paymentSummary.invoiceNumber : (row.invoice_number || ""),
+      paymentStatus: paymentSummary ? paymentSummary.status : normalizePaymentStatus(row.payment_status),
+      depositPaid: paymentSummary ? paymentSummary.depositPaid : formatMoney(Number(row.deposit_paid_value || 0)),
+      refundedAmount: paymentSummary ? paymentSummary.refundedAmount : formatMoney(Number(row.refunded_value || 0))
+    };
+  }
+
   function mapSelectedAppointment(row) {
+    const receipt = buildReceipt(row);
     return {
       id: row.id,
       client: row.client_name,
@@ -1236,8 +1499,37 @@ function createPlatformStore() {
       notes: row.notes,
       quietPreference: row.quiet_preference,
       history: JSON.parse(row.history_json || "[]"),
-      dayOffset: Number(row.day_offset || 0)
+      dayOffset: Number(row.day_offset || 0),
+      checkedOut: Boolean(row.checked_out),
+      appointmentStatus: row.appointment_status || "scheduled",
+      appointmentStatusLabel: normalizeAppointmentState(row.appointment_status),
+      receipt,
+      paymentSummary: buildPaymentSummary(row),
+      invoice: buildPaymentSummary(row)
     };
+  }
+
+  function getLatestReceiptForClient(clientId) {
+    if (!clientId) return null;
+    const row = db.prepare(`
+      SELECT a.*, s.name AS stylist_name
+      FROM appointments a
+      JOIN stylists s ON s.id = a.stylist_id
+      WHERE a.client_id = ? AND a.checked_out = 1
+      ORDER BY a.checkout_at DESC, a.updated_at DESC, a.sort_order ASC
+      LIMIT 1
+    `).get(clientId);
+    if (!row) return null;
+    const receipt = buildReceipt(row);
+    if (!receipt) return null;
+    return Object.assign(receipt, {
+      appointmentId: row.id,
+      clientId: row.client_id,
+      client: row.client_name,
+      service: row.service_name,
+      stylist: row.stylist_name,
+      time: formatTimeRange(row.start_minutes, row.end_minutes)
+    });
   }
 
   function selectByRequestedId(items, requestedId, matcher, fallbackToFirst = true) {
@@ -1272,7 +1564,7 @@ function createPlatformStore() {
       FROM appointments a
       JOIN stylists s ON s.id = a.stylist_id
       LEFT JOIN clients c ON c.id = a.client_id
-      WHERE a.checked_out = 0
+      WHERE a.checked_out = 0 AND a.appointment_status != 'canceled'
       ORDER BY a.active DESC, a.updated_at DESC, a.sort_order ASC
       LIMIT 1
     `).get();
@@ -1346,14 +1638,15 @@ function createPlatformStore() {
     ));
     page.weekView = getScheduleWeek(page, allAppointments, weekOffset);
     page.appointments = allAppointments.filter((appointment) => Number(appointment.dayOffset || 0) === effectiveDayOffset);
+    const resolvedAppointmentId = appointmentId || selectByRequestedId(
+      page.appointments,
+      "",
+      (appointment) => appointment.clientId === clientId,
+      clientId ? false : true
+    );
     page.selectedAppointment = getSelectedAppointment(
       page.appointments,
-      selectByRequestedId(
-        page.appointments,
-        appointmentId,
-        (appointment) => appointment.clientId === clientId,
-        clientId ? false : true
-      ),
+      resolvedAppointmentId,
       clientId ? false : true
     );
     return withLiveQuery(page, { q: search, stylist, clientId, appointmentId, view, dayOffset: String(effectiveDayOffset), weekOffset: String(weekOffset) });
@@ -1365,7 +1658,7 @@ function createPlatformStore() {
     const limit = Math.max(1, Number(options.limit) || 6);
     const appointmentStats = db.prepare(`
       SELECT COUNT(*) AS appointments,
-             COALESCE(SUM(price_value), 0) AS revenue
+             COALESCE(SUM(CASE WHEN checked_out = 1 AND total_paid_value > 0 THEN total_paid_value ELSE price_value END), 0) AS revenue
       FROM appointments
     `).get();
     const clientsCount = db.prepare(`SELECT COUNT(*) AS count FROM clients`).get().count;
@@ -1450,7 +1743,8 @@ function createPlatformStore() {
       preferences: getClientPreferences(row.id),
       formulaBase: row.formula_base,
       formulaHighlights: row.formula_highlights,
-      history: getClientHistory(row.id)
+      history: getClientHistory(row.id),
+      latestReceipt: getLatestReceiptForClient(row.id)
     })).filter((client) => (
       (status === "all" || normalizeQueryValue(client.status) === status || normalizeQueryValue(client.statusTone) === status) &&
       matchesQuery(search, [client.name, client.email, client.phone, client.status, client.ltv, client.avgTicket].concat(client.preferences || []))
@@ -1500,7 +1794,7 @@ function createPlatformStore() {
       SELECT a.*, s.name AS stylist_name
       FROM appointments a
       JOIN stylists s ON s.id = a.stylist_id
-      WHERE a.client_id = ? AND a.checked_out = 0
+      WHERE a.client_id = ? AND a.checked_out = 0 AND a.appointment_status != 'canceled'
       ORDER BY a.active DESC, a.updated_at DESC, a.sort_order ASC
       LIMIT 1
     `).get(clientId);
@@ -1514,13 +1808,14 @@ function createPlatformStore() {
     const conversationId = String(options.conversationId || "").trim();
     page.conversations = db.prepare(`
       SELECT id, client_id, name, channel, channel_tone, time_label, preview, status, avatar, avatar_text, ltv, visits,
-             visit_cadence, today_service, today_time, today_amount, today_stylist,
+             visit_cadence, today_service, today_time, today_amount, today_stylist, recovery_state, recovery_sent_count,
              contact_phone, contact_email, contact_preference
       FROM conversations
       ORDER BY sort_order ASC, updated_at DESC
     `).all().map((row) => {
       const client = row.client_id ? getClientRecordById(row.client_id) : null;
       const activeAppointment = row.client_id ? getActiveAppointmentForClient(row.client_id) : null;
+      const latestReceipt = row.client_id ? getLatestReceiptForClient(row.client_id) : null;
       return {
         id: row.id,
         clientId: row.client_id || "",
@@ -1530,16 +1825,19 @@ function createPlatformStore() {
         time: row.time_label,
         preview: row.preview,
         status: row.status,
+        recoveryState: row.recovery_state || "",
+        recoverySentCount: Number(row.recovery_sent_count || 0),
         avatar: client ? client.avatar : row.avatar,
         avatarText: row.avatar_text,
         ltv: client ? client.ltv : row.ltv,
         visits: client ? client.visits_ytd : row.visits,
         visitCadence: row.visit_cadence,
         todayVisit: {
-          service: activeAppointment ? activeAppointment.service_name : row.today_service,
-          time: activeAppointment ? formatTimeRange(activeAppointment.start_minutes, activeAppointment.end_minutes) : row.today_time,
-          amount: activeAppointment ? activeAppointment.price_label : row.today_amount,
-          stylist: activeAppointment ? activeAppointment.stylist_name : row.today_stylist
+          service: activeAppointment ? activeAppointment.service_name : (latestReceipt ? latestReceipt.service : row.today_service),
+          time: activeAppointment ? formatTimeRange(activeAppointment.start_minutes, activeAppointment.end_minutes) : (latestReceipt ? `Checked out ${latestReceipt.issuedLabel}` : row.today_time),
+          amount: activeAppointment ? activeAppointment.price_label : (latestReceipt ? latestReceipt.totalPaid : row.today_amount),
+          stylist: activeAppointment ? activeAppointment.stylist_name : (latestReceipt ? latestReceipt.stylist : row.today_stylist),
+          receipt: latestReceipt
         },
         contact: {
           phone: client ? client.phone : row.contact_phone,
@@ -1622,7 +1920,7 @@ function createPlatformStore() {
   function getPerformanceReport(options = {}) {
     const appointmentStats = db.prepare(`
       SELECT COUNT(*) AS appointments,
-             COALESCE(SUM(price_value), 0) AS revenue
+             COALESCE(SUM(CASE WHEN checked_out = 1 AND total_paid_value > 0 THEN total_paid_value ELSE price_value END), 0) AS revenue
       FROM appointments
     `).get();
     const clientsCount = db.prepare(`SELECT COUNT(*) AS count FROM clients`).get().count;
@@ -1881,14 +2179,14 @@ function createPlatformStore() {
     const endMinutes = match ? parseClockLabel(match[2], 12 * 60) : 12 * 60;
     const dayOffset = Number.isFinite(Number(payload.dayOffset)) ? Number(payload.dayOffset) : 0;
     db.prepare(`UPDATE appointments SET active = 0`).run();
-    const id = createId("appointment", `${payload.client}-${payload.service}`);
+    const id = createId("appointment", `${(client && client.name) || payload.client || "walk-in"}-${(service && service.name) || payload.service || "service"}`);
     db.prepare(`UPDATE appointments SET sort_order = sort_order + 1`).run();
     db.prepare(`
       INSERT INTO appointments (
         id, stylist_id, client_id, service_id, service_name, client_name, avatar, tone, start_minutes, end_minutes, badge,
         price_label, price_value, active, tags_json, notes, quiet_preference, history_json, since_label,
-        day_offset, checked_out, sort_order, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'primary', ?, ?, '', ?, ?, 1, '[]', ?, ?, '[]', ?, ?, 0, 0, ?)
+        day_offset, checked_out, checkout_at, payment_method, tip_value, tip_label, total_paid_value, total_paid_label, receipt_number, invoice_number, payment_status, deposit_required_value, deposit_required_label, deposit_paid_value, deposit_paid_label, refunded_value, refunded_label, appointment_status, sort_order, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'primary', ?, ?, '', ?, ?, 1, '[]', ?, ?, '[]', ?, ?, 0, '', '', 0, '$0', 0, '$0', '', ?, ?, ?, ?, 0, '$0', 0, '$0', 'scheduled', 0, ?)
     `).run(
       id,
       stylist.id,
@@ -1905,6 +2203,10 @@ function createPlatformStore() {
       payload.quietPreference || "No special preference recorded.",
       client ? buildSinceLabel(client) : payload.since || "New client",
       dayOffset,
+      `INV-${String(Date.now()).slice(-8)}`,
+      service && Number(service.requires_deposit) ? "deposit_pending" : "unpaid",
+      service && Number(service.requires_deposit) ? Number(service.price_value || 0) * 0.3 : 0,
+      service && Number(service.requires_deposit) ? formatMoney(Number(service.price_value || 0) * 0.3) : "$0",
       new Date().toISOString()
     );
     syncAppointmentFromEntities(id);
@@ -1941,7 +2243,7 @@ function createPlatformStore() {
     return syncAppointmentFromEntities(id);
   }
 
-  function checkoutAppointment(id) {
+  function checkoutAppointment(id, payload = {}) {
     const appointment = db.prepare(`
       SELECT a.*, s.name AS stylist_name
       FROM appointments a
@@ -1949,18 +2251,35 @@ function createPlatformStore() {
       WHERE a.id = ?
     `).get(id);
     if (!appointment) return null;
+    const paymentMethod = formatPaymentMethod(payload.paymentMethod);
+    const tipValue = Math.max(0, parseMoney(payload.tipAmount || 0));
+    const depositPaidValue = Number(appointment.deposit_paid_value || 0);
+    const totalPaidValue = Number(appointment.price_value || 0) + tipValue;
     const now = new Date().toISOString();
+    const receiptNumber = `RCPT-${String(Date.now()).slice(-8)}`;
     db.transaction(() => {
       db.prepare(`
         UPDATE appointments
-        SET checked_out = 1, active = 0, updated_at = ?
+        SET checked_out = 1, active = 0, checkout_at = ?, payment_method = ?, tip_value = ?, tip_label = ?,
+            total_paid_value = ?, total_paid_label = ?, receipt_number = ?, payment_status = ?, appointment_status = 'completed', updated_at = ?
         WHERE id = ?
-      `).run(now, id);
+      `).run(
+        now,
+        paymentMethod,
+        tipValue,
+        formatMoney(tipValue),
+        totalPaidValue,
+        formatMoney(totalPaidValue),
+        receiptNumber,
+        "paid",
+        now,
+        id
+      );
       if (appointment.client_id) {
         const client = getClientRecordById(appointment.client_id);
         if (client) {
           const nextVisits = Number(client.visits_ytd || 0) + 1;
-          const nextLtv = parseMoney(client.ltv) + Number(appointment.price_value || 0);
+          const nextLtv = parseMoney(client.ltv) + totalPaidValue;
           db.prepare(`
             UPDATE clients
             SET last_visit = ?, visits_ytd = ?, ltv = ?, avg_ticket = ?, status = ?, status_tone = ?, updated_at = ?
@@ -1969,7 +2288,7 @@ function createPlatformStore() {
             formatDisplayDate(now),
             String(nextVisits),
             formatMoney(nextLtv),
-            formatMoney(nextVisits ? nextLtv / nextVisits : Number(appointment.price_value || 0)),
+            formatMoney(nextVisits ? nextLtv / nextVisits : totalPaidValue),
             client.status_tone === "new" ? "REGULAR" : client.status,
             client.status_tone === "new" ? "regular" : client.status_tone,
             now,
@@ -1985,16 +2304,308 @@ function createPlatformStore() {
             appointment.service_name,
             formatDisplayDate(now),
             appointment.stylist_name,
-            appointment.price_label
+            formatMoney(totalPaidValue)
           );
         }
+        db.prepare(`
+          UPDATE conversations
+          SET client_id = ?, status = ?, today_service = ?, today_time = ?, today_amount = ?, today_stylist = ?, updated_at = ?
+          WHERE client_id = ?
+        `).run(
+          appointment.client_id,
+          `Checked out • ${paymentMethod}`,
+          appointment.service_name,
+          `Checked out ${formatDisplayDate(now)}`,
+          formatMoney(totalPaidValue),
+          appointment.stylist_name,
+          now,
+          appointment.client_id
+        );
       }
     })();
     logActivity({
       title: "Checkout Completed",
-      meta: `${appointment.client_name} • ${appointment.service_name}`,
+      meta: `${appointment.client_name} • ${appointment.service_name} • ${formatMoney(totalPaidValue)} via ${paymentMethod}`,
       icon: "check_circle",
       tone: "neutral"
+    });
+    if (appointment.client_id) {
+      db.prepare(`
+        UPDATE conversations
+        SET recovery_state = '', recovery_sent_count = 0, updated_at = ?
+        WHERE client_id = ?
+      `).run(now, appointment.client_id);
+    }
+    touch(now);
+    return id;
+  }
+
+  function captureAppointmentDeposit(id, payload = {}) {
+    const appointment = db.prepare(`
+      SELECT a.*, s.name AS stylist_name
+      FROM appointments a
+      JOIN stylists s ON s.id = a.stylist_id
+      WHERE a.id = ?
+    `).get(id);
+    if (!appointment) return null;
+    if (Number(appointment.checked_out)) return { error: "checked_out" };
+    const nextDeposit = Math.max(0, parseMoney(payload.amount || payload.depositAmount || 0));
+    const paymentMethod = formatPaymentMethod(payload.paymentMethod);
+    const requiredValue = Number(appointment.deposit_required_value || 0);
+    const status = nextDeposit >= requiredValue && requiredValue > 0
+      ? "deposit_paid"
+      : nextDeposit > 0
+        ? "deposit_partial"
+        : requiredValue > 0
+          ? "deposit_pending"
+          : "unpaid";
+    const now = new Date().toISOString();
+    db.prepare(`
+      UPDATE appointments
+      SET deposit_paid_value = ?, deposit_paid_label = ?, payment_method = ?, payment_status = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      nextDeposit,
+      formatMoney(nextDeposit),
+      paymentMethod,
+      status,
+      now,
+      id
+    );
+    if (appointment.client_id) {
+      db.prepare(`
+        UPDATE conversations
+        SET status = ?, today_amount = ?, updated_at = ?
+        WHERE client_id = ?
+      `).run(
+        `Deposit captured • ${paymentMethod}`,
+        formatMoney(nextDeposit),
+        now,
+        appointment.client_id
+      );
+    }
+    logActivity({
+      title: "Deposit Captured",
+      meta: `${appointment.client_name} • ${formatMoney(nextDeposit)} via ${paymentMethod}`,
+      icon: "payments",
+      tone: "secondary"
+    });
+    touch(now);
+    return id;
+  }
+
+  function refundAppointment(id, payload = {}) {
+    const appointment = db.prepare(`
+      SELECT a.*, s.name AS stylist_name
+      FROM appointments a
+      JOIN stylists s ON s.id = a.stylist_id
+      WHERE a.id = ?
+    `).get(id);
+    if (!appointment) return null;
+    if (!Number(appointment.checked_out)) return { error: "not_checked_out" };
+    const totalPaidValue = Number(appointment.total_paid_value || 0);
+    const currentRefundedValue = Number(appointment.refunded_value || 0);
+    const refundValue = Math.max(0, parseMoney(payload.amount || payload.refundAmount || 0));
+    if (!refundValue || refundValue > (totalPaidValue - currentRefundedValue)) return { error: "invalid_refund" };
+    const nextRefundedValue = currentRefundedValue + refundValue;
+    const nextStatus = nextRefundedValue >= totalPaidValue ? "refunded" : "partially_refunded";
+    const now = new Date().toISOString();
+    db.transaction(() => {
+      db.prepare(`
+        UPDATE appointments
+        SET refunded_value = ?, refunded_label = ?, payment_status = ?, updated_at = ?
+        WHERE id = ?
+      `).run(
+        nextRefundedValue,
+        formatMoney(nextRefundedValue),
+        nextStatus,
+        now,
+        id
+      );
+      if (appointment.client_id) {
+        const client = getClientRecordById(appointment.client_id);
+        if (client) {
+          const nextLtv = Math.max(0, parseMoney(client.ltv) - refundValue);
+          const visits = Math.max(1, Number(client.visits_ytd || 1));
+          db.prepare(`
+            UPDATE clients
+            SET ltv = ?, avg_ticket = ?, updated_at = ?
+            WHERE id = ?
+          `).run(
+            formatMoney(nextLtv),
+            formatMoney(nextLtv / visits),
+            now,
+            client.id
+          );
+        }
+        db.prepare(`
+          UPDATE conversations
+          SET status = ?, today_amount = ?, updated_at = ?
+          WHERE client_id = ?
+        `).run(
+          nextStatus === "refunded" ? "Refunded" : "Partially refunded",
+          formatMoney(Math.max(0, totalPaidValue - nextRefundedValue)),
+          now,
+          appointment.client_id
+        );
+      }
+    })();
+    logActivity({
+      title: "Refund Issued",
+      meta: `${appointment.client_name} • ${formatMoney(refundValue)} returned`,
+      icon: "undo",
+      tone: "tertiary"
+    });
+    touch(now);
+    return id;
+  }
+
+  function rescheduleAppointment(id, payload = {}) {
+    const appointment = db.prepare(`
+      SELECT a.*, s.name AS stylist_name
+      FROM appointments a
+      JOIN stylists s ON s.id = a.stylist_id
+      WHERE a.id = ?
+    `).get(id);
+    if (!appointment) return null;
+    if (Number(appointment.checked_out)) return { error: "checked_out" };
+    if (String(appointment.appointment_status || "scheduled") === "canceled") return { error: "canceled" };
+    const stylist = db.prepare(`SELECT * FROM stylists WHERE name = ?`).get(payload.stylist) || db.prepare(`SELECT * FROM stylists WHERE id = ?`).get(appointment.stylist_id);
+    const date = typeof payload.date === "string" ? payload.date : formatTimeRange(appointment.start_minutes, appointment.end_minutes);
+    const match = date.match(/^(.+?)\s*-\s*(.+)$/);
+    const startMinutes = match ? parseClockLabel(match[1], appointment.start_minutes) : appointment.start_minutes;
+    const endMinutes = match ? parseClockLabel(match[2], appointment.end_minutes) : appointment.end_minutes;
+    const dayOffset = Number.isFinite(Number(payload.dayOffset)) ? Number(payload.dayOffset) : Number(appointment.day_offset || 0);
+    const now = new Date().toISOString();
+    db.prepare(`
+      UPDATE appointments
+      SET stylist_id = ?, start_minutes = ?, end_minutes = ?, day_offset = ?, active = 1, badge = '', tone = 'primary', appointment_status = 'scheduled', updated_at = ?
+      WHERE id = ?
+    `).run(
+      stylist ? stylist.id : appointment.stylist_id,
+      startMinutes,
+      endMinutes,
+      dayOffset,
+      now,
+      id
+    );
+    if (appointment.client_id) {
+      db.prepare(`UPDATE appointments SET active = 0 WHERE client_id = ? AND id != ? AND checked_out = 0`).run(appointment.client_id, id);
+      db.prepare(`
+        UPDATE conversations
+        SET status = ?, today_service = ?, today_time = ?, today_amount = ?, today_stylist = ?, recovery_state = '', recovery_sent_count = 0, updated_at = ?
+        WHERE client_id = ?
+      `).run(
+        "Rescheduled from schedule",
+        appointment.service_name,
+        formatTimeRange(startMinutes, endMinutes),
+        appointment.price_label,
+        stylist ? stylist.name : appointment.stylist_name,
+        now,
+        appointment.client_id
+      );
+    }
+    logActivity({
+      title: "Appointment Rescheduled",
+      meta: `${appointment.client_name} • ${formatTimeRange(startMinutes, endMinutes)}${stylist ? " • " + stylist.name : ""}`,
+      icon: "event_repeat",
+      tone: "secondary"
+    });
+    touch(now);
+    return id;
+  }
+
+  function cancelAppointment(id, payload = {}) {
+    const appointment = db.prepare(`
+      SELECT a.*, s.name AS stylist_name
+      FROM appointments a
+      JOIN stylists s ON s.id = a.stylist_id
+      WHERE a.id = ?
+    `).get(id);
+    if (!appointment) return null;
+    if (Number(appointment.checked_out)) return { error: "checked_out" };
+    const reason = String(payload.reason || "Canceled from schedule").trim();
+    const now = new Date().toISOString();
+    db.prepare(`
+      UPDATE appointments
+      SET active = 0, badge = 'Canceled', tone = 'neutral', appointment_status = 'canceled', notes = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      appointment.notes ? `${appointment.notes}\n\nCancellation: ${reason}` : `Cancellation: ${reason}`,
+      now,
+      id
+    );
+    if (appointment.client_id) {
+      upsertRecoveryForClient(appointment.client_id, {
+        kind: "canceled",
+        serviceName: appointment.service_name
+      });
+      db.prepare(`
+        UPDATE conversations
+        SET today_service = ?, today_time = ?, today_amount = ?, today_stylist = ?, updated_at = ?
+        WHERE client_id = ?
+      `).run(
+        appointment.service_name,
+        "Canceled",
+        appointment.deposit_paid_label || "$0",
+        appointment.stylist_name,
+        now,
+        appointment.client_id
+      );
+    }
+    logActivity({
+      title: "Appointment Canceled",
+      meta: `${appointment.client_name} • ${reason}`,
+      icon: "event_busy",
+      tone: "error"
+    });
+    touch(now);
+    return id;
+  }
+
+  function markAppointmentNoShow(id, payload = {}) {
+    const appointment = db.prepare(`
+      SELECT a.*, s.name AS stylist_name
+      FROM appointments a
+      JOIN stylists s ON s.id = a.stylist_id
+      WHERE a.id = ?
+    `).get(id);
+    if (!appointment) return null;
+    if (Number(appointment.checked_out)) return { error: "checked_out" };
+    const note = String(payload.note || "Marked as no-show from schedule").trim();
+    const now = new Date().toISOString();
+    db.prepare(`
+      UPDATE appointments
+      SET active = 0, badge = 'No-Show', tone = 'no-show', appointment_status = 'no_show', notes = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      appointment.notes ? `${appointment.notes}\n\nNo-show: ${note}` : `No-show: ${note}`,
+      now,
+      id
+    );
+    if (appointment.client_id) {
+      upsertRecoveryForClient(appointment.client_id, {
+        kind: "no_show",
+        serviceName: appointment.service_name
+      });
+      db.prepare(`
+        UPDATE conversations
+        SET today_service = ?, today_time = ?, today_amount = ?, today_stylist = ?, updated_at = ?
+        WHERE client_id = ?
+      `).run(
+        appointment.service_name,
+        formatTimeRange(appointment.start_minutes, appointment.end_minutes),
+        appointment.deposit_paid_label || "$0",
+        appointment.stylist_name,
+        now,
+        appointment.client_id
+      );
+    }
+    logActivity({
+      title: "Appointment Marked No-Show",
+      meta: `${appointment.client_name} • ${appointment.service_name}`,
+      icon: "person_off",
+      tone: "tertiary"
     });
     touch(now);
     return id;
@@ -2157,10 +2768,10 @@ function createPlatformStore() {
     db.prepare(`
       INSERT INTO conversations (
         id, client_id, name, channel, channel_tone, time_label, preview, status, avatar, avatar_text, ltv,
-        visits, visit_cadence, today_service, today_time, today_amount, today_stylist,
+        visits, visit_cadence, today_service, today_time, today_amount, today_stylist, recovery_state, recovery_sent_count,
         contact_phone, contact_email, contact_preference, sort_order, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, 'Now', ?, ?, ?, ?, '$0', '0', 'First visit pending', 'Consultation', 'Pending', '$0',
-        'Front Desk', ?, ?, ?, 0, ?, ?)
+        'Front Desk', '', 0, ?, ?, ?, 0, ?, ?)
     `).run(
       id,
       client ? client.id : "",
@@ -2350,7 +2961,7 @@ function createPlatformStore() {
     const amountLabel = bookedAppointment ? bookedAppointment.price_label : typeof payload.amount === "string" ? `$${String(payload.amount).replace(/^\$/, "")}` : conversation.today_amount;
     db.prepare(`
       UPDATE conversations
-      SET client_id = ?, status = ?, today_service = ?, today_time = ?, today_amount = ?, today_stylist = ?, updated_at = ?
+      SET client_id = ?, status = ?, today_service = ?, today_time = ?, today_amount = ?, today_stylist = ?, recovery_state = '', recovery_sent_count = 0, updated_at = ?
       WHERE id = ?
     `).run(
       client.id,
@@ -2362,6 +2973,18 @@ function createPlatformStore() {
       new Date().toISOString(),
       id
     );
+    if (String(conversation.recovery_state || "").trim()) {
+      updateWorkflowMetrics("No-Show Recovery", {
+        converted: 1,
+        revenue: parseMoney(amountLabel || 0)
+      });
+      logActivity({
+        title: "Recovery Booking Converted",
+        meta: `${client.name} • ${serviceName} • ${amountLabel}`,
+        icon: "event_available",
+        tone: "secondary"
+      });
+    }
     const currentMax = db.prepare(`
       SELECT COALESCE(MAX(sort_order), -1) AS max_sort_order
       FROM conversation_messages
@@ -2426,6 +3049,11 @@ function createPlatformStore() {
     createAppointment,
     updateAppointment,
     checkoutAppointment,
+    captureAppointmentDeposit,
+    refundAppointment,
+    rescheduleAppointment,
+    cancelAppointment,
+    markAppointmentNoShow,
     createClient,
     updateClient,
     deleteClient,
@@ -2433,6 +3061,7 @@ function createPlatformStore() {
     createConversation,
     updateConversation,
     deleteConversation,
+    sendRecoveryOffer,
     createConversationMessage,
     createConversationBooking
   };

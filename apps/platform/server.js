@@ -226,12 +226,106 @@ async function handleApiMutation(request, requestUrl, response) {
   const checkoutMatch = pathname.match(/^\/api\/platform\/schedule\/appointments\/([^/]+)\/checkout$/);
   if (checkoutMatch && request.method === "POST") {
     const appointmentId = decodeURIComponent(checkoutMatch[1]);
-    const checkedOutId = store.checkoutAppointment(appointmentId);
+    const checkedOutId = store.checkoutAppointment(appointmentId, body);
+    if (checkedOutId && checkedOutId.error === "checked_out") {
+      return sendBadRequest(response, "Appointment is already checked out.");
+    }
     if (!checkedOutId) return sendNotFound(response, `Unknown appointment: ${appointmentId}`);
     return json(response, 200, {
       ok: true,
       action: "appointment_checked_out",
       appointmentId: checkedOutId,
+      page: store.getSchedulePage(),
+      lastUpdated: store.getLastUpdated()
+    });
+  }
+
+  const depositMatch = pathname.match(/^\/api\/platform\/schedule\/appointments\/([^/]+)\/deposit$/);
+  if (depositMatch && request.method === "POST") {
+    const appointmentId = decodeURIComponent(depositMatch[1]);
+    const updatedId = store.captureAppointmentDeposit(appointmentId, body);
+    if (updatedId && updatedId.error === "checked_out") {
+      return sendBadRequest(response, "Cannot capture deposit after checkout.");
+    }
+    if (!updatedId) return sendNotFound(response, `Unknown appointment: ${appointmentId}`);
+    return json(response, 200, {
+      ok: true,
+      action: "appointment_deposit_captured",
+      appointmentId: updatedId,
+      page: store.getSchedulePage(),
+      lastUpdated: store.getLastUpdated()
+    });
+  }
+
+  const refundMatch = pathname.match(/^\/api\/platform\/schedule\/appointments\/([^/]+)\/refund$/);
+  if (refundMatch && request.method === "POST") {
+    const appointmentId = decodeURIComponent(refundMatch[1]);
+    const updatedId = store.refundAppointment(appointmentId, body);
+    if (updatedId && updatedId.error === "not_checked_out") {
+      return sendBadRequest(response, "Cannot refund an appointment before checkout.");
+    }
+    if (updatedId && updatedId.error === "invalid_refund") {
+      return sendBadRequest(response, "Refund amount is invalid.");
+    }
+    if (!updatedId) return sendNotFound(response, `Unknown appointment: ${appointmentId}`);
+    return json(response, 200, {
+      ok: true,
+      action: "appointment_refunded",
+      appointmentId: updatedId,
+      page: store.getSchedulePage(),
+      lastUpdated: store.getLastUpdated()
+    });
+  }
+
+  const rescheduleMatch = pathname.match(/^\/api\/platform\/schedule\/appointments\/([^/]+)\/reschedule$/);
+  if (rescheduleMatch && request.method === "POST") {
+    const appointmentId = decodeURIComponent(rescheduleMatch[1]);
+    const updatedId = store.rescheduleAppointment(appointmentId, body);
+    if (updatedId && updatedId.error === "checked_out") {
+      return sendBadRequest(response, "Cannot reschedule a checked-out appointment.");
+    }
+    if (updatedId && updatedId.error === "canceled") {
+      return sendBadRequest(response, "Cannot reschedule a canceled appointment.");
+    }
+    if (!updatedId) return sendNotFound(response, `Unknown appointment: ${appointmentId}`);
+    return json(response, 200, {
+      ok: true,
+      action: "appointment_rescheduled",
+      appointmentId: updatedId,
+      page: store.getSchedulePage(),
+      lastUpdated: store.getLastUpdated()
+    });
+  }
+
+  const cancelMatch = pathname.match(/^\/api\/platform\/schedule\/appointments\/([^/]+)\/cancel$/);
+  if (cancelMatch && request.method === "POST") {
+    const appointmentId = decodeURIComponent(cancelMatch[1]);
+    const updatedId = store.cancelAppointment(appointmentId, body);
+    if (updatedId && updatedId.error === "checked_out") {
+      return sendBadRequest(response, "Cannot cancel a checked-out appointment.");
+    }
+    if (!updatedId) return sendNotFound(response, `Unknown appointment: ${appointmentId}`);
+    return json(response, 200, {
+      ok: true,
+      action: "appointment_canceled",
+      appointmentId: updatedId,
+      page: store.getSchedulePage(),
+      lastUpdated: store.getLastUpdated()
+    });
+  }
+
+  const noShowMatch = pathname.match(/^\/api\/platform\/schedule\/appointments\/([^/]+)\/no-show$/);
+  if (noShowMatch && request.method === "POST") {
+    const appointmentId = decodeURIComponent(noShowMatch[1]);
+    const updatedId = store.markAppointmentNoShow(appointmentId, body);
+    if (updatedId && updatedId.error === "checked_out") {
+      return sendBadRequest(response, "Cannot mark a checked-out appointment as no-show.");
+    }
+    if (!updatedId) return sendNotFound(response, `Unknown appointment: ${appointmentId}`);
+    return json(response, 200, {
+      ok: true,
+      action: "appointment_no_show",
+      appointmentId: updatedId,
       page: store.getSchedulePage(),
       lastUpdated: store.getLastUpdated()
     });
@@ -349,6 +443,24 @@ async function handleApiMutation(request, requestUrl, response) {
     return json(response, 201, {
       ok: true,
       action: "conversation_message_created",
+      conversationId: result,
+      conversation: store.getInboxPage().conversations.find((conversation) => conversation.id === result),
+      page: store.getInboxPage(),
+      lastUpdated: store.getLastUpdated()
+    });
+  }
+
+  const recoveryMatch = pathname.match(/^\/api\/platform\/inbox\/conversations\/([^/]+)\/recovery-offer$/);
+  if (recoveryMatch && request.method === "POST") {
+    const conversationId = decodeURIComponent(recoveryMatch[1]);
+    const result = store.sendRecoveryOffer(conversationId, body);
+    if (!result) return sendNotFound(response, `Unknown conversation: ${conversationId}`);
+    if (result.error === "no_recovery_state") {
+      return sendBadRequest(response, "Conversation is not in a recovery state.");
+    }
+    return json(response, 200, {
+      ok: true,
+      action: "conversation_recovery_offer_sent",
       conversationId: result,
       conversation: store.getInboxPage().conversations.find((conversation) => conversation.id === result),
       page: store.getInboxPage(),
