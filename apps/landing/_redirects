@@ -1,0 +1,13 @@
+# Cloudflare Pages redirects — keep canonical trailing-slash URLs
+/index.html              /                       301
+/index.legacy.html       /                       301
+/features                /features/              301
+/how-it-works            /how-it-works/          301
+/pricing                 /pricing/               301
+/use-cases               /use-cases/             301
+/about                   /about/                 301
+/contact                 /contact/               301
+/blog                    /blog/                  301
+/compare                 /compare/               301
+/privacy                 /privacy/               301
+/terms                   /terms/                 301
