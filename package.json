@@ -15,7 +15,9 @@
     "platform:serve": "node apps/platform/server.js",
     "platform:api:check": "node apps/platform/server.js --check",
     "platform:state:reset": "node apps/platform/server.js --reset-state",
-    "assistant:test": "node apps/platform/tests/assistant.test.js && node apps/platform/tests/assistant-live-smoke.js"
+    "assistant:test": "node apps/platform/tests/assistant.test.js && node apps/platform/tests/telegram-bridge.test.js && node apps/platform/tests/assistant-live-smoke.js",
+    "assistant:telegram": "node apps/platform/telegram-bridge.js",
+    "assistant:telegram:test": "node apps/platform/tests/telegram-bridge.test.js"
   },
   "devDependencies": {
     "@tailwindcss/container-queries": "^0.1.1",

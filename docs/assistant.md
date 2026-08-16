@@ -97,6 +97,27 @@ npm run platform:state:reset             # reseed demo data (also clears assista
 
 Parallel instances: set `PORT` and `PLATFORM_DB_PATH` per instance.
 
+## Telegram bridge
+
+`apps/platform/telegram-bridge.js` — zero-dependency long-polling bridge
+(raw `fetch`, no webhook needed). It forwards Telegram messages to
+`POST /api/assistant/chat` with `sessionId=tg:<chat_id>`, `channel="telegram"`
+and, after a contact share, `clientPhone`; replies go back via `sendMessage`
+with a typing indicator while the LLM thinks. `/start` sends Maya's canned
+honest-AI greeting (no LLM call) with a share-phone keyboard. LLM/server
+failures produce a polite fallback that offers the human handoff; `reply: null`
+(takeover/escalation) keeps the bot silent while messages still land in the
+inbox. The token comes from `TELEGRAM_BOT_TOKEN` only and is scrubbed from
+bridge logs.
+
+```bash
+npm run assistant:telegram        # run (needs TELEGRAM_BOT_TOKEN + running platform)
+npm run assistant:telegram:test   # offline suite vs mock Telegram API (29 checks)
+```
+
+Setup from zero (BotFather → .env → systemd): see `README-DEMO.md`.
+Only one bridge instance may poll a given token.
+
 ## Editing the persona / facts
 
 - Tone, few-shots, rules: `apps/platform/backend/assistant-prompt.js`
