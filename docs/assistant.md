@@ -70,6 +70,52 @@ CORS allowlist: `https://aibeaty.pages.dev`, `https://aibeaty.remolda.com`,
    an explicit correction) is replaced with an honest "no such stylist" reply
    listing real staff. A separate reply-side scan catches "мастер X"/"stylist X"
    names the model invents on its own.
+10. **Salon timezone + same-day past-time floor** (polish, 2026-08-16) — all
+    "what day/time is it" decisions use the salon's timezone from
+    `salon.timezone` in `salon-faq.json` (default `America/Toronto`), not the
+    server clock (the deploy box runs UTC). For `day_offset = 0`, offered AND
+    committed slots are floored at the current salon time rounded up to the next
+    30-min step: `check_availability` marks past times unavailable (or returns
+    `day_over` with next-open-day alternatives once the day is finished), and
+    `book_appointment` / `reschedule_appointment` refuse with `time_in_past`.
+    An evening tester can no longer book "сегодня 10:00" into the past.
+11. **Plain-text scrub** — markdown the model emits (`**bold**`, `- ` bullets,
+    headings) is stripped server-side before the reply is stored/sent, since
+    every Maya surface renders plain text; `chat.html` additionally renders
+    residual inline bold/italic safely as belt-and-braces.
+12. **First-turn AI disclosure** — the first assistant reply of every new
+    session must disclose the AI identity. The prompt demands it; code verifies
+    (name + AI marker, RU/UK/EN) and prepends a short language-matched intro if
+    the model skipped it. Applies to canned hard-trigger replies too.
+13. **Complaint 3-beat delivery** — on a complaint turn the CLIENT-facing reply
+    must name the feeling, apologize once, and give a concrete next step with a
+    timeframe ("владелец увидит это в течение часа и напишет здесь"). If the
+    model condenses these away, the reply is replaced with a deterministic
+    3-beat version; the thread then escalates and the bot goes silent. No
+    upsell in complaint threads.
+14. **Broadened commit affirmation** (fix for the e2e cancel loop) — the
+    read-back commit accepts natural confirmations: bare affirmation words
+    («да», «точно», «ок»…) anywhere in the message OR affirmative action verbs
+    («отменяем», «отменяйте», «переносите», «записывайте», «скасовуйте»,
+    "cancel it", "go ahead"). Questions never affirm, and any rejection token
+    («нет», «не …», «подождите», "don't"…) always wins over affirmative words.
+
+## Escalation alert emails
+
+When a conversation escalates or Maya leaves a message for the owner, the
+engine fires a non-blocking POST (5s timeout; failures only logged) to
+`https://formsubmit.co/ajax/<ALERT_EMAIL>` with subject
+`🔔 AIbeaty / Майя: нужен человек — <категория>` (категории: медицина, жалоба,
+просьба человека, непонимание, сообщение владельцу, спор о цене, недовольство).
+The body carries the salon name, the last 2–3 client messages, client name/phone
+when known, and a deep link to the thread:
+`{ALERT_LINK_BASE}/screens/unified-inbox-luminous-core.html?conversationId=<id>`.
+
+- Throttle: max 1 email per conversation per 10 minutes (in-memory).
+- Every attempt is recorded as an `alert_email` assistant event.
+- Config: `ALERT_EMAIL` env (unset = alerts off, the local default);
+  `ALERT_LINK_BASE` env overrides the deep-link origin
+  (default `https://aibeaty.remolda.com`). No secrets involved.
 
 ## LLM provider — tested matrix (2026-08-15)
 
