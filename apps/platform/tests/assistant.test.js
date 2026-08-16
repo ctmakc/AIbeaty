@@ -501,7 +501,7 @@ async function test(name, fn) {
       store,
       llm: scriptedLlm([text("Вам ответит живой человек в течение часа.")]),
       alertEmail: "owner@example.com",
-      alertFetch: async (url, options) => { sent.push({ url, body: JSON.parse(options.body) }); return { ok: true, status: 200 }; }
+      alertFetch: async (url, options) => { sent.push({ url, body: JSON.parse(options.body), headers: options.headers }); return { ok: true, status: 200 }; }
     });
     const result = await assistant.chat({ sessionId: "s-compl", message: "Вы испортили мне окрашивание, это ужасно!" });
     assert.ok(/(прости|извин)/i.test(result.reply), `apology present: ${result.reply}`);
@@ -515,6 +515,30 @@ async function test(name, fn) {
     assert.ok(sent[0].body._subject.includes("жалоба"), sent[0].body._subject);
     assert.ok(sent[0].body.thread.includes(result.state.conversationId), "thread deep-link present");
     assert.ok(eventsOfType("alert_email").some((event) => event.session_id === "s-compl"));
+    assert.ok(sent[0].headers && /^https?:\/\//.test(sent[0].headers.Origin || ""), "browser-like Origin header present (formsubmit refuses server POSTs without it)");
+    assert.ok((sent[0].headers.Referer || "").startsWith(sent[0].headers.Origin), "Referer matches Origin");
+  });
+
+  await test("alerts: relay refusal (HTTP 200 + success:false) is logged as a failure, not success", async () => {
+    const logs = [];
+    const origError = console.error;
+    console.error = (...args) => { logs.push(args.join(" ")); };
+    try {
+      const assistant = createAssistant({
+        store,
+        llm: scriptedLlm([text("Вам ответит живой человек в течение часа.")]),
+        alertEmail: "owner@example.com",
+        alertFetch: async () => ({
+          ok: true, status: 200,
+          text: async () => JSON.stringify({ success: "false", message: "FormSubmit will not work in pages browsed as HTML files." })
+        })
+      });
+      await assistant.chat({ sessionId: "s-refuse", message: "Вы испортили мне окрашивание, кошмар!" });
+      await new Promise((resolve) => setTimeout(resolve, 50)); // let fire-and-forget settle
+      assert.ok(logs.some((line) => /alert email failed: relay refused/.test(line)), `refusal logged: ${JSON.stringify(logs)}`);
+    } finally {
+      console.error = origError;
+    }
   });
 
   await test("alerts: throttled to one email per conversation per 10 minutes; off without ALERT_EMAIL", async () => {

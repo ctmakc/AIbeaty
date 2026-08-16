@@ -310,6 +310,9 @@ function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, a
   // formsubmit.co relays to the configured inbox.
   const ALERT_EMAIL = alertEmail !== undefined ? String(alertEmail || "") : String(process.env.ALERT_EMAIL || "");
   const ALERT_LINK_BASE = String(alertLinkBase || process.env.ALERT_LINK_BASE || "https://aibeaty.remolda.com").replace(/\/+$/, "");
+  // formsubmit.co silently refuses POSTs without a browser Origin/Referer (HTTP 200
+  // + success:"false", no email) — send the activated site's origin explicitly.
+  const ALERT_ORIGIN = String(process.env.ALERT_ORIGIN || "https://aibeaty.pages.dev").replace(/\/+$/, "");
   const alertHttp = alertFetch || ((...args) => fetch(...args));
   const alertLastSent = new Map(); // conversationId → last alert ms (in-memory throttle)
   const rateBuckets = new Map();
@@ -735,12 +738,28 @@ function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, a
       timer = setTimeout(() => controller.abort(), ALERT_TIMEOUT_MS);
       Promise.resolve(alertHttp(`https://formsubmit.co/ajax/${ALERT_EMAIL}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Origin": ALERT_ORIGIN,
+          "Referer": `${ALERT_ORIGIN}/`
+        },
         body: JSON.stringify(payload),
         signal: controller.signal
-      })).then((response) => {
+      })).then(async (response) => {
         clearTimeout(timer);
-        if (!response || !response.ok) console.error(`[assistant] alert email failed: HTTP ${response ? response.status : "?"}`);
+        let delivered = Boolean(response && response.ok);
+        let detail = `HTTP ${response ? response.status : "?"}`;
+        if (delivered && response && typeof response.text === "function") {
+          try {
+            const body = JSON.parse(await response.text());
+            if (body && String(body.success).toLowerCase() === "false") {
+              delivered = false;
+              detail = `relay refused: ${String(body.message || "").slice(0, 120)}`;
+            }
+          } catch (parseError) { /* non-JSON body — keep HTTP verdict */ }
+        }
+        if (!delivered) console.error(`[assistant] alert email failed: ${detail}`);
         else console.log(`[assistant] alert email sent (${category})`);
       }).catch((error) => {
         clearTimeout(timer);

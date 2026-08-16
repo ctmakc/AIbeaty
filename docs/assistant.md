@@ -122,6 +122,11 @@ when known, and a deep link to the thread:
 - Config: `ALERT_EMAIL` env (unset = alerts off, the local default);
   `ALERT_LINK_BASE` env overrides the deep-link origin
   (default `https://aibeaty.remolda.com`). No secrets involved.
+- The POST carries `Origin`/`Referer` headers set to `ALERT_ORIGIN`
+  (default `https://aibeaty.pages.dev`, the formsubmit-activated site).
+  Without them formsubmit answers HTTP 200 + `success:"false"` and never
+  sends the email — the engine now parses that body and logs
+  `alert email failed: relay refused` instead of a false "sent".
 
 ## LLM provider — tested matrix (2026-08-15)
 
