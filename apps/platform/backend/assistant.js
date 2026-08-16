@@ -187,6 +187,13 @@ const FALLBACKS = {
   }
 };
 
+// Daily spend cap reached: graceful, language-matched, zero LLM involved.
+const CAP_REPLY = {
+  ru: "Майя сегодня наговорилась — напишите нам, и человек ответит. Ваше сообщение уже у владельца, вам ответят здесь.",
+  uk: "Майя сьогодні наговорилася — напишіть нам, і людина відповість. Ваше повідомлення вже у власника, вам дадуть відповідь тут.",
+  en: "Maya has talked her fill for today — leave us a message and a person will reply. Your note is already with the owner; you'll hear back right here."
+};
+
 function localized(pack, language) {
   return pack[language] || pack.ru;
 }
@@ -299,7 +306,7 @@ const STYLIST_PRAISE_RE = /отличн|прекрасн|замечательн|
 // Markers of an honest correction ("no such stylist") in the reply.
 const STYLIST_CORRECTION_RE = /такого (мастера|майстра|стилиста|стиліста)|(мастера|майстра) (с именем|по имени|на ім'?я)? ?[«"']?[\wа-яёіїєґ'’-]* ?[»"']? ?(у нас )?(нет|немає)|в нашей команде нет|в нашій команді немає|не работает у нас|у нас не працює|у нас (нет|немає) (мастера|майстра)|don'?t have (a |any )?stylist|no stylist (named|called)|isn'?t (on|part of) (our|the) (team|staff)|not on (our|the) (team|staff)/i;
 
-function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, alertLinkBase } = {}) {
+function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, alertLinkBase, dailyTurnsCap } = {}) {
   const db = store.db;
   const resolvedFaqPath = faqPath || path.join(__dirname, "..", "data", "salon-faq.json");
   const faq = JSON.parse(fs.readFileSync(resolvedFaqPath, "utf8"));
@@ -316,6 +323,11 @@ function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, a
   const alertHttp = alertFetch || ((...args) => fetch(...args));
   const alertLastSent = new Map(); // conversationId → last alert ms (in-memory throttle)
   const rateBuckets = new Map();
+  // Spend guard: hard cap on LLM turns per salon-timezone day (shared Ollama
+  // Cloud quota protection). One "turn" = one chat() invocation that reached
+  // the LLM; hard triggers, canned and silenced turns never count.
+  const capCandidate = Number(dailyTurnsCap !== undefined ? dailyTurnsCap : process.env.ASSISTANT_DAILY_TURNS_CAP);
+  const DAILY_TURNS_CAP = Number.isFinite(capCandidate) && capCandidate > 0 ? Math.floor(capCandidate) : 400;
 
   function salonMinutesNow() {
     return tzMinutesOfDay(clockNow(), TIMEZONE);
@@ -365,6 +377,37 @@ function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, a
       JSON.stringify(payload),
       new Date().toISOString()
     );
+  }
+
+  // ---------- LLM spend metering ----------
+  // One row per LLM API call (a turn may spend several: tool rounds).
+  // Token counts come from the provider's usage block when present, else 0 —
+  // the call itself is still counted.
+  function recordLlmCall(session, turn, message) {
+    const usage = (message && message.usage) || {};
+    const prompt = Number(usage.prompt_tokens) || 0;
+    const completion = Number(usage.completion_tokens) || 0;
+    const total = Number(usage.total_tokens) || (prompt + completion);
+    db.prepare(`
+      INSERT INTO assistant_usage (id, turn_id, session_id, conversation_id, channel, day, round, prompt_tokens, completion_tokens, total_tokens, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      createId("ause"),
+      turn.id,
+      session.id,
+      session.conversation_id || "",
+      session.channel || "Webchat",
+      salonDayString(),
+      turn.llmCalls,
+      prompt,
+      completion,
+      total,
+      new Date().toISOString()
+    );
+  }
+
+  function llmTurnsForDay(day) {
+    return db.prepare(`SELECT COUNT(DISTINCT turn_id) AS count FROM assistant_usage WHERE day = ?`).get(day).count;
   }
 
   function loadSession(sessionId) {
@@ -696,7 +739,7 @@ function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, a
     sendAlertEmail(session, ALERT_CATEGORIES[reason] || reason, { summary: String(summary || "").slice(0, 300) });
   }
 
-  function leaveOwnerMessage(session, message, topic) {
+  function leaveOwnerMessage(session, message, topic, { silent } = {}) {
     recordEvent(session, "owner_message", { message: String(message).slice(0, 500), topic: topic || "" });
     store.logActivity({
       title: "Message for Owner (Maya)",
@@ -704,7 +747,9 @@ function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, a
       icon: "mail",
       tone: "tertiary"
     });
-    sendAlertEmail(session, ALERT_CATEGORIES.owner_message, { owner_note: String(message).slice(0, 300) });
+    // silent: the thread is tracked but no per-conversation email goes out
+    // (used at the daily cap, which sends its own single-fire alert instead).
+    if (!silent) sendAlertEmail(session, ALERT_CATEGORIES.owner_message, { owner_note: String(message).slice(0, 300) });
   }
 
   // ---------- escalation alert emails ----------
@@ -732,6 +777,12 @@ function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, a
       thread: `${ALERT_LINK_BASE}/screens/unified-inbox-luminous-core.html?conversationId=${encodeURIComponent(conversationId)}`
     }, extra);
     recordEvent(session, "alert_email", { category, to_domain: ALERT_EMAIL.split("@")[1] || "" });
+    postAlertEmail(payload, category);
+  }
+
+  // Shared fire-and-forget formsubmit.co POST (5s timeout, non-blocking,
+  // failures only logged). Callers decide throttling/single-fire.
+  function postAlertEmail(payload, category) {
     let timer = null;
     try {
       const controller = new AbortController();
@@ -769,6 +820,33 @@ function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, a
       if (timer) clearTimeout(timer);
       console.error(`[assistant] alert email failed: ${String((error && error.message) || error).slice(0, 140)}`);
     }
+  }
+
+  // ---------- daily cap alerts (80% / 100%) ----------
+  // Single-fire per salon day per threshold: the usage_alert event row is
+  // written BEFORE the email attempt, so retries/races never double-send.
+  function maybeSendUsageAlert(session, threshold, turns) {
+    const day = salonDayString();
+    const already = db.prepare(`
+      SELECT COUNT(*) AS count FROM assistant_events
+      WHERE day = ? AND type = 'usage_alert' AND payload_json LIKE ?
+    `).get(day, `%"threshold":${threshold},%`).count;
+    if (already) return;
+    recordEvent(session, "usage_alert", { threshold, turns, cap: DAILY_TURNS_CAP });
+    if (!ALERT_EMAIL) return;
+    const subject = threshold >= 100
+      ? `⛔ AIbeaty / Майя: дневной лимит исчерпан (${turns}/${DAILY_TURNS_CAP})`
+      : `⚠️ AIbeaty / Майя израсходовала 80% дневного лимита (${turns}/${DAILY_TURNS_CAP})`;
+    postAlertEmail({
+      _subject: subject,
+      salon: (faq.salon && faq.salon.name) || "Salon",
+      day,
+      turns: `${turns} из ${DAILY_TURNS_CAP}`,
+      note: threshold >= 100
+        ? "Майя отвечает клиентам вежливой заглушкой и собирает сообщения для владельца. Срочные темы (медицина, «позовите человека») по-прежнему уходят человеку. Счётчик обнулится в полночь по времени салона."
+        : "Майя продолжает отвечать. На 100% она перейдёт на вежливую заглушку до полуночи по времени салона.",
+      usage_dashboard: `${ALERT_LINK_BASE}/screens/digest.html`
+    }, `usage_${threshold}`);
   }
 
   // ---------- tools ----------
@@ -1510,6 +1588,8 @@ function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, a
     `).get(session.conversation_id).count <= 1;
 
     const turn = {
+      id: createId("aturn"),
+      llmCalls: 0,
       userMessage: text,
       actionCommitted: false,
       handoffRequested: false,
@@ -1532,6 +1612,37 @@ function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, a
       return { reply, state: sessionState(session, { escalated: trigger.reason }) };
     }
     if (trigger) turn.escalateAfter = trigger.reason;
+
+    // ---------- daily spend cap (salon-timezone day) ----------
+    // Checked AFTER hard triggers: medical and "позовите человека" answer
+    // without the LLM and must keep working at cap.
+    const turnsToday = llmTurnsForDay(salonDayString());
+    if (turnsToday >= DAILY_TURNS_CAP) {
+      recordEvent(session, "cap_hit", { turns: turnsToday, cap: DAILY_TURNS_CAP });
+      maybeSendUsageAlert(session, 100, turnsToday);
+      if (turn.escalateAfter) {
+        // Soft triggers (complaint, price dispute…) still reach a human at cap
+        // through the deterministic canned path — no LLM involved.
+        let reply = localized(turn.escalateAfter === "complaint" ? COMPLAINT_REPLY : FALLBACKS.handoff, session.language);
+        if (isFirstTurn && !hasAiDisclosure(reply)) reply = withFirstTurnIntro(reply, session.language);
+        escalate(session, turn.escalateAfter, text);
+        persistMessage(session, "outgoing", reply);
+        recordEvent(session, "message_out", { text: reply.slice(0, 300), canned: `${turn.escalateAfter}_at_cap` });
+        saveSession(session);
+        return { reply, state: sessionState(session, { escalated: turn.escalateAfter, capped: true }) };
+      }
+      let reply = localized(CAP_REPLY, session.language);
+      if (isFirstTurn && !hasAiDisclosure(reply)) reply = withFirstTurnIntro(reply, session.language);
+      // Track the waiting client as an owner task — once per session per day.
+      if (session.state.capNotedDay !== salonDayString()) {
+        session.state.capNotedDay = salonDayString();
+        leaveOwnerMessage(session, `Дневной лимит Майи исчерпан (${turnsToday}/${DAILY_TURNS_CAP}). Клиент ждёт ответа: "${text.slice(0, 150)}"`, "daily_cap", { silent: true });
+      }
+      persistMessage(session, "outgoing", reply);
+      recordEvent(session, "message_out", { text: reply.slice(0, 300), canned: "daily_cap" });
+      saveSession(session);
+      return { reply, state: sessionState(session, { capped: true }) };
+    }
 
     let clientHint = "";
     if (session.client_id) {
@@ -1572,6 +1683,8 @@ function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, a
       while (rounds < MAX_TOOL_ROUNDS) {
         rounds += 1;
         const assistantMessage = await llm.complete({ messages: current, tools: TOOL_DEFS });
+        turn.llmCalls += 1;
+        recordLlmCall(session, turn, assistantMessage);
         if (assistantMessage.tool_calls && assistantMessage.tool_calls.length) {
           current = current.concat([assistantMessage]);
           for (const call of assistantMessage.tool_calls) {
@@ -1658,6 +1771,15 @@ function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, a
       escalate(session, "repeated_misunderstanding", text);
     }
 
+    // Spend-guard thresholds, checked after the turn is metered:
+    // 80% → warn the owner once a day; 100% → notify once, next turns are capped.
+    const turnsAfter = llmTurnsForDay(salonDayString());
+    if (turnsAfter >= DAILY_TURNS_CAP) {
+      maybeSendUsageAlert(session, 100, turnsAfter);
+    } else if (turnsAfter >= Math.ceil(DAILY_TURNS_CAP * 0.8)) {
+      maybeSendUsageAlert(session, 80, turnsAfter);
+    }
+
     saveSession(session);
     return { reply: gated.reply, state: sessionState(session, { gates: gated.gates }) };
   }
@@ -1706,6 +1828,45 @@ function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, a
     const conversation = getConversationRow(conversationId);
     if (!conversation || !conversation.assistant_session_id) return;
     if (conversation.assistant_state !== "takeover") setTakeover(conversationId, true);
+  }
+
+  // ---------- LLM spend usage (surface for owner + ops) ----------
+  function getUsage(day) {
+    const targetDay = /^\d{4}-\d{2}-\d{2}$/.test(String(day || "")) ? day : salonDayString();
+    const agg = db.prepare(`
+      SELECT COUNT(DISTINCT turn_id) AS turns, COUNT(*) AS calls,
+             COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
+             COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
+             COALESCE(SUM(total_tokens), 0) AS total_tokens
+      FROM assistant_usage WHERE day = ?
+    `).get(targetDay);
+    const sessions = db.prepare(`
+      SELECT COUNT(DISTINCT session_id) AS count FROM assistant_events WHERE day = ?
+    `).get(targetDay).count;
+    const blockedTurns = db.prepare(`
+      SELECT COUNT(*) AS count FROM assistant_events WHERE day = ? AND type = 'cap_hit'
+    `).get(targetDay).count;
+    const byChannel = db.prepare(`
+      SELECT channel, COUNT(DISTINCT turn_id) AS turns
+      FROM assistant_usage WHERE day = ? GROUP BY channel ORDER BY turns DESC
+    `).all(targetDay);
+    return {
+      day: targetDay,
+      generatedAt: new Date().toISOString(),
+      timezone: TIMEZONE,
+      cap: DAILY_TURNS_CAP,
+      turns: agg.turns,
+      remaining: Math.max(0, DAILY_TURNS_CAP - agg.turns),
+      percentUsed: Math.round((agg.turns / DAILY_TURNS_CAP) * 100),
+      capReached: agg.turns >= DAILY_TURNS_CAP,
+      llmCalls: agg.calls,
+      promptTokens: agg.prompt_tokens,
+      completionTokens: agg.completion_tokens,
+      totalTokens: agg.total_tokens,
+      sessions,
+      blockedTurns,
+      byChannel
+    };
   }
 
   // ---------- owner digest ----------
@@ -1772,13 +1933,15 @@ function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, a
         topic: event.payload.topic,
         message: event.payload.message
       })),
-      conversations
+      conversations,
+      usage: getUsage(targetDay)
     };
   }
 
   return {
     chat,
     getDigest,
+    getUsage,
     setTakeover,
     noteStaffMessage,
     // exposed for tests
@@ -1808,6 +1971,8 @@ function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, a
       saveSession,
       rateLimited,
       recordEvent,
+      llmTurnsForDay,
+      dailyTurnsCap: DAILY_TURNS_CAP,
       TOOL_DEFS
     }
   };

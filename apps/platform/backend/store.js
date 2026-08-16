@@ -405,6 +405,20 @@ function createPlatformStore() {
         payload_json TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS assistant_usage (
+        id TEXT PRIMARY KEY,
+        turn_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL DEFAULT '',
+        channel TEXT NOT NULL DEFAULT 'Webchat',
+        day TEXT NOT NULL,
+        round INTEGER NOT NULL DEFAULT 1,
+        prompt_tokens INTEGER NOT NULL DEFAULT 0,
+        completion_tokens INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
     `);
   }
 
@@ -483,6 +497,7 @@ function createPlatformStore() {
       "conversation_suggestions",
       "assistant_sessions",
       "assistant_events",
+      "assistant_usage",
       "metadata"
     ].forEach((table) => db.prepare(`DELETE FROM ${table}`).run());
   }

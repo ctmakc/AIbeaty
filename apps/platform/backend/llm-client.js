@@ -68,6 +68,10 @@ function createLlmClient(options = {}) {
         const data = await response.json();
         const message = data.choices && data.choices[0] && data.choices[0].message;
         if (!message) throw new Error("LLM returned no message");
+        // Ollama /v1 (OpenAI-compat) returns token usage at the top level:
+        // { usage: { prompt_tokens, completion_tokens, total_tokens } }.
+        // Carry it on the message so callers can meter spend per call.
+        if (data.usage && typeof data.usage === "object") message.usage = data.usage;
         return message;
       } catch (error) {
         lastError = error;

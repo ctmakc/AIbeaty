@@ -701,6 +701,145 @@ async function test(name, fn) {
     assert.ok(normal.threw || !normal.watchdog, "non-watchdog session must go through the normal path");
   });
 
+  // ---------- spend guard (daily LLM turn cap + metering) ----------
+  // Each test pins its own fake salon day via the injected clock, so counters
+  // in the shared DB never bleed between tests (or from the suite's real-day turns).
+
+  function replyWithUsage(content, usage) {
+    return { role: "assistant", content, usage };
+  }
+
+  await test("spend guard: every LLM call metered; usage math adds up (turns, calls, tokens, sessions)", async () => {
+    const assistant = createAssistant({
+      store,
+      clock: () => new Date("2026-09-01T16:00:00Z"),
+      llm: scriptedLlm([
+        toolCall("get_services_and_prices", { query: "женская стрижка" }),
+        replyWithUsage("Женская стрижка стоит $85. Подобрать время?", { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 }),
+        replyWithUsage("Взаимно! Ждём вас в Luminous Core.", { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 })
+      ])
+    });
+    await assistant.chat({ sessionId: "s-usage", message: "Сколько стоит женская стрижка?" });
+    await assistant.chat({ sessionId: "s-usage", message: "Спасибо, хорошего дня!" });
+    const usage = assistant.getUsage("2026-09-01");
+    assert.strictEqual(usage.turns, 2, `2 turns metered: ${JSON.stringify(usage)}`);
+    assert.strictEqual(usage.llmCalls, 3, "tool round counted as its own LLM call");
+    assert.strictEqual(usage.promptTokens, 150, "prompt tokens summed (usage-less call counts 0)");
+    assert.strictEqual(usage.completionTokens, 30);
+    assert.strictEqual(usage.totalTokens, 180);
+    assert.strictEqual(usage.sessions, 1);
+    assert.strictEqual(usage.cap, 400, "default cap");
+    assert.strictEqual(usage.remaining, 398);
+    assert.strictEqual(usage.capReached, false);
+    const digest = assistant.getDigest("2026-09-01");
+    assert.ok(digest.usage && digest.usage.turns === 2 && digest.usage.cap === 400, "digest carries the usage block");
+  });
+
+  await test("spend guard: turns past the cap get the graceful language-matched reply, no LLM call, owner_message tracked", async () => {
+    const assistant = createAssistant({
+      store,
+      clock: () => new Date("2026-09-02T16:00:00Z"),
+      dailyTurnsCap: 2,
+      llm: scriptedLlm([
+        text("Ответ раз."),
+        text("Ответ два.")
+        // a third LLM call would throw "script exhausted" and fail the test
+      ])
+    });
+    const first = await assistant.chat({ sessionId: "s-cap", message: "Привет, расскажите про услуги" });
+    assert.ok(first.reply && !first.state.capped, "turn 1 passes");
+    const second = await assistant.chat({ sessionId: "s-cap", message: "А подробнее?" });
+    assert.ok(second.reply && !second.state.capped, "turn 2 passes");
+    const third = await assistant.chat({ sessionId: "s-cap", message: "Сколько стоит укладка?" });
+    assert.strictEqual(third.state.capped, true, "turn 3 blocked");
+    assert.ok(/наговорилась/.test(third.reply), `RU cap message: ${third.reply}`);
+    const en = await assistant.chat({ sessionId: "s-cap-en", message: "Hi! Do you have openings tomorrow?" });
+    assert.strictEqual(en.state.capped, true);
+    assert.ok(/talked her fill/i.test(en.reply), `EN cap message: ${en.reply}`);
+    const uk = await assistant.chat({ sessionId: "s-cap-uk", message: "Вітаю! Чи є вільні місця?" });
+    assert.ok(/наговорилася/.test(uk.reply), `UK cap message: ${uk.reply}`);
+    assert.ok(
+      eventsOfType("owner_message").some((event) => event.session_id === "s-cap" && /Дневной лимит/.test(event.payload_json)),
+      "waiting client tracked as an owner task"
+    );
+    const usage = assistant.getUsage("2026-09-02");
+    assert.strictEqual(usage.turns, 2, "blocked turns never metered as LLM turns");
+    assert.strictEqual(usage.capReached, true);
+    assert.ok(usage.blockedTurns >= 3, `cap hits counted: ${usage.blockedTurns}`);
+  });
+
+  await test("spend guard: 80% and 100% alerts each fire exactly once per day", async () => {
+    const sent = [];
+    const script = [];
+    for (let i = 0; i < 10; i++) script.push(text(`Ответ ${i + 1}`));
+    const assistant = createAssistant({
+      store,
+      clock: () => new Date("2026-09-03T16:00:00Z"),
+      dailyTurnsCap: 10,
+      alertEmail: "owner@example.com",
+      alertFetch: async (url, options) => { sent.push(JSON.parse(options.body)); return { ok: true, status: 200 }; },
+      llm: scriptedLlm(script)
+    });
+    const alerts = (marker) => sent.filter((payload) => String(payload._subject || "").includes(marker));
+    for (let i = 1; i <= 7; i++) {
+      await assistant.chat({ sessionId: `s-eighty-${i}`, message: `Вопрос номер ${i}` });
+    }
+    assert.strictEqual(alerts("80%").length, 0, "no 80% alert below the threshold");
+    await assistant.chat({ sessionId: "s-eighty-8", message: "Вопрос номер 8" });
+    assert.strictEqual(alerts("80%").length, 1, "80% alert fired at turn 8 of 10");
+    assert.ok(alerts("80%")[0]._subject.includes("израсходовала 80% дневного лимита"));
+    await assistant.chat({ sessionId: "s-eighty-9", message: "Вопрос номер 9" });
+    assert.strictEqual(alerts("80%").length, 1, "still exactly one 80% alert");
+    assert.strictEqual(alerts("исчерпан").length, 0, "no 100% alert yet");
+    await assistant.chat({ sessionId: "s-eighty-10", message: "Вопрос номер 10" });
+    assert.strictEqual(alerts("исчерпан").length, 1, "100% alert fired when the last turn used the cap");
+    const blocked = await assistant.chat({ sessionId: "s-eighty-11", message: "Вопрос номер 11" });
+    assert.strictEqual(blocked.state.capped, true);
+    assert.strictEqual(alerts("исчерпан").length, 1, "capped turns do not re-send the 100% alert");
+    assert.strictEqual(alerts("80%").length, 1, "capped turns do not re-send the 80% alert");
+  });
+
+  await test("spend guard: hard triggers still reach a human at cap, LLM untouched", async () => {
+    const warm = createAssistant({
+      store,
+      clock: () => new Date("2026-09-04T16:00:00Z"),
+      dailyTurnsCap: 1,
+      llm: scriptedLlm([text("Единственный ответ дня.")])
+    });
+    await warm.chat({ sessionId: "s-cap-warm", message: "Привет!" }); // burns the whole cap
+    const guard = createAssistant({
+      store,
+      clock: () => new Date("2026-09-04T16:00:00Z"),
+      dailyTurnsCap: 1,
+      llm: { model: "mock", baseUrl: "mock://", async complete() { throw new Error("LLM must not be called at cap"); } }
+    });
+    const human = await guard.chat({ sessionId: "s-cap-hard-1", message: "Позовите человека, пожалуйста!" });
+    assert.ok(human.reply, "explicit human request answered at cap");
+    assert.strictEqual(human.state.assistantState, "escalated");
+    const medical = await guard.chat({ sessionId: "s-cap-hard-2", message: "После окрашивания жжение кожи головы!" });
+    assert.ok(medical.reply, "medical trigger answered at cap");
+    assert.strictEqual(medical.state.assistantState, "escalated");
+    const plain = await guard.chat({ sessionId: "s-cap-hard-3", message: "Сколько стоит стрижка?" });
+    assert.strictEqual(plain.state.capped, true, "plain question at cap still gets the graceful stop");
+  });
+
+  await test("spend guard: cap resets on the next salon day (fixed clock)", async () => {
+    let now = new Date("2026-09-08T16:00:00Z");
+    const assistant = createAssistant({
+      store,
+      clock: () => now,
+      dailyTurnsCap: 1,
+      llm: scriptedLlm([text("Ответ первого дня."), text("Ответ следующего дня.")])
+    });
+    await assistant.chat({ sessionId: "s-cap-day", message: "Привет!" });
+    const blocked = await assistant.chat({ sessionId: "s-cap-day", message: "Ещё вопрос" });
+    assert.strictEqual(blocked.state.capped, true, "same day: capped");
+    now = new Date("2026-09-09T16:00:00Z");
+    const fresh = await assistant.chat({ sessionId: "s-cap-day", message: "А теперь?" });
+    assert.ok(!fresh.state.capped, "next salon day passes again");
+    assert.ok(fresh.reply.includes("следующего дня"), `LLM reply came through: ${fresh.reply}`);
+  });
+
   console.log(`\n${passed} passed, ${failures.length} failed`);
   if (failures.length) {
     failures.forEach((failure) => console.error(`FAILED: ${failure.name}\n${failure.error.stack}`));

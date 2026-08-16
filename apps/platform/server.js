@@ -557,6 +557,10 @@ async function handleAssistantRoutes(request, requestUrl, response) {
     return jsonCors(request, response, 200, assistant.getDigest(requestUrl.searchParams.get("day")));
   }
 
+  if (request.method === "GET" && pathname === "/api/assistant/usage") {
+    return jsonCors(request, response, 200, assistant.getUsage(requestUrl.searchParams.get("day")));
+  }
+
   if (request.method === "POST" && pathname === "/api/assistant/chat") {
     let body = {};
     try {

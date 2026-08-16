@@ -128,6 +128,35 @@ when known, and a deep link to the thread:
   sends the email — the engine now parses that body and logs
   `alert email failed: relay refused` instead of a false "sent".
 
+## Spend guard (daily LLM cap + metering)
+
+The public endpoint shares one Ollama Cloud quota, so every LLM call is
+metered and the day has a hard turn budget:
+
+- **Metering** — one `assistant_usage` row per LLM API call (a turn may spend
+  several: tool rounds): salon-day, session, channel, round, prompt/completion/
+  total tokens from the provider's `usage` block (0 when absent, the call still
+  counts).
+- **Daily cap** — `ASSISTANT_DAILY_TURNS_CAP` env (default 400), counted per
+  salon-timezone day (`salon.timezone` in `salon-faq.json`, default
+  America/Toronto). One "turn" = one chat() invocation that reached the LLM;
+  hard triggers, canned and silenced turns never count. The per-session rate
+  limit (20 msgs / 5 min) stays as the first line.
+- **At 80%** — one owner email per day: «Майя израсходовала 80% дневного
+  лимита». Single-fire is enforced by a `usage_alert` event row written before
+  the send.
+- **At 100%** — Maya answers with a graceful language-matched stop («Майя
+  сегодня наговорилась — напишите нам, и человек ответит»), makes **no LLM
+  call**, tracks the waiting client as an `owner_message` (once per session per
+  day, without the per-conversation email), and one «лимит исчерпан» owner
+  email goes out. Hard triggers (medical, «позовите человека») keep working at
+  cap — they answer without the LLM. Soft triggers (complaint, price dispute)
+  escalate through the deterministic canned path.
+- **Surface** — `GET /api/assistant/usage?day=YYYY-MM-DD` (same exposure as
+  the digest): turns/cap/remaining, LLM calls, token sums, sessions, blocked
+  turns, per-channel split. The digest JSON carries the same block under
+  `usage`, and `/screens/digest.html` shows a turns-vs-cap row.
+
 ## LLM provider — tested matrix (2026-08-15)
 
 Smoke test: 10 scripted turns (8 must emit a correct `check_availability`
