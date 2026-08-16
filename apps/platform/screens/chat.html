@@ -309,6 +309,16 @@
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
     });
   }
+  // Maya bubbles: escape first, then render only inline bold/italic and strip
+  // stray list markers — belt-and-braces so markdown never shows as asterisks.
+  function mdInline(v) {
+    var s = esc(v);
+    s = s.replace(/^[ \t]*[-*•]\s+/gm, "");
+    s = s.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/(^|[\s(«"'])\*([^*\n]+)\*(?=$|[\s).,!?:;«»"'])/gm, "$1<em>$2</em>");
+    s = s.replace(/(^|[\s(«"'])_([^_\n]+)_(?=$|[\s).,!?:;«»"'])/gm, "$1<em>$2</em>");
+    return s;
+  }
   function timeLabel(ts) {
     var d = ts ? new Date(ts) : new Date();
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -323,7 +333,7 @@
     if (entry.k === "out") {
       return el('<div class="msg out' + cls + '"><div class="stack"><div class="bubble">' + esc(entry.t) + '</div><span class="meta">' + esc(timeLabel(entry.ts)) + "</span></div></div>");
     }
-    return el('<div class="msg in' + cls + '"><div class="mini" aria-hidden="true">M</div><div class="stack"><div class="bubble">' + esc(entry.t) + '</div><span class="meta">Майя · ' + esc(timeLabel(entry.ts)) + "</span></div></div>");
+    return el('<div class="msg in' + cls + '"><div class="mini" aria-hidden="true">M</div><div class="stack"><div class="bubble">' + mdInline(entry.t) + '</div><span class="meta">Майя · ' + esc(timeLabel(entry.ts)) + "</span></div></div>");
   }
   function append(entry, animate) {
     if (entry.k !== "warn") { log.push(entry); saveLog(); }
