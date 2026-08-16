@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="ru"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
+<title>Майя — чат с салоном</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@500;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+  /* Luminous Core M3 tokens (mirror of apps/platform/tailwind.config.js) + guest-surface deltas.
+     Direction: «Лаунж у зеркала» — see apps/platform/DESIGN.md. */
+  :root {
+    --bg-guest: #f6f5fa;
+    --bg-desk: #edeaf6;
+    --surface-lowest: #ffffff;
+    --surface-low: #eff1f2;
+    --surface-container: #e6e8ea;
+    --surface-variant: #dadddf;
+    --on-surface: #2c2f30;
+    --on-surface-variant: #595c5d;
+    --outline: #757778;
+    --primary: #4d2afa;
+    --tertiary: #7a25db;
+    --on-tertiary-container: #450087;
+    --tertiary-container: #c79eff;
+    --secondary-container: #97daff;
+    --on-secondary-container: #004d68;
+    --error-container: #f74b6d;
+    --on-error-container: #510017;
+    --r-sm: 4px;
+    --r-md: 8px;
+    --r-lg: 12px;
+    --r-bubble: 16px;
+    --font-headline: "Manrope", sans-serif;
+    --font-body: "Inter", sans-serif;
+    --ease: cubic-bezier(0.2, 0, 0, 1);
+    --maya-gradient: linear-gradient(135deg, #4d2afa, #7a25db);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    /* Guest-lounge light pool over the lavender desk — visible only around the phone card. */
+    background: radial-gradient(120% 80% at 50% -10%, #f4f1fb 0%, var(--bg-desk) 58%, #e6e1f1 100%) fixed var(--bg-desk);
+    color: var(--on-surface);
+    font-family: var(--font-body);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .material-symbols-outlined { font-variation-settings: "FILL" 0, "wght" 400; vertical-align: middle; }
+  .icon-fill { font-variation-settings: "FILL" 1; }
+
+  /* Shell: phone column on desktop, edge-to-edge on mobile and in embed mode. */
+  .page { min-height: 100dvh; display: flex; align-items: stretch; justify-content: center; }
+  .chat {
+    display: flex; flex-direction: column; width: 100%; max-width: 480px;
+    background: var(--bg-guest); height: 100dvh;
+  }
+  @media (min-width: 560px) {
+    body:not(.embed) .chat {
+      height: calc(100dvh - 48px); margin: 24px 0;
+      border: 1px solid var(--surface-variant); border-radius: var(--r-bubble);
+      overflow: hidden;
+    }
+  }
+  body.embed { background: var(--bg-guest); }
+  body.embed .chat { max-width: none; }
+
+  /* Header */
+  header.bar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px; background: var(--surface-lowest);
+    border-bottom: 1px solid var(--surface-variant); flex-shrink: 0;
+  }
+  .avatar {
+    width: 40px; height: 40px; border-radius: 50%; background: var(--maya-gradient);
+    color: #ffffff; font-family: var(--font-headline); font-weight: 800; font-size: 17px;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    user-select: none;
+  }
+  .bar .who { flex: 1; min-width: 0; }
+  .bar h1 {
+    font-family: var(--font-headline); font-weight: 800; font-size: 16px;
+    letter-spacing: -0.01em; margin: 0; line-height: 1.2;
+  }
+  .bar .sub {
+    font-size: 12px; color: var(--on-surface-variant); font-weight: 500;
+    display: flex; align-items: center; gap: 6px; margin-top: 1px; white-space: nowrap; overflow: hidden;
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: #2e6b4f; flex-shrink: 0; }
+  .busy .dot { background: var(--primary); animation: presence 1.2s ease-in-out infinite; }
+  @keyframes presence { 50% { opacity: 0.35; } }
+  .bar button {
+    background: none; border: none; cursor: pointer; color: var(--on-surface-variant);
+    width: 36px; height: 36px; border-radius: var(--r-md); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; padding: 0;
+    transition: background 150ms ease;
+  }
+  .bar button:hover { background: var(--surface-low); }
+  .bar button:focus-visible, .chip:focus-visible, .composer button:focus-visible {
+    outline: 2px solid var(--primary); outline-offset: 2px;
+  }
+  #close { display: none; }
+  body.embed #close { display: flex; }
+
+  /* Feed */
+  main#feed {
+    flex: 1; overflow-y: auto; padding: 16px 14px 8px; scroll-behavior: smooth;
+    display: flex; flex-direction: column;
+  }
+  main#feed > * { flex-shrink: 0; }
+  @media (prefers-reduced-motion: reduce) { main#feed { scroll-behavior: auto; } }
+
+  .intro { text-align: center; padding: 18px; margin: auto 0; }
+  .intro .avatar { width: 56px; height: 56px; font-size: 24px; margin: 0 auto 12px; }
+  .intro h2 { font-family: var(--font-headline); font-weight: 800; font-size: 18px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .intro p { font-size: 13px; color: var(--on-surface-variant); line-height: 1.55; margin: 0 auto; max-width: 34ch; }
+  .intro .hint { font-size: 12px; margin-top: 14px; color: var(--on-surface-variant); }
+
+  .msg { display: flex; gap: 8px; margin-bottom: 10px; align-items: flex-end; }
+  .msg .mini {
+    width: 26px; height: 26px; border-radius: 50%; background: var(--maya-gradient);
+    color: #fff; font-family: var(--font-headline); font-weight: 800; font-size: 12px;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .msg .stack { display: flex; flex-direction: column; gap: 3px; max-width: 82%; }
+  .bubble {
+    padding: 10px 14px; font-size: 14px; line-height: 1.45; white-space: pre-wrap;
+    overflow-wrap: anywhere; border-radius: var(--r-bubble);
+  }
+  .msg.in .bubble {
+    background: var(--surface-lowest); border: 1px solid var(--surface-variant);
+    border-bottom-left-radius: var(--r-sm); color: var(--on-surface);
+  }
+  .msg.out { justify-content: flex-end; }
+  .msg.out .stack { align-items: flex-end; }
+  .msg.out .bubble {
+    background: var(--primary); color: #ffffff; border-bottom-right-radius: var(--r-sm);
+  }
+  .meta { font-size: 10px; color: var(--on-surface-variant); font-weight: 500; padding: 0 4px; }
+
+  .sys { display: flex; justify-content: center; margin: 12px 0; }
+  .sys .pill {
+    background: var(--surface-container); color: var(--on-surface-variant);
+    font-size: 12px; line-height: 1.45; padding: 7px 14px; border-radius: var(--r-lg);
+    text-align: center; max-width: 90%;
+  }
+  .sys.warn .pill { background: #f6e3ea; color: var(--on-error-container); }
+  .sys .pill button {
+    display: inline-block; margin-left: 8px; border: none; cursor: pointer;
+    background: var(--surface-lowest); color: var(--primary); font-weight: 600;
+    font-size: 12px; font-family: var(--font-body); padding: 3px 10px; border-radius: var(--r-md);
+  }
+
+  /* One gesture: a new message settles. Never re-animated on load. */
+  .settle { animation: settle 260ms var(--ease); }
+  @keyframes settle { from { opacity: 0; transform: translateY(8px); } }
+
+  /* Typing indicator — the only continuous motion, and only while a reply is composing. */
+  #typing { display: none; }
+  body.busy #typing { display: flex; }
+  #typing .bubble { display: inline-flex; gap: 5px; align-items: center; padding: 13px 14px; }
+  #typing .d {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--outline);
+    animation: breath 1.05s ease-in-out infinite;
+  }
+  #typing .d:nth-child(2) { animation-delay: 0.17s; }
+  #typing .d:nth-child(3) { animation-delay: 0.34s; }
+  @keyframes breath { 40% { opacity: 0.3; transform: translateY(-3px); } }
+  @media (prefers-reduced-motion: reduce) {
+    .settle { animation: none; }
+    #typing .d, .busy .dot { animation: none; }
+  }
+
+  /* Quick-intent chips — wrap so the «позвать человека» escape hatch is never clipped. */
+  .chips {
+    display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 14px 2px; flex-shrink: 0;
+  }
+  .chip {
+    flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid #d9c2f5; background: #f1e7fc; color: var(--on-tertiary-container);
+    font-family: var(--font-body); font-size: 12.5px; font-weight: 600;
+    padding: 7px 13px; border-radius: 999px; cursor: pointer;
+    transition: background 150ms ease, transform 150ms var(--ease);
+  }
+  .chip:hover { background: #e9d9fa; }
+  .chip:active { transform: scale(0.97); }
+  .chip .material-symbols-outlined { font-size: 15px; }
+  .chip[disabled] { opacity: 0.55; cursor: default; }
+
+  /* Composer */
+  footer.composer {
+    display: flex; align-items: flex-end; gap: 8px;
+    padding: 10px 14px calc(12px + env(safe-area-inset-bottom)); flex-shrink: 0;
+    background: var(--bg-guest);
+  }
+  .composer .field {
+    flex: 1; display: flex; align-items: flex-end;
+    background: var(--surface-lowest); border: 1px solid var(--surface-variant);
+    border-radius: var(--r-bubble); padding: 4px 6px 4px 14px;
+    transition: border-color 150ms ease;
+  }
+  .composer .field:focus-within { border-color: var(--primary); }
+  .composer textarea {
+    flex: 1; border: none; outline: none; resize: none; background: transparent;
+    font-family: var(--font-body); font-size: 14px; line-height: 1.4; color: var(--on-surface);
+    padding: 8px 0; max-height: 108px; min-height: 20px;
+  }
+  .composer textarea::placeholder { color: var(--on-surface-variant); }
+  .composer #send {
+    width: 42px; height: 42px; border: none; border-radius: 14px; cursor: pointer;
+    background: var(--maya-gradient); color: #ffffff; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 150ms var(--ease), opacity 150ms ease;
+  }
+  .composer #send:hover { transform: translateY(-1px); }
+  .composer #send:active { transform: scale(0.94); }
+  .composer #send[disabled] { opacity: 0.5; cursor: default; transform: none; }
+  .disclaimer {
+    text-align: center; font-size: 10.5px; color: var(--on-surface-variant);
+    padding: 0 16px 8px; background: var(--bg-guest); flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="chat">
+    <header class="bar">
+      <div class="avatar" aria-hidden="true">M</div>
+      <div class="who">
+        <h1>Майя</h1>
+        <div class="sub"><span class="dot" aria-hidden="true"></span><span id="sub">ИИ-ассистент салона</span></div>
+      </div>
+      <button id="restart" title="Начать заново" aria-label="Начать диалог заново"><span class="material-symbols-outlined" style="font-size:20px">restart_alt</span></button>
+      <button id="close" title="Свернуть чат" aria-label="Свернуть чат"><span class="material-symbols-outlined" style="font-size:22px">close</span></button>
+    </header>
+
+    <main id="feed" aria-live="polite">
+      <div class="intro" id="intro">
+        <div class="avatar" aria-hidden="true">M</div>
+        <h2>Майя на связи</h2>
+        <p>Запись, цены, перенос визита — отвечаю сразу, в любое время. Я ИИ‑ассистент салона, и в любой момент можно позвать человека.</p>
+        <div class="hint">Выберите вопрос или напишите своё сообщение</div>
+      </div>
+      <div class="msg in" id="typing">
+        <div class="mini" aria-hidden="true">M</div>
+        <div class="stack"><div class="bubble" aria-label="Майя печатает"><span class="d"></span><span class="d"></span><span class="d"></span></div></div>
+      </div>
+    </main>
+
+    <div class="chips" id="chips" role="group" aria-label="Быстрые вопросы">
+      <button class="chip" data-say="Здравствуйте! Хочу записаться."><span class="material-symbols-outlined">event_available</span>Записаться</button>
+      <button class="chip" data-say="Подскажите, пожалуйста, цены на услуги."><span class="material-symbols-outlined">sell</span>Цены</button>
+      <button class="chip" data-say="Хочу перенести свою запись."><span class="material-symbols-outlined">update</span>Перенести запись</button>
+      <button class="chip" data-say="Позовите, пожалуйста, человека."><span class="material-symbols-outlined">support_agent</span>Позвать человека</button>
+    </div>
+
+    <footer class="composer">
+      <div class="field">
+        <textarea id="input" rows="1" placeholder="Напишите сообщение…" aria-label="Сообщение для Майи"></textarea>
+      </div>
+      <button id="send" aria-label="Отправить"><span class="material-symbols-outlined icon-fill" style="font-size:20px">send</span></button>
+    </footer>
+    <div class="disclaimer">Майя — ИИ-ассистент. Запись подтверждается в системе салона.</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var API_BASE = (window.AIBEATY_API_BASE || "").replace(/\/+$/, "");
+  var EMBED = /(^|[?&])embed=1/.test(location.search);
+  if (EMBED) document.body.classList.add("embed");
+
+  var feed = document.getElementById("feed");
+  var typing = document.getElementById("typing");
+  var intro = document.getElementById("intro");
+  var input = document.getElementById("input");
+  var sendBtn = document.getElementById("send");
+  var chips = Array.prototype.slice.call(document.querySelectorAll(".chip"));
+  var busy = false;
+  var lastFailed = null;
+
+  // --- session + local transcript ---
+  function rid() {
+    try { return crypto.randomUUID(); } catch (e) {
+      return String(Date.now()) + "-" + Math.random().toString(16).slice(2, 10);
+    }
+  }
+  var store = { get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+                set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+                del: function (k) { try { localStorage.removeItem(k); } catch (e) {} } };
+  var SESSION_KEY = "aibeaty.chat.session";
+  var LOG_KEY = "aibeaty.chat.log";
+  var sessionId = store.get(SESSION_KEY);
+  if (!sessionId) { sessionId = "web-" + rid(); store.set(SESSION_KEY, sessionId); }
+  var log = [];
+  try { log = JSON.parse(store.get(LOG_KEY) || "[]") || []; } catch (e) { log = []; }
+  function saveLog() { store.set(LOG_KEY, JSON.stringify(log.slice(-80))); }
+
+  // --- rendering ---
+  function el(html) {
+    var t = document.createElement("template");
+    t.innerHTML = html.trim();
+    return t.content.firstChild;
+  }
+  function esc(v) {
+    return String(v == null ? "" : v).replace(/[&<>"']/g, function (ch) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+    });
+  }
+  function timeLabel(ts) {
+    var d = ts ? new Date(ts) : new Date();
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  function scrollDown() { feed.scrollTop = feed.scrollHeight; }
+
+  function nodeFor(entry, animate) {
+    var cls = animate ? " settle" : "";
+    if (entry.k === "sys" || entry.k === "warn") {
+      return el('<div class="sys' + (entry.k === "warn" ? " warn" : "") + cls + '"><div class="pill">' + esc(entry.t) + (entry.retry ? ' <button type="button" data-retry>Повторить</button>' : "") + "</div></div>");
+    }
+    if (entry.k === "out") {
+      return el('<div class="msg out' + cls + '"><div class="stack"><div class="bubble">' + esc(entry.t) + '</div><span class="meta">' + esc(timeLabel(entry.ts)) + "</span></div></div>");
+    }
+    return el('<div class="msg in' + cls + '"><div class="mini" aria-hidden="true">M</div><div class="stack"><div class="bubble">' + esc(entry.t) + '</div><span class="meta">Майя · ' + esc(timeLabel(entry.ts)) + "</span></div></div>");
+  }
+  function append(entry, animate) {
+    if (entry.k !== "warn") { log.push(entry); saveLog(); }
+    if (log.length && intro.parentNode) intro.remove();
+    var node = nodeFor(entry, animate !== false);
+    feed.insertBefore(node, typing);
+    scrollDown();
+    return node;
+  }
+  // restore transcript without re-animating
+  if (log.length) {
+    intro.remove();
+    log.forEach(function (entry) { feed.insertBefore(nodeFor(entry, false), typing); });
+    scrollDown();
+  }
+
+  // --- salon name in the header ---
+  fetch(API_BASE + "/api/assistant/health").then(function (r) { return r.json(); }).then(function (data) {
+    if (data && data.salon) document.getElementById("sub").textContent = "ИИ-ассистент · " + data.salon;
+  }).catch(function () {});
+
+  // --- conversation ---
+  function setBusy(value) {
+    busy = value;
+    document.body.classList.toggle("busy", value);
+    sendBtn.disabled = value;
+    chips.forEach(function (chip) { chip.disabled = value; });
+    if (value) scrollDown();
+  }
+
+  // Post one turn to Maya. The typing indicator stays visible for a natural
+  // 0.8–2s pause even when the server answers faster.
+  function postTurn(text) {
+    if (busy) return;
+    var started = Date.now();
+    var minTyping = 800 + Math.random() * 1200;
+    setBusy(true);
+    function finish(handler) {
+      var wait = Math.max(0, minTyping - (Date.now() - started));
+      setTimeout(function () { setBusy(false); handler(); }, wait);
+    }
+    fetch(API_BASE + "/api/assistant/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: sessionId, message: text, channel: "Webchat" })
+    }).then(function (response) {
+      return response.json().then(function (data) { return { status: response.status, data: data }; });
+    }).then(function (result) {
+      finish(function () {
+        var data = result.data || {};
+        if (result.status === 429 || data.error === "rate_limited") {
+          append({ k: "sys", t: "Слишком много сообщений подряд — подождите минутку и попробуйте снова." });
+          return;
+        }
+        if (result.status >= 400 || data.error) { fail(text); return; }
+        if (data.reply === null) {
+          append({ k: "sys", t: "Диалог у команды салона — вам ответят прямо здесь." });
+          return;
+        }
+        append({ k: "in", t: String(data.reply || ""), ts: Date.now() });
+      });
+    }).catch(function () {
+      finish(function () { fail(text); });
+    });
+  }
+
+  function send(text) {
+    text = String(text || "").trim();
+    if (!text || busy) return;
+    lastFailed = null;
+    append({ k: "out", t: text, ts: Date.now() });
+    input.value = "";
+    autosize();
+    postTurn(text);
+  }
+
+  function fail(text) {
+    lastFailed = text;
+    var node = append({ k: "warn", t: "Майя отошла на минутку — попробуйте ещё раз.", retry: true });
+    var retry = node.querySelector("[data-retry]");
+    if (retry) retry.addEventListener("click", function () {
+      node.remove();
+      if (lastFailed && !busy) {
+        var again = lastFailed;
+        lastFailed = null;
+        postTurn(again); // the outgoing bubble is already on screen — resend transparently
+      }
+    });
+  }
+
+  // --- composer ---
+  function autosize() {
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 108) + "px";
+  }
+  input.addEventListener("input", autosize);
+  input.addEventListener("keydown", function (event) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      send(input.value);
+    }
+  });
+  sendBtn.addEventListener("click", function () { send(input.value); });
+  chips.forEach(function (chip) {
+    chip.addEventListener("click", function () { send(chip.getAttribute("data-say")); });
+  });
+
+  // --- header actions ---
+  document.getElementById("restart").addEventListener("click", function () {
+    store.del(LOG_KEY);
+    store.del(SESSION_KEY);
+    location.reload();
+  });
+  document.getElementById("close").addEventListener("click", function () {
+    try { parent.postMessage({ type: "aibeaty:close" }, "*"); } catch (e) {}
+  });
+})();
+</script>
+</body></html>
