@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Salon OS - Maya Daily Digest</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@500;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+  /* Tokens mirror apps/platform/tailwind.config.js (Luminous Core M3 light system). */
+  :root {
+    --bg: #f5f6f7;
+    --surface-lowest: #ffffff;
+    --surface-low: #eff1f2;
+    --surface-container: #e6e8ea;
+    --surface-high: #e0e3e4;
+    --surface-variant: #dadddf;
+    --on-surface: #2c2f30;
+    --on-surface-variant: #595c5d;
+    --outline: #757778;
+    --outline-variant: #abadae;
+    --primary: #4d2afa;
+    --primary-container: #9c93ff;
+    --on-primary-container: #1b007a;
+    --tertiary: #7a25db;
+    --tertiary-container: #c79eff;
+    --on-tertiary-container: #450087;
+    --secondary: #006384;
+    --secondary-container: #97daff;
+    --on-secondary-container: #004d68;
+    --error: #b41340;
+    --error-container: #f74b6d;
+    --on-error-container: #510017;
+    --r-sm: 0.125rem;
+    --r-lg: 0.25rem;
+    --r-xl: 0.5rem;
+    --r-full: 0.75rem;
+    --font-headline: "Manrope", sans-serif;
+    --font-body: "Inter", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--on-surface);
+    font-family: var(--font-body);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  .material-symbols-outlined { font-variation-settings: "FILL" 0, "wght" 400; vertical-align: middle; }
+  .icon-fill { font-variation-settings: "FILL" 1; }
+
+  .shell { max-width: 1060px; margin: 0 auto; padding: 24px 24px 64px; }
+
+  header.top {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 8px 0 20px;
+  }
+  .brand-badge {
+    width: 40px; height: 40px; border-radius: var(--r-xl);
+    background: var(--primary-container); color: var(--on-primary-container);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  header.top h1 {
+    font-family: var(--font-headline); font-weight: 800; letter-spacing: -0.02em;
+    font-size: 20px; margin: 0; color: #17181b;
+  }
+  header.top .sub { font-size: 12px; color: var(--on-surface-variant); font-weight: 500; margin-top: 1px; }
+  .day-nav { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .day-nav button, .day-nav input {
+    font-family: var(--font-body); font-size: 13px; font-weight: 500; color: var(--on-surface);
+    background: var(--surface-container); border: 1px solid var(--surface-variant);
+    border-radius: var(--r-lg); padding: 7px 10px; cursor: pointer;
+    transition: background 150ms ease;
+  }
+  .day-nav button:hover { background: var(--surface-high); }
+  .day-nav input { cursor: auto; }
+
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 26px; }
+  .kpi {
+    background: var(--surface-low); border-radius: var(--r-xl); padding: 14px 16px;
+  }
+  .kpi .num { font-family: var(--font-headline); font-weight: 800; font-size: 26px; letter-spacing: -0.02em; }
+  .kpi .lbl { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--on-surface-variant); margin-top: 2px; }
+  .kpi.alert { background: var(--error-container); color: var(--on-error-container); }
+  .kpi.alert .lbl { color: var(--on-error-container); }
+  .kpi.book { background: var(--secondary-container); color: var(--on-secondary-container); }
+  .kpi.book .lbl { color: var(--on-secondary-container); }
+
+  section { margin-bottom: 26px; }
+  section > h2 {
+    font-family: var(--font-headline); font-weight: 700; font-size: 14px; letter-spacing: -0.01em;
+    display: flex; align-items: center; gap: 8px; margin: 0 0 10px;
+  }
+  section > h2 .material-symbols-outlined { font-size: 18px; color: var(--on-surface-variant); }
+  .rows { background: var(--surface-lowest); border: 1px solid var(--surface-variant); border-radius: var(--r-xl); overflow: hidden; }
+  .row {
+    display: flex; gap: 14px; align-items: flex-start; padding: 12px 16px;
+    border-top: 1px solid var(--surface-low); transition: background 150ms ease;
+  }
+  .row:first-child { border-top: 0; }
+  .row:hover { background: var(--surface-low); }
+  .row .when { font-size: 12px; color: var(--on-surface-variant); font-weight: 500; min-width: 46px; padding-top: 2px; }
+  .row .what { flex: 1; min-width: 0; }
+  .row .what .t { font-weight: 600; font-size: 13.5px; }
+  .row .what .d { font-size: 12.5px; color: var(--on-surface-variant); margin-top: 2px; overflow-wrap: anywhere; }
+  .chip {
+    display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 8px;
+    border-radius: var(--r-full); background: var(--surface-container); color: var(--on-surface-variant);
+    white-space: nowrap;
+  }
+  .chip.err { background: var(--error-container); color: var(--on-error-container); }
+  .chip.ok { background: var(--secondary-container); color: var(--on-secondary-container); }
+  .chip.vio { background: var(--tertiary-container); color: var(--on-tertiary-container); }
+  .empty { padding: 18px 16px; font-size: 13px; color: var(--on-surface-variant); }
+
+  table.conv { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.conv th {
+    text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--on-surface-variant); font-weight: 600; padding: 10px 16px; background: var(--surface-low);
+    white-space: nowrap;
+  }
+  table.conv td { padding: 10px 16px; border-top: 1px solid var(--surface-low); vertical-align: top; }
+  table.conv td .d { color: var(--on-surface-variant); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
+  .table-scroll { overflow-x: auto; }
+
+  footer.note { font-size: 12px; color: var(--outline); padding-top: 8px; }
+  footer.note a { color: var(--primary); text-decoration: none; font-weight: 500; }
+
+  /* Structural reveal, once, subtle — matches the flat system, no theatrics. */
+  .reveal { opacity: 0; transform: translateY(6px); animation: rise 340ms cubic-bezier(0.2, 0, 0, 1) forwards; }
+  @media (prefers-reduced-motion: reduce) { .reveal { animation: none; opacity: 1; transform: none; } }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="top">
+    <div class="brand-badge"><span class="material-symbols-outlined icon-fill">support_agent</span></div>
+    <div>
+      <h1>Maya Daily Digest</h1>
+      <div class="sub" id="subtitle">Luminous Core · assistant activity</div>
+    </div>
+    <div class="day-nav">
+      <button id="prev" title="Previous day"><span class="material-symbols-outlined" style="font-size:16px">chevron_left</span></button>
+      <input id="day" type="date" />
+      <button id="next" title="Next day"><span class="material-symbols-outlined" style="font-size:16px">chevron_right</span></button>
+    </div>
+  </header>
+
+  <div class="kpis" id="kpis"></div>
+
+  <section id="sec-escalations">
+    <h2><span class="material-symbols-outlined">priority_high</span>Escalations — read these first</h2>
+    <div class="rows" id="escalations"></div>
+  </section>
+
+  <section id="sec-bookings">
+    <h2><span class="material-symbols-outlined">event_available</span>Bookings by Maya</h2>
+    <div class="rows" id="bookings"></div>
+  </section>
+
+  <section id="sec-owner">
+    <h2><span class="material-symbols-outlined">mail</span>Messages left for you</h2>
+    <div class="rows" id="ownerMessages"></div>
+  </section>
+
+  <section id="sec-conv">
+    <h2><span class="material-symbols-outlined">forum</span>Conversations</h2>
+    <div class="rows table-scroll" id="conversations"></div>
+  </section>
+
+  <footer class="note">
+    Data: <span id="genat"></span> · threads live in the
+    <a href="./unified-inbox-luminous-core.html">Unified Inbox</a>
+  </footer>
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+
+  function fmtTime(iso) {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function esc(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, (ch) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    })[ch]);
+  }
+
+  function kpi(num, label, cls) {
+    return '<div class="kpi ' + (cls || "") + ' reveal"><div class="num">' + esc(num) + '</div><div class="lbl">' + esc(label) + "</div></div>";
+  }
+
+  function emptyRow(text) { return '<div class="empty">' + esc(text) + "</div>"; }
+
+  function render(data) {
+    $("subtitle").textContent = (data.salon || "Luminous Core") + " · " + data.day;
+    $("genat").textContent = new Date(data.generatedAt).toLocaleString();
+    const t = data.totals;
+    $("kpis").innerHTML =
+      kpi(t.conversations, "Conversations") +
+      kpi(t.clientMessages, "Client messages") +
+      kpi(t.bookings, "Bookings", t.bookings ? "book" : "") +
+      kpi(t.reschedules + t.cancellations, "Moved / canceled") +
+      kpi(t.escalations, "Escalations", t.escalations ? "alert" : "") +
+      kpi(t.ownerMessages, "For the owner", t.ownerMessages ? "alert" : "");
+
+    $("escalations").innerHTML = data.escalations.length ? data.escalations.map((e) =>
+      '<div class="row reveal"><div class="when">' + fmtTime(e.time) + '</div><div class="what">' +
+      '<div class="t">' + esc(e.client || "Guest") + ' <span class="chip err">' + esc(e.reason) + "</span></div>" +
+      '<div class="d">' + esc(e.summary || "") + "</div></div></div>"
+    ).join("") : emptyRow("No escalations — a quiet day.");
+
+    $("bookings").innerHTML = data.bookings.length ? data.bookings.map((b) =>
+      '<div class="row reveal"><div class="when">' + fmtTime(b.time) + '</div><div class="what">' +
+      '<div class="t">' + esc(b.client) + " — " + esc(b.service) +
+      ' <span class="chip ' + (b.type === "booking" ? "ok" : "vio") + '">' + esc(b.type) + "</span></div>" +
+      '<div class="d">' + esc([b.stylist, b.day, b.slot, b.price].filter(Boolean).join(" · ")) + "</div></div></div>"
+    ).join("") : emptyRow("No bookings made by Maya on this day.");
+
+    $("ownerMessages").innerHTML = data.ownerMessages.length ? data.ownerMessages.map((m) =>
+      '<div class="row reveal"><div class="when">' + fmtTime(m.time) + '</div><div class="what">' +
+      '<div class="t">' + esc(m.client || "Guest") + (m.topic ? ' <span class="chip">' + esc(m.topic) + "</span>" : "") + "</div>" +
+      '<div class="d">' + esc(m.message) + "</div></div></div>"
+    ).join("") : emptyRow("Nothing needs your reply.");
+
+    $("conversations").innerHTML = data.conversations.length ?
+      '<table class="conv"><thead><tr><th>Client</th><th>Channel</th><th>Msgs in / out</th><th>Actions</th><th>State</th></tr></thead><tbody>' +
+      data.conversations.map((c) =>
+        "<tr><td><div>" + esc(c.client) + '</div><div class="d">' + esc(c.preview || "") + "</div></td>" +
+        "<td>" + esc(c.channel) + "</td>" +
+        "<td>" + c.messagesIn + " / " + c.messagesOut + "</td>" +
+        "<td>" + c.bookings + "</td>" +
+        '<td><span class="chip ' + (c.escalated ? "err" : c.assistantState === "takeover" ? "vio" : "ok") + '">' +
+        esc(c.escalated ? "escalated" : c.assistantState || "active") + "</span></td></tr>"
+      ).join("") + "</tbody></table>"
+      : emptyRow("No assistant conversations on this day.");
+
+    document.querySelectorAll(".reveal").forEach((el, i) => { el.style.animationDelay = Math.min(i * 28, 280) + "ms"; });
+  }
+
+  function load(day) {
+    fetch("/api/assistant/digest" + (day ? "?day=" + encodeURIComponent(day) : ""))
+      .then((r) => r.json())
+      .then((data) => { $("day").value = data.day; render(data); })
+      .catch(() => { $("kpis").innerHTML = emptyRow("Could not load the digest — is the platform server running?"); });
+  }
+
+  function shiftDay(delta) {
+    const current = $("day").value;
+    const d = current ? new Date(current + "T12:00:00") : new Date();
+    d.setDate(d.getDate() + delta);
+    load(d.toISOString().slice(0, 10));
+  }
+
+  $("prev").addEventListener("click", () => shiftDay(-1));
+  $("next").addEventListener("click", () => shiftDay(1));
+  $("day").addEventListener("change", () => load($("day").value));
+  load("");
+})();
+</script>
+</body></html>
