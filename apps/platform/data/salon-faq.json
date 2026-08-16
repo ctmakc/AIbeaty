@@ -3,6 +3,7 @@
   "salon": {
     "name": "Luminous Core",
     "city": "Ottawa",
+    "timezone": "America/Toronto",
     "address": { "ru": "281 Bank Street, Оттава (вход с Bank St, второй этаж)", "en": "281 Bank Street, Ottawa (entrance on Bank St, 2nd floor)" },
     "phone": "(613) 555-0281",
     "email": "hello@luminouscore.demo"

@@ -7,8 +7,10 @@ const os = require("os");
 const path = require("path");
 
 // Isolated DB per run — must be set BEFORE requiring the store.
-const TEST_DB = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "aibeaty-test-")), "platform.db");
+const TEST_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "aibeaty-test-"));
+const TEST_DB = path.join(TEST_DIR, "platform.db");
 process.env.PLATFORM_DB_PATH = TEST_DB;
+delete process.env.ALERT_EMAIL; // alerts must stay OFF unless a test opts in
 
 const { createPlatformStore } = require("../backend/store");
 const { createAssistant } = require("../backend/assistant");
@@ -239,7 +241,11 @@ async function test(name, fn) {
 
   await test("hours gate: Saturday before 10:00 is refused in code, no row written", async () => {
     const assistant = createAssistant({ store, llm: scriptedLlm([]) });
-    const satOffset = (6 - new Date().getDay() + 7) % 7;
+    // If today IS Saturday, target NEXT Saturday so the same-day past-time
+    // floor (tested separately) does not shadow the weekly-hours floor.
+    let satOffset = 1;
+    while (assistant._internals.dayWeekday(satOffset) !== 6) satOffset += 1;
+    const satDay = satOffset === 7 ? "следующая суббота" : "суббота";
     const session = assistant._internals.ensureSession({ sessionId: "s-sat", channel: "Webchat" });
     const turn = { userMessage: "можно в субботу в 9:00 утра?", actionCommitted: false };
     // window itself
@@ -247,13 +253,13 @@ async function test(name, fn) {
     // direct 9:00 booking attempt → hard refusal
     const before = mayaAppointments().length;
     const refused = assistant._internals.executeTool(session, turn, "book_appointment", {
-      service: "женская стрижка", day: "суббота", time: "9:00", client_name: "Тест Суббота"
+      service: "женская стрижка", day: satDay, time: "9:00", client_name: "Тест Суббота"
     });
     assert.strictEqual(refused.error, "outside_hours", `expected outside_hours, got: ${JSON.stringify(refused).slice(0, 200)}`);
     assert.strictEqual(mayaAppointments().length, before, "no appointment row from the refused attempt");
     // availability never offers a slot outside the Saturday window
     const avail = assistant._internals.executeTool(session, turn, "check_availability", {
-      service: "женская стрижка", day: "суббота", time: "9:00"
+      service: "женская стрижка", day: satDay, time: "9:00"
     });
     assert.strictEqual(avail.opening_hours, "10:00-17:00");
     assert.ok(avail.requested_time && avail.requested_time.available === false, "9:00 Saturday must be unavailable");
@@ -267,12 +273,14 @@ async function test(name, fn) {
 
   await test("hours gate: Saturday inside hours still stages and commits", async () => {
     const assistant = createAssistant({ store, llm: scriptedLlm([]) });
-    const satOffset = (6 - new Date().getDay() + 7) % 7;
+    let satOffset = 1;
+    while (assistant._internals.dayWeekday(satOffset) !== 6) satOffset += 1;
+    const satDay = satOffset === 7 ? "следующая суббота" : "суббота";
     const session = assistant._internals.ensureSession({ sessionId: "s-sat-ok", channel: "Webchat" });
     const duration = store.db.prepare(`SELECT duration_minutes FROM services WHERE name = 'Women''s Precision Cut'`).get().duration_minutes;
     const slot = assistant._internals.freeSlots(satOffset, duration, null)[0];
     const timeArg = `${Math.floor(slot.startMinutes / 60)}:${String(slot.startMinutes % 60).padStart(2, "0")}`;
-    const args = { service: "женская стрижка", day: "суббота", time: timeArg, stylist: slot.stylist, client_name: "Тест Суббота ОК" };
+    const args = { service: "женская стрижка", day: satDay, time: timeArg, stylist: slot.stylist, client_name: "Тест Суббота ОК" };
     const stage = assistant._internals.executeTool(session, { userMessage: "давайте в субботу", actionCommitted: false }, "book_appointment", args);
     assert.strictEqual(stage.status, "needs_confirmation", JSON.stringify(stage).slice(0, 200));
     const commitTurn = { userMessage: "Да, всё верно!", actionCommitted: false };
@@ -353,6 +361,242 @@ async function test(name, fn) {
     assert.strictEqual(detect("хочу к Саре на стрижку").length, 0, "real stylist not flagged");
     assert.strictEqual(detect("можно записаться к Вам завтра?").length, 0, "pronoun not flagged");
     assert.strictEqual(detect("запишите меня на стрижку в субботу").length, 0, "no names — nothing flagged");
+  });
+
+  await test("affirmation: natural confirmations pass, rejections and questions never do", async () => {
+    const assistant = createAssistant({ store, llm: scriptedLlm([]) });
+    const yes = [
+      "Да, всё верно!", "Точно, отменяем", "Ага, отменяй", "Да-да, убирайте запись",
+      "Да, верно, переносите", "Подтверждаю!", "Давайте", "Отменяйте!", "Так, скасовуйте",
+      "Yes, cancel it", "Go ahead", "Записывайте!", "Ок, переносим",
+      "Да, точно. Отменяйте эту запись, я согласна"
+    ];
+    const no = [
+      "нет, не отменяем", "Нет", "не надо отменять", "Подождите, не отменяйте",
+      "Стоп, не переносите", "Ні, не скасовуйте", "No, don't cancel",
+      "а можно не отменять?", "не убирайте запись", "Я передумала, не надо",
+      "нет, давайте другое время", "Точно?", "Верно ли, что запись во вторник?",
+      "What time was it again?"
+    ];
+    for (const phrase of yes) {
+      assert.strictEqual(assistant._internals.isAffirmation(phrase), true, `should AFFIRM: "${phrase}"`);
+    }
+    for (const phrase of no) {
+      assert.strictEqual(assistant._internals.isAffirmation(phrase), false, `should NOT affirm: "${phrase}"`);
+    }
+  });
+
+  await test("cancel flow: 'Точно, отменяем' commits the cancellation in one turn", async () => {
+    const probe = createAssistant({ store, llm: scriptedLlm([]) });
+    const dayOffset = probe._internals.resolveDay("среда").offset;
+    const duration = store.db.prepare(`SELECT duration_minutes FROM services WHERE name = 'Women''s Precision Cut'`).get().duration_minutes;
+    const slot = probe._internals.freeSlots(dayOffset, duration, null)[0];
+    assert.ok(slot, "a free Wednesday slot exists");
+    const timeArg = `${Math.floor(slot.startMinutes / 60)}:${String(slot.startMinutes % 60).padStart(2, "0")}`;
+    const bookArgs = { service: "женская стрижка", day: "среда", time: timeArg, stylist: slot.stylist, client_name: "Тест Отмена" };
+    const assistant = createAssistant({
+      store,
+      llm: scriptedLlm([
+        toolCall("book_appointment", bookArgs),
+        text("Проверяю: женская стрижка, среда. Всё верно?"),
+        toolCall("book_appointment", bookArgs),
+        text("Вы записаны! Ждём вас в среду."),
+        toolCall("cancel_appointment", {}),
+        text("Проверяю: женская стрижка в среду. Отменяем?"),
+        toolCall("cancel_appointment", {}),
+        text("Готово, запись отменена. Если захотите вернуться — я всегда тут.")
+      ])
+    });
+    await assistant.chat({ sessionId: "s-cancel", message: `Запишите меня на женскую стрижку в среду в ${timeArg}, я Тест Отмена` });
+    await assistant.chat({ sessionId: "s-cancel", message: "Да, всё верно!" });
+    const booked = store.db.prepare(`SELECT * FROM appointments WHERE client_name = 'Тест Отмена'`).get();
+    assert.ok(booked && booked.appointment_status === "scheduled", "booking committed first");
+    const stage = await assistant.chat({ sessionId: "s-cancel", message: "Хочу отменить свою запись" });
+    assert.strictEqual(stage.state.pendingAction && stage.state.pendingAction.kind, "cancel", "cancel staged");
+    const done = await assistant.chat({ sessionId: "s-cancel", message: "Точно, отменяем" });
+    const row = store.db.prepare(`SELECT * FROM appointments WHERE client_name = 'Тест Отмена'`).get();
+    assert.strictEqual(row.appointment_status, "canceled", "row canceled after natural confirmation");
+    assert.strictEqual(done.state.pendingAction, null, "no re-stage loop");
+    assert.ok(/отменена/i.test(done.reply), `cancellation claim allowed after commit: ${done.reply}`);
+  });
+
+  await test("cancel flow: 'Нет, не отменяйте' re-asks and keeps the row", async () => {
+    const probe = createAssistant({ store, llm: scriptedLlm([]) });
+    const dayOffset = probe._internals.resolveDay("четверг").offset;
+    const duration = store.db.prepare(`SELECT duration_minutes FROM services WHERE name = 'Men''s Scissor Cut'`).get().duration_minutes;
+    const slot = probe._internals.freeSlots(dayOffset, duration, null)[0];
+    const timeArg = `${Math.floor(slot.startMinutes / 60)}:${String(slot.startMinutes % 60).padStart(2, "0")}`;
+    const bookArgs = { service: "мужская стрижка", day: "четверг", time: timeArg, stylist: slot.stylist, client_name: "Тест Отказ" };
+    const assistant = createAssistant({
+      store,
+      llm: scriptedLlm([
+        toolCall("book_appointment", bookArgs),
+        text("Проверяю: мужская стрижка, четверг. Всё верно?"),
+        toolCall("book_appointment", bookArgs),
+        text("Вы записаны! До четверга."),
+        toolCall("cancel_appointment", {}),
+        text("Проверяю: мужская стрижка в четверг. Отменяем?"),
+        toolCall("cancel_appointment", {}),
+        text("Хорошо, оставляю как есть — подтвердите, если всё же нужно отменить.")
+      ])
+    });
+    await assistant.chat({ sessionId: "s-cancelno", message: `Запишите на мужскую стрижку в четверг в ${timeArg}, я Тест Отказ` });
+    await assistant.chat({ sessionId: "s-cancelno", message: "Да, всё верно!" });
+    await assistant.chat({ sessionId: "s-cancelno", message: "Хочу отменить запись" });
+    const refused = await assistant.chat({ sessionId: "s-cancelno", message: "Нет, не отменяйте" });
+    const row = store.db.prepare(`SELECT * FROM appointments WHERE client_name = 'Тест Отказ'`).get();
+    assert.strictEqual(row.appointment_status, "scheduled", "rejection must never cancel");
+    assert.ok(!/отменена|canceled/i.test(refused.reply || ""), `no cancellation claim: ${refused.reply}`);
+  });
+
+  await test("empty reply: owner task is recorded on the SAME turn as the 'within the hour' promise", async () => {
+    const before = eventsOfType("owner_message").filter((event) => event.session_id === "s-empty").length;
+    assert.strictEqual(before, 0);
+    const assistant = createAssistant({ store, llm: scriptedLlm([text("")]) });
+    const result = await assistant.chat({ sessionId: "s-empty", message: "Какой у вас wifi-пароль для гостей?" });
+    assert.ok(/в течение часа/.test(result.reply), `promise present: ${result.reply}`);
+    assert.ok(result.state.gates.includes("empty_reply"));
+    const after = eventsOfType("owner_message").filter((event) => event.session_id === "s-empty");
+    assert.strictEqual(after.length, 1, "owner message recorded on the same turn");
+    assert.ok(/empty_reply/.test(after[0].payload_json), "tagged as empty_reply");
+  });
+
+  await test("markdown scrub: bullet-list service dump reaches the client as plain text", async () => {
+    const assistant = createAssistant({
+      store,
+      llm: scriptedLlm([
+        toolCall("get_services_and_prices", {}),
+        text("Вот что есть:\n- **Женская точная стрижка** — $85\n- **Мужская стрижка ножницами** — $55\nЧто выбираете?")
+      ])
+    });
+    const result = await assistant.chat({ sessionId: "s-md", message: "какие у вас услуги?" });
+    assert.ok(!result.reply.includes("**"), `no asterisks: ${result.reply}`);
+    assert.ok(!/^\s*-\s/m.test(result.reply), `no list markers: ${result.reply}`);
+    assert.ok(result.reply.includes("$85"), "grounded price survives");
+    assert.ok(result.state.gates.includes("markdown_scrub"));
+  });
+
+  await test("first-turn disclosure: prepended when missing, untouched when present, never on turn 2", async () => {
+    const missing = createAssistant({ store, llm: scriptedLlm([text("Мы работаем со вторника по субботу."), text("Да, и в субботу тоже.")]) });
+    const first = await missing.chat({ sessionId: "s-disc1", message: "Вы работаете по субботам?" });
+    assert.ok(/Майя/.test(first.reply) && /ИИ/.test(first.reply), `disclosure enforced: ${first.reply}`);
+    assert.ok(first.state.gates.includes("first_turn_disclosure"));
+    const second = await missing.chat({ sessionId: "s-disc1", message: "А по воскресеньям?" });
+    assert.ok(!second.state.gates.includes("first_turn_disclosure"), "no intro on later turns");
+    assert.ok(!/Я Майя, ИИ-ассистентка/.test(second.reply), `no forced intro on turn 2: ${second.reply}`);
+
+    const present = createAssistant({ store, llm: scriptedLlm([text("Привет! Я Майя, я ИИ-ассистентка салона. Мы открыты со вторника по субботу.")]) });
+    const own = await present.chat({ sessionId: "s-disc2", message: "Когда вы открыты?" });
+    assert.ok(!own.state.gates.includes("first_turn_disclosure"), "model's own disclosure accepted");
+    assert.strictEqual((own.reply.match(/Майя/g) || []).length, 1, `no double intro: ${own.reply}`);
+
+    const english = createAssistant({ store, llm: scriptedLlm([text("We're open Tuesday to Saturday.")]) });
+    const en = await english.chat({ sessionId: "s-disc3", message: "When are you open?" });
+    assert.ok(/Maya/.test(en.reply) && /AI/.test(en.reply), `EN intro matched: ${en.reply}`);
+  });
+
+  await test("complaint: client-facing reply carries feeling + apology + next step, escalates, fires alert", async () => {
+    const sent = [];
+    const assistant = createAssistant({
+      store,
+      llm: scriptedLlm([text("Вам ответит живой человек в течение часа.")]),
+      alertEmail: "owner@example.com",
+      alertFetch: async (url, options) => { sent.push({ url, body: JSON.parse(options.body) }); return { ok: true, status: 200 }; }
+    });
+    const result = await assistant.chat({ sessionId: "s-compl", message: "Вы испортили мне окрашивание, это ужасно!" });
+    assert.ok(/(прости|извин)/i.test(result.reply), `apology present: ${result.reply}`);
+    assert.ok(/(обидно|слышу вас)/i.test(result.reply), `feeling named: ${result.reply}`);
+    assert.ok(/в течение часа/.test(result.reply), `timeframe present: ${result.reply}`);
+    assert.ok(!/(скидк|акци|предложить вам|записать вас на)/i.test(result.reply), `no upsell: ${result.reply}`);
+    assert.strictEqual(result.state.assistantState, "escalated");
+    assert.ok(eventsOfType("escalation").some((event) => event.session_id === "s-compl" && JSON.parse(event.payload_json).reason === "complaint"));
+    assert.strictEqual(sent.length, 1, "exactly one alert email fired");
+    assert.ok(sent[0].url.includes("formsubmit.co/ajax/owner@example.com"));
+    assert.ok(sent[0].body._subject.includes("жалоба"), sent[0].body._subject);
+    assert.ok(sent[0].body.thread.includes(result.state.conversationId), "thread deep-link present");
+    assert.ok(eventsOfType("alert_email").some((event) => event.session_id === "s-compl"));
+  });
+
+  await test("alerts: throttled to one email per conversation per 10 minutes; off without ALERT_EMAIL", async () => {
+    const sent = [];
+    const assistant = createAssistant({
+      store,
+      llm: scriptedLlm([
+        toolCall("leave_message_for_owner", { message: "Вопрос про сертификаты", topic: "gift" }),
+        text("Передам владельцу — ответ будет в течение часа!"),
+        toolCall("leave_message_for_owner", { message: "Ещё вопрос про сертификаты", topic: "gift" }),
+        text("И это тоже передам — ответят в течение часа.")
+      ]),
+      alertEmail: "owner@example.com",
+      alertFetch: async (url, options) => { sent.push(JSON.parse(options.body)); return { ok: true, status: 200 }; }
+    });
+    await assistant.chat({ sessionId: "s-alert", message: "У вас есть подарочные сертификаты?" });
+    await assistant.chat({ sessionId: "s-alert", message: "А электронные сертификаты бывают?" });
+    assert.strictEqual(sent.length, 1, `throttle: got ${sent.length} emails`);
+    assert.ok(sent[0]._subject.includes("сообщение владельцу"), sent[0]._subject);
+
+    const offSent = [];
+    const off = createAssistant({
+      store,
+      llm: scriptedLlm([toolCall("leave_message_for_owner", { message: "Тихий вопрос" }), text("Передам — ответ в течение часа.")]),
+      alertFetch: async (url, options) => { offSent.push(url); return { ok: true, status: 200 }; }
+    });
+    await off.chat({ sessionId: "s-alert-off", message: "Можно вопрос владельцу?" });
+    assert.strictEqual(offSent.length, 0, "no ALERT_EMAIL → no network calls");
+  });
+
+  await test("same-day floor: past times refused, future times bookable (fixed salon clock)", async () => {
+    const allOpen = {};
+    for (let weekday = 0; weekday < 7; weekday++) allOpen[String(weekday)] = { open: "09:00", close: "19:00" };
+    const faqPath = path.join(TEST_DIR, "faq-allopen.json");
+    fs.writeFileSync(faqPath, JSON.stringify({
+      salon: { name: "Test Salon", city: "Testville", timezone: "UTC" },
+      hours: allOpen,
+      topics: []
+    }));
+    const afternoon = createAssistant({
+      store, llm: scriptedLlm([]), faqPath,
+      clock: () => new Date("2026-08-12T14:00:00Z") // 14:00 salon time
+    });
+    assert.strictEqual(afternoon._internals.timezone, "UTC");
+    assert.strictEqual(afternoon._internals.salonMinutesNow(), 840);
+    assert.strictEqual(afternoon._internals.minStartForOffset(0), 840, "floor = now rounded to step");
+    const duration = store.db.prepare(`SELECT duration_minutes FROM services WHERE name = 'Women''s Precision Cut'`).get().duration_minutes;
+    const todaySlots = afternoon._internals.freeSlots(0, duration, null);
+    assert.ok(todaySlots.length > 0, "today still has future slots");
+    assert.ok(todaySlots.every((slot) => slot.startMinutes >= 840), `no past slot offered: ${todaySlots.map((s) => s.time).join("; ")}`);
+
+    const session = afternoon._internals.ensureSession({ sessionId: "s-past", channel: "Webchat" });
+    const turn = { userMessage: "можно сегодня в 10:00?", actionCommitted: false };
+    const avail = afternoon._internals.executeTool(session, turn, "check_availability", { service: "женская стрижка", day: "сегодня", time: "10:00" });
+    assert.ok(avail.requested_time && avail.requested_time.available === false, "10:00 today must be unavailable");
+    assert.ok(/past/.test(avail.requested_time.reason), avail.requested_time.reason);
+
+    const refused = afternoon._internals.executeTool(session, turn, "book_appointment", {
+      service: "женская стрижка", day: "сегодня", time: "10:00", client_name: "Тест Прошлое"
+    });
+    assert.strictEqual(refused.error, "time_in_past", JSON.stringify(refused).slice(0, 200));
+    assert.strictEqual(store.db.prepare(`SELECT COUNT(*) AS count FROM appointments WHERE client_name = 'Тест Прошлое'`).get().count, 0, "no row for the past time");
+
+    const slot = todaySlots[0];
+    const timeArg = `${Math.floor(slot.startMinutes / 60)}:${String(slot.startMinutes % 60).padStart(2, "0")}`;
+    const args = { service: "женская стрижка", day: "сегодня", time: timeArg, stylist: slot.stylist, client_name: "Тест Будущее" };
+    const stage = afternoon._internals.executeTool(session, { userMessage: "давайте сегодня", actionCommitted: false }, "book_appointment", args);
+    assert.strictEqual(stage.status, "needs_confirmation", JSON.stringify(stage).slice(0, 200));
+    const commit = afternoon._internals.executeTool(session, { userMessage: "Да, всё верно!", actionCommitted: false }, "book_appointment", args);
+    assert.strictEqual(commit.status, "booked", JSON.stringify(commit).slice(0, 200));
+    const row = store.db.prepare(`SELECT * FROM appointments WHERE client_name = 'Тест Будущее'`).get();
+    assert.ok(row && row.day_offset === 0 && row.start_minutes >= 840, "future same-day slot committed");
+
+    const evening = createAssistant({
+      store, llm: scriptedLlm([]), faqPath,
+      clock: () => new Date("2026-08-12T22:30:00Z") // 22:30 — day is over
+    });
+    const eveningSession = evening._internals.ensureSession({ sessionId: "s-past-eve", channel: "Webchat" });
+    const over = evening._internals.executeTool(eveningSession, { userMessage: "сегодня можно?", actionCommitted: false }, "check_availability", { service: "женская стрижка", day: "сегодня" });
+    assert.strictEqual(over.day_over, true, JSON.stringify(over).slice(0, 200));
+    assert.ok(Array.isArray(over.alternative_slots) && over.alternative_slots.length > 0, "next-day alternatives offered");
+    assert.strictEqual(evening._internals.freeSlots(0, duration, null).length, 0, "nothing offered for a finished day");
   });
 
   console.log(`\n${passed} passed, ${failures.length} failed`);

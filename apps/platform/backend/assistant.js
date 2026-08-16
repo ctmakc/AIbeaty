@@ -59,9 +59,32 @@ function createId(prefix) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function dayString(date = new Date()) {
-  const d = new Date(date);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+// --- salon timezone ---------------------------------------------------------
+// The server may run on a UTC box while the salon lives in another timezone.
+// Every "what day/time is it" decision uses the salon's zone, carried in
+// salon-faq.json (salon.timezone), defaulting to America/Toronto (Ottawa).
+const DEFAULT_TIMEZONE = "America/Toronto";
+
+function resolveTimezone(candidate) {
+  const value = String(candidate || "").trim() || DEFAULT_TIMEZONE;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return value;
+  } catch (error) {
+    return DEFAULT_TIMEZONE;
+  }
+}
+
+function tzDateString(date, tz) {
+  // en-CA renders as YYYY-MM-DD.
+  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+}
+
+function tzMinutesOfDay(date, tz) {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date);
+  const hour = Number((parts.find((part) => part.type === "hour") || {}).value || 0) % 24;
+  const minute = Number((parts.find((part) => part.type === "minute") || {}).value || 0);
+  return hour * 60 + minute;
 }
 
 function digitsOnly(value) {
@@ -91,9 +114,25 @@ function checkTriggers(text) {
   return null;
 }
 
+// Affirmation vs rejection for the read-back commit step. Safety order:
+// a question or ANY rejection token always wins (a false negative only
+// re-asks once; a false positive would commit without consent).
+const AFFIRM_BOUND = "[\\s,.!;:()«»\"'”—–-]";
+const AFFIRM_REJECTION_RE = new RegExp(
+  `(^|${AFFIRM_BOUND})(нет|ні|no|nope|not|не|don'?t|do not|never|stop|wait|стоп|подожди(те)?|погоди(те)?|постой(те)?|зачекай(те)?|отставить|передумал[аио]?|передумала?|передумав)(?=$|${AFFIRM_BOUND})`, "i");
+const AFFIRM_WORD_RE = new RegExp(
+  `(^|${AFFIRM_BOUND})(да|ага|угу|конечно|давай(те)?|подтверждаю|верно|точно|именно|разумеется|ок|окей|хорошо|добро|yes|yep|yeah|yup|sure|ok|okay|confirm(ed)?|correct|right|exactly|absolutely|так|авжеж|звісно|добре|вірно|підтверджую)(?=$|${AFFIRM_BOUND})`, "i");
+// Imperative / first-person-plural action verbs count as consent too:
+// «отменяем», «отменяй(те)», «переносите», «записывайте», «скасовуйте», "cancel it".
+const AFFIRM_ACTION_RE = /(отменя(ем|й|йте|ю)|отмен(и|ите)(?=$|[\s,.!])|убира(ем|й|йте)|убер(и|ите)(?=$|[\s,.!])|скасов(уємо|уй|уйте)|скасуй(те)?|перенос(им|и|ите|ьте)|перенес(и|ите|іть|емо)(?=$|[\s,.!])|запис(ывай|ывайте|ываем|уй|уйте|уємо)|оформля(й|йте|ем)|оформи(те)?(?=$|[\s,.!])|бронируй(те)?|броню(й|йте)|cancel (it|that|the appointment|my appointment)|please cancel|go ahead|do it|proceed|book it)/i;
+
 function isAffirmation(text) {
   const value = String(text || "").trim().toLowerCase();
-  if (/^(да|ага|угу|конечно|давай(те)?|подтверждаю|верно|точно|ок|окей|хорошо|ага давай|yes|yep|yeah|sure|ok|okay|confirm|correct|right|так|авжеж|добре|підтверджую)[\s!.,)"”👍🙏❤️]*$/i.test(value)) return true;
+  if (!value) return false;
+  if (/\?\s*[)!.…]*$/.test(value)) return false; // a question is never consent
+  if (AFFIRM_REJECTION_RE.test(value)) return false;
+  if (AFFIRM_WORD_RE.test(value)) return true;
+  if (AFFIRM_ACTION_RE.test(value)) return true;
   if (/(вс[её]|all)\s*(верно|правильно|вірно|correct|good|right)/i.test(value)) return true;
   if (/подтвержда|підтверджу|confirm/i.test(value)) return true;
   return false;
@@ -152,6 +191,57 @@ function localized(pack, language) {
   return pack[language] || pack.ru;
 }
 
+// --- first-turn AI disclosure (code-enforced backstop for the prompt rule) ---
+const FIRST_TURN_INTRO = {
+  ru: "Привет! Я Майя, ИИ-ассистентка салона.",
+  uk: "Вітаю! Я Майя, ШІ-асистентка салону.",
+  en: "Hi! I'm Maya, the salon's AI assistant."
+};
+// \b does not work for Cyrillic, so boundaries are spelled out.
+const DISCLOSURE_AI_RE = /(^|[^а-яёіїєґa-z0-9])(ии|ші|ai)([^а-яёіїєґa-z0-9]|$)|искусственн|штучн|artificial|virtual assistant|виртуальн|віртуальн/i;
+const LEADING_GREETING_RE = /^(привет|здравствуйте|добрый день|добрый вечер|доброе утро|вітаю|добрий день|добрий вечір|hi there|hi|hello|hey|good (morning|afternoon|evening))[!,.\s]+/i;
+
+function hasAiDisclosure(reply) {
+  return /(майя|maya|майї|майю|майи|майей|майєю)/i.test(String(reply || "")) && DISCLOSURE_AI_RE.test(String(reply || ""));
+}
+
+function withFirstTurnIntro(reply, language) {
+  const intro = localized(FIRST_TURN_INTRO, language);
+  const rest = String(reply || "").replace(LEADING_GREETING_RE, "").trim() || String(reply || "").trim();
+  return `${intro} ${rest}`.trim();
+}
+
+// --- complaint turn: the CLIENT-facing reply must carry all three beats -----
+// (feeling named, one sincere apology, concrete next step with a timeframe).
+const COMPLAINT_BEAT_RES = [
+  /(обидно|неприятно|досадно|расстро|огорч|понимаю( вас|, как| тебя)?|слышу вас|прикро|чую вас|засмучен|сумно|frustrating|upsetting|awful|i hear you|i understand|so sorry)/i,
+  /(прости|извин|перепрошу|вибач|мені шкода|мне жаль|sorry|apolog)/i,
+  /(в течение часа|протягом години|within the hour|за час|через час)/i
+];
+const COMPLAINT_REPLY = {
+  ru: "Слышу вас — это правда обидно, простите нас. Я уже всё передала владельцу: он увидит сообщение в течение часа и напишет вам прямо здесь. Спасибо, что рассказали.",
+  uk: "Чую вас — це справді прикро, вибачте нас. Я вже все передала власнику: він побачить повідомлення протягом години й напише вам просто тут. Дякую, що розповіли.",
+  en: "I hear you — that's genuinely upsetting, and I'm sorry. I've passed everything to the owner: they'll see this within the hour and reply to you right here. Thank you for telling us."
+};
+
+function complaintBeatsPresent(reply) {
+  return COMPLAINT_BEAT_RES.every((re) => re.test(String(reply || "")));
+}
+
+// --- escalation alert emails (categories shown in the owner's inbox) --------
+const ALERT_CATEGORIES = {
+  medical: "медицина",
+  complaint: "жалоба",
+  explicit_request: "просьба человека",
+  assistant_requested: "передача человеку",
+  repeated_misunderstanding: "непонимание",
+  price_dispute: "спор о цене",
+  frustration: "недовольство",
+  owner_message: "сообщение владельцу"
+};
+const ALERT_THROTTLE_MS = 10 * 60 * 1000;
+const ALERT_TIMEOUT_MS = 5000;
+
 // --- service / stylist / day / time resolution -----------------------------
 const SERVICE_ALIASES = [
   { re: /балаяж|balayage|airtouch|аиртач/i, names: ["Full Balayage"] },
@@ -209,12 +299,28 @@ const STYLIST_PRAISE_RE = /отличн|прекрасн|замечательн|
 // Markers of an honest correction ("no such stylist") in the reply.
 const STYLIST_CORRECTION_RE = /такого (мастера|майстра|стилиста|стиліста)|(мастера|майстра) (с именем|по имени|на ім'?я)? ?[«"']?[\wа-яёіїєґ'’-]* ?[»"']? ?(у нас )?(нет|немає)|в нашей команде нет|в нашій команді немає|не работает у нас|у нас не працює|у нас (нет|немає) (мастера|майстра)|don'?t have (a |any )?stylist|no stylist (named|called)|isn'?t (on|part of) (our|the) (team|staff)|not on (our|the) (team|staff)/i;
 
-function createAssistant({ store, llm, faqPath }) {
+function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, alertLinkBase } = {}) {
   const db = store.db;
   const resolvedFaqPath = faqPath || path.join(__dirname, "..", "data", "salon-faq.json");
   const faq = JSON.parse(fs.readFileSync(resolvedFaqPath, "utf8"));
   const OPENING_HOURS = buildOpeningHours(faq.hours);
+  const TIMEZONE = resolveTimezone(faq.salon && faq.salon.timezone);
+  const clockNow = typeof clock === "function" ? clock : () => new Date();
+  // Alert emails: off unless ALERT_EMAIL is set (env or option). No secrets —
+  // formsubmit.co relays to the configured inbox.
+  const ALERT_EMAIL = alertEmail !== undefined ? String(alertEmail || "") : String(process.env.ALERT_EMAIL || "");
+  const ALERT_LINK_BASE = String(alertLinkBase || process.env.ALERT_LINK_BASE || "https://aibeaty.remolda.com").replace(/\/+$/, "");
+  const alertHttp = alertFetch || ((...args) => fetch(...args));
+  const alertLastSent = new Map(); // conversationId → last alert ms (in-memory throttle)
   const rateBuckets = new Map();
+
+  function salonMinutesNow() {
+    return tzMinutesOfDay(clockNow(), TIMEZONE);
+  }
+
+  function salonDayString(date) {
+    return tzDateString(date || clockNow(), TIMEZONE);
+  }
 
   // ---------- opening hours (hard floor for offered AND committed slots) ----------
   function hoursForOffset(offset) {
@@ -233,6 +339,15 @@ function createAssistant({ store, llm, faqPath }) {
     return fromOffset + 1;
   }
 
+  // Same-day floor: today's slots may not start before "now" in the salon's
+  // timezone (rounded up to the next step). Blocks booking a time already past.
+  function minStartForOffset(offset) {
+    const window = hoursForOffset(offset);
+    if (!window) return null;
+    if (offset !== 0) return window[0];
+    return Math.max(window[0], Math.ceil(salonMinutesNow() / SLOT_STEP_MINUTES) * SLOT_STEP_MINUTES);
+  }
+
   // ---------- persistence helpers ----------
   function recordEvent(session, type, payload = {}) {
     db.prepare(`
@@ -242,7 +357,7 @@ function createAssistant({ store, llm, faqPath }) {
       createId("aevt"),
       session.id,
       session.conversation_id || "",
-      dayString(),
+      salonDayString(),
       type,
       JSON.stringify(payload),
       new Date().toISOString()
@@ -428,26 +543,31 @@ function createAssistant({ store, llm, faqPath }) {
 
   function referenceDate() {
     const ref = new Date(store.getLastUpdated());
-    return Number.isNaN(ref.getTime()) ? new Date() : ref;
+    return Number.isNaN(ref.getTime()) ? clockNow() : ref;
+  }
+
+  // Salon-timezone calendar date of the reference day, anchored at UTC midnight
+  // so weekday/offset math is DST-safe regardless of the server's own timezone.
+  function refDayUtcMs() {
+    const [y, m, d] = tzDateString(referenceDate(), TIMEZONE).split("-").map(Number);
+    return Date.UTC(y, m - 1, d);
   }
 
   function resolveDay(input) {
     const text = String(input || "").trim().toLowerCase();
-    const ref = referenceDate();
     if (!text || /сегодня|сьогодні|today|now/.test(text)) return { offset: 0 };
     if (/послезавтра|післязавтра/.test(text)) return { offset: 2 };
     if (/завтра|tomorrow/.test(text)) return { offset: 1 };
     const iso = text.match(/(\d{4})-(\d{2})-(\d{2})/);
     if (iso) {
-      const target = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
-      const base = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
-      const offset = Math.round((target - base) / 86400000);
+      const target = Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+      const offset = Math.round((target - refDayUtcMs()) / 86400000);
       if (offset >= 0 && offset <= 60) return { offset };
       return { error: "date_out_of_range" };
     }
     for (const day of WEEKDAYS) {
       if (day.re.test(text)) {
-        let offset = (day.index - ref.getDay() + 7) % 7;
+        let offset = (day.index - dayWeekday(0) + 7) % 7;
         if (offset === 0 && /следующ|наступн|next/.test(text)) offset = 7;
         return { offset };
       }
@@ -458,14 +578,12 @@ function createAssistant({ store, llm, faqPath }) {
   }
 
   function dayLabel(offset) {
-    const ref = referenceDate();
-    const date = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate() + offset);
-    return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    return new Date(refDayUtcMs() + offset * 86400000)
+      .toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
   }
 
   function dayWeekday(offset) {
-    const ref = referenceDate();
-    return new Date(ref.getFullYear(), ref.getMonth(), ref.getDate() + offset).getDay();
+    return new Date(refDayUtcMs() + offset * 86400000).getUTCDay();
   }
 
   function parseTimeFlexible(input) {
@@ -512,11 +630,12 @@ function createAssistant({ store, llm, faqPath }) {
   function freeSlots(dayOffset, durationMinutes, stylistRow) {
     const window = hoursForOffset(dayOffset);
     if (!window) return [];
+    const minStart = minStartForOffset(dayOffset);
     const stylists = stylistRow ? [stylistRow] : store.getStylistRows();
     const slots = [];
     for (const stylist of stylists) {
       const open = [];
-      for (let start = window[0]; start + durationMinutes <= window[1]; start += SLOT_STEP_MINUTES) {
+      for (let start = minStart; start + durationMinutes <= window[1]; start += SLOT_STEP_MINUTES) {
         if (slotFree(dayOffset, stylist.id, start, start + durationMinutes)) open.push(start);
       }
       // Spread picks across the whole day (morning/midday/afternoon), not just
@@ -571,6 +690,7 @@ function createAssistant({ store, llm, faqPath }) {
       tone: "error"
     });
     session.state.escalated = reason;
+    sendAlertEmail(session, ALERT_CATEGORIES[reason] || reason, { summary: String(summary || "").slice(0, 300) });
   }
 
   function leaveOwnerMessage(session, message, topic) {
@@ -581,6 +701,55 @@ function createAssistant({ store, llm, faqPath }) {
       icon: "mail",
       tone: "tertiary"
     });
+    sendAlertEmail(session, ALERT_CATEGORIES.owner_message, { owner_note: String(message).slice(0, 300) });
+  }
+
+  // ---------- escalation alert emails ----------
+  // Fire-and-forget POST to formsubmit.co (5s timeout, non-blocking, failures
+  // only logged). Throttle: max one email per conversation per 10 minutes.
+  function sendAlertEmail(session, category, extra = {}) {
+    if (!ALERT_EMAIL) return;
+    const conversationId = session.conversation_id || "";
+    const lastSent = alertLastSent.get(conversationId) || 0;
+    if (Date.now() - lastSent < ALERT_THROTTLE_MS) return;
+    alertLastSent.set(conversationId, Date.now());
+    const conversation = getConversationRow(conversationId) || {};
+    const recentClientMessages = db.prepare(`
+      SELECT text_value FROM conversation_messages
+      WHERE conversation_id = ? AND type = 'incoming'
+      ORDER BY sort_order DESC LIMIT 3
+    `).all(conversationId).reverse();
+    const phone = session.client_phone || conversation.contact_phone || "";
+    const payload = Object.assign({
+      _subject: `🔔 AIbeaty / Майя: нужен человек — ${category}`,
+      salon: (faq.salon && faq.salon.name) || "Salon",
+      category,
+      client: [conversation.name || "клиент", phone].filter(Boolean).join(" · "),
+      last_messages: recentClientMessages.map((row) => `— ${String(row.text_value).slice(0, 220)}`).join("\n") || "(сообщений нет)",
+      thread: `${ALERT_LINK_BASE}/screens/unified-inbox-luminous-core.html?conversationId=${encodeURIComponent(conversationId)}`
+    }, extra);
+    recordEvent(session, "alert_email", { category, to_domain: ALERT_EMAIL.split("@")[1] || "" });
+    let timer = null;
+    try {
+      const controller = new AbortController();
+      timer = setTimeout(() => controller.abort(), ALERT_TIMEOUT_MS);
+      Promise.resolve(alertHttp(`https://formsubmit.co/ajax/${ALERT_EMAIL}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      })).then((response) => {
+        clearTimeout(timer);
+        if (!response || !response.ok) console.error(`[assistant] alert email failed: HTTP ${response ? response.status : "?"}`);
+        else console.log(`[assistant] alert email sent (${category})`);
+      }).catch((error) => {
+        clearTimeout(timer);
+        console.error(`[assistant] alert email failed: ${String((error && error.message) || error).slice(0, 140)}`);
+      });
+    } catch (error) {
+      if (timer) clearTimeout(timer);
+      console.error(`[assistant] alert email failed: ${String((error && error.message) || error).slice(0, 140)}`);
+    }
   }
 
   // ---------- tools ----------
@@ -779,17 +948,38 @@ function createAssistant({ store, llm, faqPath }) {
             stylists: store.getStylistRows().map((row) => ({ name: row.name, role: row.role }))
           };
         }
+        const minStart = minStartForOffset(day.offset);
+        if (day.offset === 0 && minStart + service.duration_minutes > window[1]) {
+          const altOffset = nextOpenOffset(0);
+          return {
+            day_over: true,
+            salon_time_now: minutesLabel(salonMinutesNow()),
+            note: `Today's hours (${hoursLabelForOffset(0)}) are already over — offer NOTHING for today. Nearest open day: ${dayLabel(altOffset)} (${hoursLabelForOffset(altOffset)}).`,
+            service: serviceSummary(session, service),
+            alternative_day: dayLabel(altOffset),
+            alternative_slots: freeSlots(altOffset, service.duration_minutes, stylist)
+              .map((slot) => ({ stylist: slot.stylist, time: slot.time }))
+          };
+        }
         const slots = freeSlots(day.offset, service.duration_minutes, stylist);
         const payload = {
           service: serviceSummary(session, service),
           day: dayLabel(day.offset),
           opening_hours: hoursLabelForOffset(day.offset),
           slots: slots.map((slot) => ({ stylist: slot.stylist, time: slot.time })),
-          note: slots.length ? "Offer 2-3 of these real slots. Times not listed may still be free — check them via the `time` argument." : "No free slots that day; suggest another day."
+          note: slots.length ? "Offer 2-3 of these real slots. Times not listed may still be free — check them via the `time` argument." : "No free slots that day; suggest another day.",
+          next_step: "When the client settles on a slot, call book_appointment right away — it returns the official read-back. Never compose a read-back or confirmation question yourself."
         };
+        if (day.offset === 0) payload.salon_time_now = minutesLabel(salonMinutesNow());
         if (args.time) {
           const wanted = parseTimeFlexible(args.time);
-          if (wanted !== null && wanted >= window[0] && wanted + service.duration_minutes <= window[1]) {
+          if (wanted !== null && day.offset === 0 && wanted < minStart && wanted >= window[0] && wanted + service.duration_minutes <= window[1]) {
+            payload.requested_time = {
+              time: store.formatTimeRange(wanted, wanted + service.duration_minutes),
+              available: false,
+              reason: `already in the past — it is ${minutesLabel(salonMinutesNow())} salon time today. Offer only the future slots listed.`
+            };
+          } else if (wanted !== null && wanted >= window[0] && wanted + service.duration_minutes <= window[1]) {
             const candidates = stylist ? [stylist] : store.getStylistRows();
             const freeWith = candidates.filter((row) => slotFree(day.offset, row.id, wanted, wanted + service.duration_minutes));
             payload.requested_time = {
@@ -836,7 +1026,9 @@ function createAssistant({ store, llm, faqPath }) {
               time: store.formatTimeRange(upcoming.start_minutes, upcoming.end_minutes)
             } : null
           },
-          note: "Use at most ONE remembered detail, casually. Never recite the whole file."
+          note: upcoming
+            ? "Use at most ONE remembered detail, casually. If the client wants to cancel or move the upcoming visit, IMMEDIATELY call cancel_appointment / reschedule_appointment — the tool returns the official read-back. Never compose your own confirmation question first."
+            : "Use at most ONE remembered detail, casually. Never recite the whole file."
         };
       }
 
@@ -862,6 +1054,14 @@ function createAssistant({ store, llm, faqPath }) {
             error: "outside_hours",
             note: `Working hours on ${dayLabel(day.offset)} are ${hoursLabelForOffset(day.offset)}. Tell the client honestly and offer times inside those hours.`,
             alternatives: freeSlots(day.offset, service.duration_minutes, null).map((s) => ({ stylist: s.stylist, time: s.time }))
+          };
+        }
+        if (day.offset === 0 && startMinutes < minStartForOffset(0)) {
+          const alternatives = freeSlots(0, service.duration_minutes, null).map((s) => ({ stylist: s.stylist, time: s.time }));
+          return {
+            error: "time_in_past",
+            note: `That time today is already past — it is ${minutesLabel(salonMinutesNow())} salon time. Refuse honestly.${alternatives.length ? " Offer these future slots instead." : ` Nothing is left today; suggest ${dayLabel(nextOpenOffset(0))}.`}`,
+            alternatives
           };
         }
         let stylist = args.stylist ? resolveStylist(args.stylist) : null;
@@ -977,6 +1177,13 @@ function createAssistant({ store, llm, faqPath }) {
         if (startMinutes < window[0] || endMinutes > window[1]) {
           return { error: "outside_hours", note: `Working hours on ${dayLabel(day.offset)} are ${hoursLabelForOffset(day.offset)}.` };
         }
+        if (day.offset === 0 && startMinutes < minStartForOffset(0)) {
+          return {
+            error: "time_in_past",
+            note: `That time today is already past — it is ${minutesLabel(salonMinutesNow())} salon time. Offer a future time instead.`,
+            alternatives: freeSlots(0, duration, null).map((s) => ({ stylist: s.stylist, time: s.time }))
+          };
+        }
         const stylist = args.stylist ? resolveStylist(args.stylist) : db.prepare(`SELECT * FROM stylists WHERE id = ?`).get(target.stylist_id);
         if (!stylist) return { stylist_not_found: true, stylists: store.getStylistRows().map((row) => ({ name: row.name, role: row.role })) };
         const busy = busyIntervals(day.offset, stylist.id).some((iv) =>
@@ -1083,7 +1290,16 @@ function createAssistant({ store, llm, faqPath }) {
 
       case "request_human_handoff": {
         turn.handoffRequested = true;
-        escalate(session, args.reason || "assistant_requested", turn.userMessage);
+        // Keep the escalation reason canonical (it drives digest grouping and
+        // the alert-email category); the model's free-text goes into the summary.
+        const KNOWN_REASONS = ["explicit_request", "medical", "complaint", "price_dispute", "frustration", "repeated_misunderstanding"];
+        const rawReason = String(args.reason || "").trim();
+        const reason = KNOWN_REASONS.includes(rawReason) ? rawReason : (turn.escalateAfter || "assistant_requested");
+        const summary = [
+          turn.userMessage,
+          rawReason && !KNOWN_REASONS.includes(rawReason) ? `Резюме Майи: ${rawReason}` : ""
+        ].filter(Boolean).join(" | ");
+        escalate(session, reason, summary);
         return { ok: true, note: "Conversation flagged for a human. Tell the client a person will reply here within the hour, then stay silent." };
       }
 
@@ -1101,6 +1317,13 @@ function createAssistant({ store, llm, faqPath }) {
     if (!reply) {
       gates.push("empty_reply");
       reply = localized(FALLBACKS.unknown, language);
+      // This fallback promises "вам напишут в течение часа" — back the promise
+      // with a real owner task on the SAME turn (mirror of the llm_error path).
+      leaveOwnerMessage(
+        session,
+        `Майя не смогла ответить (пустой ответ модели). Клиент ждёт ответа: "${String(turn.userMessage || "").slice(0, 200)}"`,
+        "empty_reply"
+      );
     }
 
     // Gate 1: booking claims require a committed DB write this turn.
@@ -1151,7 +1374,19 @@ function createAssistant({ store, llm, faqPath }) {
       reply = localized(FALLBACKS.unknown, language);
     }
 
-    // Gate 4: banned phrases (style scrub, non-blocking).
+    // Gate 4: plain-text scrub — every Maya surface (web chat bubble, Telegram)
+    // renders plain text, so markdown would show as literal asterisks/dashes.
+    const plain = reply
+      .replace(/^[ \t]*[-*•]\s+/gm, "")
+      .replace(/\*\*([^*\n]+)\*\*/g, "$1")
+      .replace(/__([^_\n]+)__/g, "$1")
+      .replace(/^#{1,4}\s+/gm, "");
+    if (plain !== reply) {
+      gates.push("markdown_scrub");
+      reply = plain;
+    }
+
+    // Gate 5: banned phrases (style scrub, non-blocking).
     for (const [re, replacement] of BANNED_REPLACEMENTS) {
       if (re.test(reply)) {
         gates.push("style_scrub");
@@ -1188,6 +1423,10 @@ function createAssistant({ store, llm, faqPath }) {
     persistMessage(session, "incoming", text);
     recordEvent(session, "message_in", { text: text.slice(0, 300) });
 
+    const isFirstTurn = db.prepare(`
+      SELECT COUNT(*) AS count FROM conversation_messages WHERE conversation_id = ? AND type = 'incoming'
+    `).get(session.conversation_id).count <= 1;
+
     const turn = {
       userMessage: text,
       actionCommitted: false,
@@ -1199,7 +1438,11 @@ function createAssistant({ store, llm, faqPath }) {
     // Hard triggers answer without the LLM; soft ones steer this turn then escalate.
     const trigger = checkTriggers(text);
     if (trigger && trigger.hard) {
-      const reply = localized(FALLBACKS.handoff, session.language);
+      let reply = localized(FALLBACKS.handoff, session.language);
+      if (isFirstTurn && !hasAiDisclosure(reply)) {
+        reply = withFirstTurnIntro(reply, session.language);
+        recordEvent(session, "gate_triggered", { gates: ["first_turn_disclosure"] });
+      }
       escalate(session, trigger.reason, text);
       persistMessage(session, "outgoing", reply);
       recordEvent(session, "message_out", { text: reply.slice(0, 300), canned: trigger.reason });
@@ -1207,10 +1450,6 @@ function createAssistant({ store, llm, faqPath }) {
       return { reply, state: sessionState(session, { escalated: trigger.reason }) };
     }
     if (trigger) turn.escalateAfter = trigger.reason;
-
-    const isFirstTurn = db.prepare(`
-      SELECT COUNT(*) AS count FROM conversation_messages WHERE conversation_id = ? AND type = 'incoming'
-    `).get(session.conversation_id).count <= 1;
 
     let clientHint = "";
     if (session.client_id) {
@@ -1226,7 +1465,7 @@ function createAssistant({ store, llm, faqPath }) {
     if (turn.escalateAfter === "complaint") {
       messages.push({
         role: "system",
-        content: "Клиент жалуется. Режим жалобы: выслушай, назови чувство, извинись один раз, предложи бесплатную коррекцию в 48 часов как «передам владельцу, он подтвердит», вызови request_human_handoff с кратким резюме. Ничего не продавай."
+        content: "Клиент жалуется. В ЭТОМ ЖЕ ответе КЛИЕНТУ обязательно все три такта: (1) назови чувство («это правда обидно»), (2) один раз искренне извинись, (3) конкретный следующий шаг со сроком — владелец увидит сообщение в течение часа и напишет прямо здесь; можно упомянуть бесплатную коррекцию в 48 часов как «передам владельцу, он подтвердит». Ничего не продавай. Затем вызови request_human_handoff с кратким резюме."
       });
     } else if (turn.escalateAfter) {
       messages.push({
@@ -1273,10 +1512,9 @@ function createAssistant({ store, llm, faqPath }) {
         reply = assistantMessage.content;
         break;
       }
-      if (reply === null) {
-        session.state.failedUnderstandings = (session.state.failedUnderstandings || 0) + 1;
-        reply = localized(FALLBACKS.unknown, session.language);
-      }
+      // reply === null (tool rounds exhausted) falls through as empty: gateReply's
+      // empty_reply path substitutes the honest fallback, records the owner task
+      // that backs its "within the hour" promise, and counts the failure once.
     } catch (error) {
       session.state.failedUnderstandings = (session.state.failedUnderstandings || 0) + 1;
       leaveOwnerMessage(session, `Сбой ИИ-ассистента: ${String(error.message || error).slice(0, 200)}. Клиент ждёт ответа: "${text.slice(0, 150)}"`, "llm_error");
@@ -1284,7 +1522,26 @@ function createAssistant({ store, llm, faqPath }) {
     }
 
     const gated = gateReply(session, turn, reply);
-    if (gated.gates.some((gate) => gate !== "style_scrub")) {
+
+    // Complaint turns: the CLIENT-facing reply must carry all three beats
+    // (feeling + one apology + concrete next step with timeframe). If the model
+    // condensed them away, replace with the deterministic 3-beat reply.
+    if (turn.escalateAfter === "complaint" && !complaintBeatsPresent(gated.reply)) {
+      recordEvent(session, "gate_triggered", { gates: ["complaint_rewrite"], original: gated.reply.slice(0, 300) });
+      gated.gates.push("complaint_rewrite");
+      gated.reply = localized(COMPLAINT_REPLY, session.language);
+    }
+
+    // First reply of a new session must disclose the AI identity (prompt rule,
+    // enforced here as a backstop).
+    if (isFirstTurn && !hasAiDisclosure(gated.reply)) {
+      recordEvent(session, "gate_triggered", { gates: ["first_turn_disclosure"] });
+      gated.gates.push("first_turn_disclosure");
+      gated.reply = withFirstTurnIntro(gated.reply, session.language);
+    }
+
+    const BENIGN_GATES = new Set(["style_scrub", "markdown_scrub", "complaint_rewrite", "first_turn_disclosure"]);
+    if (gated.gates.some((gate) => !BENIGN_GATES.has(gate))) {
       session.state.failedUnderstandings = (session.state.failedUnderstandings || 0) + 1;
     }
 
@@ -1352,7 +1609,7 @@ function createAssistant({ store, llm, faqPath }) {
 
   // ---------- owner digest ----------
   function getDigest(day) {
-    const targetDay = /^\d{4}-\d{2}-\d{2}$/.test(String(day || "")) ? day : dayString();
+    const targetDay = /^\d{4}-\d{2}-\d{2}$/.test(String(day || "")) ? day : salonDayString();
     const events = db.prepare(`
       SELECT * FROM assistant_events WHERE day = ? ORDER BY created_at ASC
     `).all(targetDay).map((row) => Object.assign(row, { payload: JSON.parse(row.payload_json || "{}") }));
@@ -1436,6 +1693,14 @@ function createAssistant({ store, llm, faqPath }) {
       freeSlots,
       hoursForOffset,
       nextOpenOffset,
+      dayWeekday,
+      minStartForOffset,
+      salonMinutesNow,
+      timezone: TIMEZONE,
+      hasAiDisclosure,
+      withFirstTurnIntro,
+      complaintBeatsPresent,
+      sendAlertEmail,
       detectUnknownStylists,
       ensureSession,
       loadSession,
