@@ -24,6 +24,43 @@
   var API_ORIGIN;
   try { API_ORIGIN = new URL(API_BASE).origin; } catch (e) { return; }
 
+  // --- UI locale (AIBEATY_L10N) ---
+  // Maya mirrors the language of the guest's messages; the widget chrome follows
+  // the browser: ru → Russian, uk → Ukrainian, anything else → English.
+  // Labels and the teaser only — no layout, no logic.
+  var AIBEATY_L10N = {
+    ru: {
+      panel: "Чат с Майей — ассистентом салона",
+      open: "Открыть чат с Майей — ассистентом салона",
+      minimize: "Свернуть чат с Майей",
+      teaser: "Есть вопрос? Майя онлайн и ответит сразу.",
+      hideTeaser: "Скрыть подсказку"
+    },
+    uk: {
+      panel: "Чат з Майєю — асистентом салону",
+      open: "Відкрити чат з Майєю — асистентом салону",
+      minimize: "Згорнути чат з Майєю",
+      teaser: "Є питання? Майя онлайн і відповість одразу.",
+      hideTeaser: "Сховати підказку"
+    },
+    en: {
+      panel: "Chat with Maya — the salon assistant",
+      open: "Open chat with Maya, the salon assistant",
+      minimize: "Minimize Maya chat",
+      teaser: "Have a question? Maya is online and replies right away.",
+      hideTeaser: "Dismiss hint"
+    }
+  };
+  var LOCALE = (function () {
+    var raw = "";
+    try { raw = String(navigator.language || (navigator.languages && navigator.languages[0]) || ""); } catch (e) {}
+    raw = raw.toLowerCase();
+    if (raw.indexOf("ru") === 0) return "ru";
+    if (raw.indexOf("uk") === 0) return "uk";
+    return raw ? "en" : "ru";
+  })();
+  var T = AIBEATY_L10N[LOCALE];
+
   function boot() {
     var mount = document.getElementById("aibeaty-chat");
     if (!mount) {
@@ -86,13 +123,13 @@
     var panel = document.createElement("div");
     panel.className = "panel hidden";
     panel.setAttribute("role", "dialog");
-    panel.setAttribute("aria-label", "Чат с Майей — ассистентом салона");
+    panel.setAttribute("aria-label", T.panel);
     shadow.appendChild(panel);
 
     var launcher = document.createElement("button");
     launcher.type = "button";
     launcher.className = "launcher";
-    launcher.setAttribute("aria-label", "Открыть чат с Майей — ассистентом салона");
+    launcher.setAttribute("aria-label", T.open);
     launcher.setAttribute("aria-expanded", "false");
     var chatIcon = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5c-5.52 0-10 3.7-10 8.27 0 2.6 1.45 4.92 3.72 6.44-.14.98-.55 2.19-1.5 3.13-.23.22-.06.61.26.58 1.9-.16 3.53-.9 4.66-1.62.9.24 1.87.37 2.86.37 5.52 0 10-3.7 10-8.27S17.52 2.5 12 2.5zM7.6 12.2a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zm4.4 0a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zm4.4 0a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6z"/></svg>';
     var closeIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
@@ -113,7 +150,7 @@
       if (open && !iframeLoaded) {
         var iframe = document.createElement("iframe");
         iframe.src = CHAT_URL;
-        iframe.title = "Чат с Майей — ассистентом салона";
+        iframe.title = T.panel;
         iframe.allow = "clipboard-write";
         panel.appendChild(iframe);
         iframeLoaded = true;
@@ -122,7 +159,7 @@
       launcher.classList.toggle("open-mobile", open);
       launcher.innerHTML = open ? closeIcon : chatIcon;
       launcher.setAttribute("aria-expanded", open ? "true" : "false");
-      launcher.setAttribute("aria-label", open ? "Свернуть чат с Майей" : "Открыть чат с Майей — ассистентом салона");
+      launcher.setAttribute("aria-label", open ? T.minimize : T.open);
       if (open) killTeaser();
     }
 
@@ -146,7 +183,9 @@
         teaser = document.createElement("div");
         teaser.className = "teaser";
         teaser.setAttribute("role", "status");
-        teaser.innerHTML = '<span class="dot" aria-hidden="true"></span><span>Есть вопрос? Майя онлайн и ответит сразу.</span><button class="x" type="button" aria-label="Скрыть подсказку">&#10005;</button>';
+        teaser.innerHTML = '<span class="dot" aria-hidden="true"></span><span></span><button class="x" type="button">&#10005;</button>';
+        teaser.children[1].textContent = T.teaser;
+        teaser.children[2].setAttribute("aria-label", T.hideTeaser);
         teaser.addEventListener("click", function (event) {
           if (event.target && event.target.className === "x") { killTeaser(); return; }
           setOpen(true);
