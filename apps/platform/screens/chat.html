@@ -281,6 +281,141 @@
   var busy = false;
   var lastFailed = null;
 
+  // --- UI locale (AIBEATY_L10N) ---
+  // Maya mirrors the language of the guest's messages; the chrome follows the
+  // browser: ru → Russian (source markup), uk → Ukrainian, anything else → English.
+  // Labels, placeholders, quick chips and error states only — no layout, no logic.
+  var AIBEATY_L10N = {
+    ru: {
+      title: "Майя — чат с салоном",
+      name: "Майя",
+      sub: "ИИ-ассистент салона",
+      subPrefix: "ИИ-ассистент · ",
+      restartTitle: "Начать заново",
+      restartAria: "Начать диалог заново",
+      closeTitle: "Свернуть чат",
+      introTitle: "Майя на связи",
+      introText: "Запись, цены, перенос визита — отвечаю сразу, в любое время. Я ИИ‑ассистент салона, и в любой момент можно позвать человека.",
+      introHint: "Выберите вопрос или напишите своё сообщение",
+      typingAria: "Майя печатает",
+      chipsAria: "Быстрые вопросы",
+      chips: [
+        { label: "Записаться", say: "Здравствуйте! Хочу записаться." },
+        { label: "Цены", say: "Подскажите, пожалуйста, цены на услуги." },
+        { label: "Перенести запись", say: "Хочу перенести свою запись." },
+        { label: "Позвать человека", say: "Позовите, пожалуйста, человека." }
+      ],
+      placeholder: "Напишите сообщение…",
+      inputAria: "Сообщение для Майи",
+      sendAria: "Отправить",
+      disclaimer: "Майя — ИИ-ассистент. Запись подтверждается в системе салона.",
+      metaName: "Майя",
+      errRate: "Слишком много сообщений подряд — подождите минутку и попробуйте снова.",
+      errTeam: "Диалог у команды салона — вам ответят прямо здесь.",
+      errFail: "Майя отошла на минутку — попробуйте ещё раз.",
+      retry: "Повторить"
+    },
+    uk: {
+      title: "Майя — чат із салоном",
+      name: "Майя",
+      sub: "ШІ-асистент салону",
+      subPrefix: "ШІ-асистент · ",
+      restartTitle: "Почати заново",
+      restartAria: "Почати діалог заново",
+      closeTitle: "Згорнути чат",
+      introTitle: "Майя на зв’язку",
+      introText: "Запис, ціни, перенесення візиту — відповідаю одразу, будь-коли. Я ШІ‑асистент салону, і будь-якої миті можна покликати людину.",
+      introHint: "Оберіть питання або напишіть своє повідомлення",
+      typingAria: "Майя друкує",
+      chipsAria: "Швидкі питання",
+      chips: [
+        { label: "Записатися", say: "Добрий день! Хочу записатися." },
+        { label: "Ціни", say: "Підкажіть, будь ласка, ціни на послуги." },
+        { label: "Перенести запис", say: "Хочу перенести свій запис." },
+        { label: "Покликати людину", say: "Покличте, будь ласка, людину." }
+      ],
+      placeholder: "Напишіть повідомлення…",
+      inputAria: "Повідомлення для Майї",
+      sendAria: "Надіслати",
+      disclaimer: "Майя — ШІ-асистент. Запис підтверджується в системі салону.",
+      metaName: "Майя",
+      errRate: "Забагато повідомлень поспіль — зачекайте хвилинку і спробуйте ще раз.",
+      errTeam: "Діалог у команди салону — вам дадуть відповідь просто тут.",
+      errFail: "Майя відійшла на хвилинку — спробуйте ще раз.",
+      retry: "Повторити"
+    },
+    en: {
+      title: "Maya — salon chat",
+      name: "Maya",
+      sub: "Salon AI assistant",
+      subPrefix: "AI assistant · ",
+      restartTitle: "Start over",
+      restartAria: "Restart the conversation",
+      closeTitle: "Minimize chat",
+      introTitle: "Maya is here",
+      introText: "Booking, prices, rescheduling — I reply right away, any time. I’m the salon’s AI assistant, and you can ask for a human at any moment.",
+      introHint: "Pick a question or type your own message",
+      typingAria: "Maya is typing",
+      chipsAria: "Quick questions",
+      chips: [
+        { label: "Book a visit", say: "Hi! I’d like to book an appointment." },
+        { label: "Prices", say: "Could you tell me your service prices, please?" },
+        { label: "Reschedule", say: "I’d like to reschedule my appointment." },
+        { label: "Talk to a human", say: "Could I talk to a human, please?" }
+      ],
+      placeholder: "Type a message…",
+      inputAria: "Message for Maya",
+      sendAria: "Send",
+      disclaimer: "Maya is an AI assistant. Bookings are confirmed in the salon’s system.",
+      metaName: "Maya",
+      errRate: "Too many messages in a row — give it a minute and try again.",
+      errTeam: "The salon team has this conversation — they will reply right here.",
+      errFail: "Maya stepped away for a minute — please try again.",
+      retry: "Retry"
+    }
+  };
+  var LOCALE = (function () {
+    var raw = "";
+    try { raw = String(navigator.language || (navigator.languages && navigator.languages[0]) || ""); } catch (e) {}
+    raw = raw.toLowerCase();
+    if (raw.indexOf("ru") === 0) return "ru";
+    if (raw.indexOf("uk") === 0) return "uk";
+    return raw ? "en" : "ru";
+  })();
+  var T = AIBEATY_L10N[LOCALE];
+
+  (function applyLocale() {
+    document.documentElement.lang = LOCALE;
+    document.title = T.title;
+    document.querySelector(".bar h1").textContent = T.name;
+    document.getElementById("sub").textContent = T.sub;
+    var restart = document.getElementById("restart");
+    restart.title = T.restartTitle;
+    restart.setAttribute("aria-label", T.restartAria);
+    var closeBtn = document.getElementById("close");
+    closeBtn.title = T.closeTitle;
+    closeBtn.setAttribute("aria-label", T.closeTitle);
+    document.querySelector("#intro h2").textContent = T.introTitle;
+    document.querySelector("#intro p").textContent = T.introText;
+    document.querySelector("#intro .hint").textContent = T.introHint;
+    document.querySelector("#typing .bubble").setAttribute("aria-label", T.typingAria);
+    document.getElementById("chips").setAttribute("aria-label", T.chipsAria);
+    chips.forEach(function (chip, i) {
+      var def = T.chips[i];
+      if (!def) return;
+      chip.setAttribute("data-say", def.say);
+      if (chip.lastChild && chip.lastChild.nodeType === 3) {
+        chip.lastChild.textContent = def.label;
+      } else {
+        chip.appendChild(document.createTextNode(def.label));
+      }
+    });
+    input.placeholder = T.placeholder;
+    input.setAttribute("aria-label", T.inputAria);
+    sendBtn.setAttribute("aria-label", T.sendAria);
+    document.querySelector(".disclaimer").textContent = T.disclaimer;
+  })();
+
   // --- session + local transcript ---
   function rid() {
     try { return crypto.randomUUID(); } catch (e) {
@@ -328,12 +463,12 @@
   function nodeFor(entry, animate) {
     var cls = animate ? " settle" : "";
     if (entry.k === "sys" || entry.k === "warn") {
-      return el('<div class="sys' + (entry.k === "warn" ? " warn" : "") + cls + '"><div class="pill">' + esc(entry.t) + (entry.retry ? ' <button type="button" data-retry>Повторить</button>' : "") + "</div></div>");
+      return el('<div class="sys' + (entry.k === "warn" ? " warn" : "") + cls + '"><div class="pill">' + esc(entry.t) + (entry.retry ? ' <button type="button" data-retry>' + esc(T.retry) + "</button>" : "") + "</div></div>");
     }
     if (entry.k === "out") {
       return el('<div class="msg out' + cls + '"><div class="stack"><div class="bubble">' + esc(entry.t) + '</div><span class="meta">' + esc(timeLabel(entry.ts)) + "</span></div></div>");
     }
-    return el('<div class="msg in' + cls + '"><div class="mini" aria-hidden="true">M</div><div class="stack"><div class="bubble">' + mdInline(entry.t) + '</div><span class="meta">Майя · ' + esc(timeLabel(entry.ts)) + "</span></div></div>");
+    return el('<div class="msg in' + cls + '"><div class="mini" aria-hidden="true">M</div><div class="stack"><div class="bubble">' + mdInline(entry.t) + '</div><span class="meta">' + esc(T.metaName) + " · " + esc(timeLabel(entry.ts)) + "</span></div></div>");
   }
   function append(entry, animate) {
     if (entry.k !== "warn") { log.push(entry); saveLog(); }
@@ -352,7 +487,7 @@
 
   // --- salon name in the header ---
   fetch(API_BASE + "/api/assistant/health").then(function (r) { return r.json(); }).then(function (data) {
-    if (data && data.salon) document.getElementById("sub").textContent = "ИИ-ассистент · " + data.salon;
+    if (data && data.salon) document.getElementById("sub").textContent = T.subPrefix + data.salon;
   }).catch(function () {});
 
   // --- conversation ---
@@ -385,12 +520,12 @@
       finish(function () {
         var data = result.data || {};
         if (result.status === 429 || data.error === "rate_limited") {
-          append({ k: "sys", t: "Слишком много сообщений подряд — подождите минутку и попробуйте снова." });
+          append({ k: "sys", t: T.errRate });
           return;
         }
         if (result.status >= 400 || data.error) { fail(text); return; }
         if (data.reply === null) {
-          append({ k: "sys", t: "Диалог у команды салона — вам ответят прямо здесь." });
+          append({ k: "sys", t: T.errTeam });
           return;
         }
         append({ k: "in", t: String(data.reply || ""), ts: Date.now() });
@@ -412,7 +547,7 @@
 
   function fail(text) {
     lastFailed = text;
-    var node = append({ k: "warn", t: "Майя отошла на минутку — попробуйте ещё раз.", retry: true });
+    var node = append({ k: "warn", t: T.errFail, retry: true });
     var retry = node.querySelector("[data-retry]");
     if (retry) retry.addEventListener("click", function () {
       node.remove();
