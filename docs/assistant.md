@@ -99,6 +99,12 @@ CORS allowlist: `https://aibeaty.pages.dev`, `https://aibeaty.remolda.com`,
     («отменяем», «отменяйте», «переносите», «записывайте», «скасовуйте»,
     "cancel it", "go ahead"). Questions never affirm, and any rejection token
     («нет», «не …», «подождите», "don't"…) always wins over affirmative words.
+15. **Deterministic commit backstop** — if the client explicitly affirmed a
+    staged action but the model produced nothing (empty reply or LLM error),
+    the engine commits the staged action itself (its arguments were validated
+    at staging time) and sends a deterministic confirmation. Recorded as an
+    `auto_commit` event. Observed live: the model occasionally returns an empty
+    message on the commit turn; without this the booking silently stalled.
 
 ## Escalation alert emails
 

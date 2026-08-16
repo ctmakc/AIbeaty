@@ -573,7 +573,7 @@ function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, a
       }
     }
     const plain = text.match(/^\+?(\d{1,2})$/);
-    if (plain) return { offset: Math.min(30, Number(plain[1])) };
+    if (plain) return { offset: Math.min(60, Number(plain[1])) };
     return { error: "unparsed_day" };
   }
 
@@ -1308,6 +1308,62 @@ function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, a
     }
   }
 
+  // ---------- deterministic commit backstop ----------
+  // When the client explicitly affirmed a staged action but the model failed to
+  // produce anything (empty reply / LLM error), commit the staged action in
+  // code — all its arguments were already validated when it was staged.
+  function commitPendingAction(session, turn) {
+    const pending = session.state.pendingAction;
+    if (!pending) return null;
+    try {
+      if (pending.kind === "book") {
+        const result = executeTool(session, turn, "book_appointment", {
+          service: pending.serviceName,
+          day: String(pending.dayOffset),
+          time: minutesLabel(pending.startMinutes),
+          stylist: pending.stylistName,
+          client_name: pending.clientName,
+          client_phone: pending.clientPhone
+        });
+        if (result && result.status === "booked") {
+          const a = result.appointment;
+          return localized({
+            ru: `Готово, вы записаны: ${a.service} у ${a.stylist}, ${a.day} в ${a.time}. Если планы поменяются — просто напишите мне.`,
+            uk: `Готово, вас записано: ${a.service} у ${a.stylist}, ${a.day} о ${a.time}. Якщо плани зміняться — просто напишіть мені.`,
+            en: `All set — you're booked: ${a.service} with ${a.stylist}, ${a.day} at ${a.time}. If plans change, just message me.`
+          }, session.language);
+        }
+      } else if (pending.kind === "reschedule") {
+        const result = executeTool(session, turn, "reschedule_appointment", {
+          day: String(pending.dayOffset),
+          time: minutesLabel(pending.startMinutes),
+          stylist: pending.stylistName,
+          appointment_id: pending.appointmentId
+        });
+        if (result && result.status === "rescheduled") {
+          const a = result.appointment;
+          return localized({
+            ru: `Готово, перенесла: ${a.service} теперь ${a.day} в ${a.time}, мастер ${a.stylist}.`,
+            uk: `Готово, перенесла: ${a.service} тепер ${a.day} о ${a.time}, майстер ${a.stylist}.`,
+            en: `Done — moved: ${a.service} is now ${a.day} at ${a.time} with ${a.stylist}.`
+          }, session.language);
+        }
+      } else if (pending.kind === "cancel") {
+        const result = executeTool(session, turn, "cancel_appointment", { appointment_id: pending.appointmentId });
+        if (result && result.status === "canceled") {
+          return localized({
+            ru: "Готово, запись отменена. Если захотите вернуться — я всегда тут.",
+            uk: "Готово, запис скасовано. Якщо захочете повернутися — я завжди тут.",
+            en: "Done — the appointment is cancelled. If you'd like to come back, I'm always here."
+          }, session.language);
+        }
+      }
+    } catch (error) {
+      // fall through to the honest fallback path
+    }
+    return null;
+  }
+
   // ---------- reply gates ----------
   function gateReply(session, turn, rawReply) {
     let reply = String(rawReply || "").trim();
@@ -1483,6 +1539,7 @@ function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, a
     messages.push(...buildHistoryMessages(session));
 
     let reply = null;
+    let llmError = null;
     try {
       let rounds = 0;
       let current = messages;
@@ -1516,8 +1573,26 @@ function createAssistant({ store, llm, faqPath, clock, alertEmail, alertFetch, a
       // empty_reply path substitutes the honest fallback, records the owner task
       // that backs its "within the hour" promise, and counts the failure once.
     } catch (error) {
+      llmError = error;
+    }
+
+    // Deterministic commit backstop: the client explicitly affirmed a staged
+    // action but the model produced nothing (empty reply or LLM error) —
+    // commit the staged action in code and confirm honestly.
+    if (!turn.actionCommitted && session.state.pendingAction && isAffirmation(text) &&
+        (llmError || !String(reply || "").trim())) {
+      const pendingKind = session.state.pendingAction.kind;
+      const committed = commitPendingAction(session, turn);
+      if (committed) {
+        recordEvent(session, "auto_commit", { kind: pendingKind });
+        reply = committed;
+        llmError = null; // the turn succeeded after all
+      }
+    }
+
+    if (llmError) {
       session.state.failedUnderstandings = (session.state.failedUnderstandings || 0) + 1;
-      leaveOwnerMessage(session, `Сбой ИИ-ассистента: ${String(error.message || error).slice(0, 200)}. Клиент ждёт ответа: "${text.slice(0, 150)}"`, "llm_error");
+      leaveOwnerMessage(session, `Сбой ИИ-ассистента: ${String(llmError.message || llmError).slice(0, 200)}. Клиент ждёт ответа: "${text.slice(0, 150)}"`, "llm_error");
       reply = localized(FALLBACKS.error, session.language);
     }
 

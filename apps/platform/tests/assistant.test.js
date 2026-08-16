@@ -599,6 +599,68 @@ async function test(name, fn) {
     assert.strictEqual(evening._internals.freeSlots(0, duration, null).length, 0, "nothing offered for a finished day");
   });
 
+  await test("auto-commit backstop: affirmation + staged action + empty model reply commits in code", async () => {
+    const probe = createAssistant({ store, llm: scriptedLlm([]) });
+    const dayOffset = probe._internals.resolveDay("пятница").offset;
+    const duration = store.db.prepare(`SELECT duration_minutes FROM services WHERE name = 'Blowout & Style'`).get().duration_minutes;
+    const slot = probe._internals.freeSlots(dayOffset, duration, null)[0];
+    const timeArg = `${Math.floor(slot.startMinutes / 60)}:${String(slot.startMinutes % 60).padStart(2, "0")}`;
+    const bookArgs = { service: "укладка", day: "пятница", time: timeArg, stylist: slot.stylist, client_name: "Тест Бэкстоп" };
+    const assistant = createAssistant({
+      store,
+      llm: scriptedLlm([
+        toolCall("book_appointment", bookArgs),
+        text("Проверяю: укладка в пятницу. Всё верно?"),
+        text("") // the model flakes out on the commit turn
+      ])
+    });
+    await assistant.chat({ sessionId: "s-auto", message: `Запишите меня на укладку в пятницу в ${timeArg}, я Тест Бэкстоп` });
+    const result = await assistant.chat({ sessionId: "s-auto", message: "Да, всё верно!" });
+    const row = store.db.prepare(`SELECT * FROM appointments WHERE client_name = 'Тест Бэкстоп'`).get();
+    assert.ok(row && row.appointment_status === "scheduled", `row committed by the backstop: ${JSON.stringify(row)}`);
+    assert.ok(/вы записаны/i.test(result.reply), `deterministic confirmation: ${result.reply}`);
+    assert.strictEqual(result.state.pendingAction, null, "pending cleared");
+    assert.ok(!result.state.gates.includes("empty_reply"), "no empty-reply fallback needed");
+    assert.ok(eventsOfType("auto_commit").some((event) => event.session_id === "s-auto"), "auto_commit event recorded");
+  });
+
+  await test("auto-commit backstop: cancel commits even when the LLM throws", async () => {
+    const probe = createAssistant({ store, llm: scriptedLlm([]) });
+    const dayOffset = probe._internals.resolveDay("пятница").offset;
+    const duration = store.db.prepare(`SELECT duration_minutes FROM services WHERE name = 'Men''s Scissor Cut'`).get().duration_minutes;
+    const slot = probe._internals.freeSlots(dayOffset, duration, null)[0];
+    const timeArg = `${Math.floor(slot.startMinutes / 60)}:${String(slot.startMinutes % 60).padStart(2, "0")}`;
+    const bookArgs = { service: "мужская стрижка", day: "пятница", time: timeArg, stylist: slot.stylist, client_name: "Тест Бэкстоп Отмена" };
+    let mode = "book";
+    const assistant = createAssistant({
+      store,
+      llm: {
+        model: "mock", baseUrl: "mock://",
+        script: scriptedLlm([
+          toolCall("book_appointment", bookArgs),
+          text("Проверяю: мужская стрижка в пятницу. Всё верно?"),
+          toolCall("book_appointment", bookArgs),
+          text("Вы записаны!"),
+          toolCall("cancel_appointment", {}),
+          text("Проверяю: отменяем мужскую стрижку в пятницу?")
+        ]),
+        async complete(args) {
+          if (mode === "die") throw new Error("simulated LLM outage");
+          return this.script.complete(args);
+        }
+      }
+    });
+    await assistant.chat({ sessionId: "s-auto-cancel", message: `Запишите на мужскую стрижку в пятницу в ${timeArg}, я Тест Бэкстоп Отмена` });
+    await assistant.chat({ sessionId: "s-auto-cancel", message: "Да, всё верно!" });
+    await assistant.chat({ sessionId: "s-auto-cancel", message: "Хочу отменить запись" });
+    mode = "die";
+    const result = await assistant.chat({ sessionId: "s-auto-cancel", message: "Точно, отменяем" });
+    const row = store.db.prepare(`SELECT * FROM appointments WHERE client_name = 'Тест Бэкстоп Отмена'`).get();
+    assert.strictEqual(row.appointment_status, "canceled", "cancel committed despite LLM outage");
+    assert.ok(/отменена/i.test(result.reply), `deterministic cancel confirmation: ${result.reply}`);
+    assert.ok(!/пропала связь/i.test(result.reply), "no error fallback after successful backstop");
+  });
+
   console.log(`\n${passed} passed, ${failures.length} failed`);
   if (failures.length) {
     failures.forEach((failure) => console.error(`FAILED: ${failure.name}\n${failure.error.stack}`));
