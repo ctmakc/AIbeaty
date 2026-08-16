@@ -14,11 +14,46 @@ const { buildSystemPrompt } = require("./assistant-prompt");
 const MAX_TOOL_ROUNDS = 6;
 const RATE_LIMIT_MAX = 20;
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
-const BUSINESS_START_MINUTES = 9 * 60; // matches the schedule grid (minutesToTop base 540)
-const BUSINESS_END_MINUTES = 19 * 60;
 const SLOT_STEP_MINUTES = 30;
-const CLOSED_WEEKDAYS = [0, 1]; // Sunday, Monday — per salon-faq.json hours
 const HISTORY_LIMIT = 16;
+
+// Per-weekday opening hours (0=Sunday … 6=Saturday), minutes since midnight.
+// null = closed. These defaults mirror salon-faq.json and are the HARD FLOOR
+// for every offered and committed slot; faq.hours (if present) overrides them.
+const DEFAULT_OPENING_HOURS = {
+  0: null,                // Sunday — closed
+  1: null,                // Monday — closed
+  2: [9 * 60, 19 * 60],
+  3: [9 * 60, 19 * 60],
+  4: [9 * 60, 19 * 60],
+  5: [9 * 60, 19 * 60],
+  6: [10 * 60, 17 * 60]   // Saturday opens later
+};
+
+function parseHHMM(value) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(value || "").trim());
+  if (!match) return null;
+  const minutes = Number(match[1]) * 60 + Number(match[2]);
+  return minutes >= 0 && minutes < 24 * 60 ? minutes : null;
+}
+
+function buildOpeningHours(faqHours) {
+  const hours = {};
+  for (let weekday = 0; weekday < 7; weekday++) {
+    const src = faqHours ? faqHours[String(weekday)] : undefined;
+    if (src === null) { hours[weekday] = null; continue; }
+    const open = src ? parseHHMM(src.open) : null;
+    const close = src ? parseHHMM(src.close) : null;
+    hours[weekday] = (open !== null && close !== null && close > open)
+      ? [open, close]
+      : DEFAULT_OPENING_HOURS[weekday];
+  }
+  return hours;
+}
+
+function minutesLabel(minutes) {
+  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
+}
 
 function createId(prefix) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -129,8 +164,9 @@ const SERVICE_ALIASES = [
 ];
 
 const STYLIST_ALIASES = [
-  { re: /сара|sarah|дженкинс|jenkins/i, name: "Sarah Jenkins" },
-  { re: /майкл|михаил|michael|чанг|chang|мишель/i, name: "Michael Chang" },
+  // Stems cover RU/UK declensions: "к Саре", "у Сары", "Сарі", "Майклу", "Елене"…
+  { re: /сар[аеиыуоі]|sara|дженкинс|jenkins/i, name: "Sarah Jenkins" },
+  { re: /майкл|михаил|michael|чанг|chang|мишел/i, name: "Michael Chang" },
   { re: /елен|элен|olena|elena|ростов|rostova|олен/i, name: "Elena Rostova" }
 ];
 
@@ -144,11 +180,58 @@ const WEEKDAYS = [
   { index: 6, re: /суббот|субот|saturday|\bсб\b|\bsat\b/i }
 ];
 
+// --- unknown-stylist gate: names the client uses for staff must exist in the
+// stylists table BEFORE the model is allowed to affirm or praise them. --------
+const STYLIST_MENTION_PATTERNS = [
+  // "мастер Наталья", "к мастеру наталье", "стилист Оксана", "майстер Олена"
+  /(?:мастер|майстер|майстр|стилист|стиліст|парикмахер|перукар)[а-яёіїєґ]{0,3}\s+(?:по имени\s+|на ім'?я\s+)?([А-ЯЁІЇЄҐа-яёіїєґ][а-яёіїєґ'’-]{2,})/gi,
+  // "к Наталье", "у Натальи", "до Наталі" (capitalized only — bare prepositions are too noisy otherwise)
+  /(?:^|[\s,.!?—-])(?:к|у|до)\s+([А-ЯЁІЇЄҐ][а-яёіїєґ'’-]{2,})/g,
+  // "наталья меня всегда стрижёт / красит"
+  /([А-ЯЁІЇЄҐа-яёіїєґ][а-яёіїєґ'’-]{2,})\s+(?:меня|мене)\s+(?:всегда\s+|завжди\s+|обычно\s+|зазвичай\s+)?(?:стриж|стриг|подстриг|підстриг|крас|фарбу)/gi,
+  // English: "with Natalie", "see Natalie", "book me with Natalie", "stylist Natalie"
+  /(?:with|to see|see|stylist|by)\s+([A-Z][a-z'-]{2,})(?:\s|[,.!?]|$)/g
+];
+
+// Words that look like names in the patterns above but are never stylists.
+const STYLIST_NAME_STOPWORDS = /^(майя|maya|она|оно|вона|він|кто-то|хтось|вам|вас|вами|вашей|вашему|тебе|тебя|тобой|меня|мне|мной|нам|нас|нами|ним|ней|нему|неё|нее|него|них|ними|оттав\w*|ottawa|luminous|core|bank|привет|здравствуйте|спасибо|дякую|будь\s?ласка|пожалуйста|hello|thanks|today|tomorrow|сегодня|завтра|сьогодні|обед\w*|утр\w*|вечер\w*|январ\w*|феврал\w*|март\w*|апрел\w*|июн\w*|июл\w*|август\w*|сентябр\w*|октябр\w*|ноябр\w*|декабр\w*|січн\w*|лют\w*|берез\w*|квітн\w*|травн\w*|червн\w*|липн\w*|серпн\w*|вересн\w*|жовтн\w*|листопад\w*|грудн\w*|january|february|march|april|may|june|july|august|september|october|november|december)$/i;
+
+// Stem that survives Russian/Ukrainian declension: "Наталье"/"Наталью"/"Натальи" → "наталь".
+function nameStem(name) {
+  const lower = String(name || "").toLowerCase().replace(/['’-]+$/g, "");
+  const stripped = lower.replace(/[аеёиіїоуыэюяь]+$/g, "");
+  return stripped.length >= 3 ? stripped : lower;
+}
+
+// Praise/affirmation the model must never attach to a nonexistent stylist.
+const STYLIST_PRAISE_RE = /отличн|прекрасн|замечательн|великолепн|потрясающ|лучш|чудов|найкращ|классн|супер|great|amazing|wonderful|fantastic|excellent|awesome|the best|конечно!|of course!/i;
+
+// Markers of an honest correction ("no such stylist") in the reply.
+const STYLIST_CORRECTION_RE = /такого (мастера|майстра|стилиста|стиліста)|(мастера|майстра) (с именем|по имени|на ім'?я)? ?[«"']?[\wа-яёіїєґ'’-]* ?[»"']? ?(у нас )?(нет|немає)|в нашей команде нет|в нашій команді немає|не работает у нас|у нас не працює|у нас (нет|немає) (мастера|майстра)|don'?t have (a |any )?stylist|no stylist (named|called)|isn'?t (on|part of) (our|the) (team|staff)|not on (our|the) (team|staff)/i;
+
 function createAssistant({ store, llm, faqPath }) {
   const db = store.db;
   const resolvedFaqPath = faqPath || path.join(__dirname, "..", "data", "salon-faq.json");
   const faq = JSON.parse(fs.readFileSync(resolvedFaqPath, "utf8"));
+  const OPENING_HOURS = buildOpeningHours(faq.hours);
   const rateBuckets = new Map();
+
+  // ---------- opening hours (hard floor for offered AND committed slots) ----------
+  function hoursForOffset(offset) {
+    return OPENING_HOURS[dayWeekday(offset)] || null;
+  }
+
+  function hoursLabelForOffset(offset) {
+    const window = hoursForOffset(offset);
+    return window ? `${minutesLabel(window[0])}-${minutesLabel(window[1])}` : "closed";
+  }
+
+  function nextOpenOffset(fromOffset) {
+    for (let offset = fromOffset + 1; offset <= fromOffset + 7; offset++) {
+      if (hoursForOffset(offset)) return offset;
+    }
+    return fromOffset + 1;
+  }
 
   // ---------- persistence helpers ----------
   function recordEvent(session, type, payload = {}) {
@@ -309,6 +392,40 @@ function createAssistant({ store, llm, faqPath }) {
     return db.prepare(`SELECT * FROM stylists WHERE lower(name) LIKE ?`).get(`%${text.toLowerCase()}%`) || null;
   }
 
+  // Names the client used for staff that do NOT exist in the stylists table.
+  function detectUnknownStylists(text) {
+    const value = String(text || "");
+    const found = new Map();
+    for (const pattern of STYLIST_MENTION_PATTERNS) {
+      pattern.lastIndex = 0;
+      let match;
+      while ((match = pattern.exec(value)) !== null) {
+        const candidate = String(match[1] || "").trim();
+        if (candidate.length < 3) continue;
+        if (STYLIST_NAME_STOPWORDS.test(candidate)) continue;
+        if (WEEKDAYS.some((day) => day.re.test(candidate))) continue;
+        if (SERVICE_ALIASES.some((alias) => alias.re.test(candidate))) continue;
+        if (resolveStylist(candidate)) continue; // real staff member — fine
+        const stem = nameStem(candidate);
+        if (!found.has(stem)) found.set(stem, { raw: candidate, stem });
+      }
+    }
+    return [...found.values()];
+  }
+
+  function stylistCorrectionReply(language) {
+    const staff = store.getStylistRows().map((row) => row.name);
+    const listRu = staff.length > 1 ? `${staff.slice(0, -1).join(", ")} и ${staff[staff.length - 1]}` : staff.join("");
+    const listUk = staff.length > 1 ? `${staff.slice(0, -1).join(", ")} та ${staff[staff.length - 1]}` : staff.join("");
+    const listEn = staff.length > 1 ? `${staff.slice(0, -1).join(", ")} and ${staff[staff.length - 1]}` : staff.join("");
+    const pack = {
+      ru: `Хочу быть честной: такого мастера у нас нет. В нашей команде ${listRu} — к кому из них вас записать?`,
+      uk: `Хочу бути чесною: такого майстра у нас немає. У нашій команді ${listUk} — до кого з них вас записати?`,
+      en: `I want to be honest: we don't have a stylist by that name. Our team is ${listEn} — who would you like to book with?`
+    };
+    return localized(pack, language);
+  }
+
   function referenceDate() {
     const ref = new Date(store.getLastUpdated());
     return Number.isNaN(ref.getTime()) ? new Date() : ref;
@@ -393,11 +510,13 @@ function createAssistant({ store, llm, faqPath }) {
   }
 
   function freeSlots(dayOffset, durationMinutes, stylistRow) {
+    const window = hoursForOffset(dayOffset);
+    if (!window) return [];
     const stylists = stylistRow ? [stylistRow] : store.getStylistRows();
     const slots = [];
     for (const stylist of stylists) {
       const open = [];
-      for (let start = BUSINESS_START_MINUTES; start + durationMinutes <= BUSINESS_END_MINUTES; start += SLOT_STEP_MINUTES) {
+      for (let start = window[0]; start + durationMinutes <= window[1]; start += SLOT_STEP_MINUTES) {
         if (slotFree(dayOffset, stylist.id, start, start + durationMinutes)) open.push(start);
       }
       // Spread picks across the whole day (morning/midday/afternoon), not just
@@ -641,12 +760,12 @@ function createAssistant({ store, llm, faqPath }) {
         const service = matches[0];
         const day = resolveDay(args.day);
         if (day.error) return { error: day.error, note: "Ask the client for a concrete day." };
-        const weekday = dayWeekday(day.offset);
-        if (CLOSED_WEEKDAYS.includes(weekday)) {
-          const alt = { offset: day.offset + (weekday === 0 ? 2 : 1) };
+        const window = hoursForOffset(day.offset);
+        if (!window) {
+          const alt = { offset: nextOpenOffset(day.offset) };
           return {
             closed: true,
-            note: `Salon is closed that day (Sun/Mon). Nearest open day: ${dayLabel(alt.offset)}.`,
+            note: `Salon is closed that day. Nearest open day: ${dayLabel(alt.offset)} (${hoursLabelForOffset(alt.offset)}).`,
             service: serviceSummary(session, service),
             alternative_day: dayLabel(alt.offset),
             alternative_slots: freeSlots(alt.offset, service.duration_minutes, args.stylist ? resolveStylist(args.stylist) : null)
@@ -664,12 +783,13 @@ function createAssistant({ store, llm, faqPath }) {
         const payload = {
           service: serviceSummary(session, service),
           day: dayLabel(day.offset),
+          opening_hours: hoursLabelForOffset(day.offset),
           slots: slots.map((slot) => ({ stylist: slot.stylist, time: slot.time })),
           note: slots.length ? "Offer 2-3 of these real slots. Times not listed may still be free — check them via the `time` argument." : "No free slots that day; suggest another day."
         };
         if (args.time) {
           const wanted = parseTimeFlexible(args.time);
-          if (wanted !== null && wanted >= BUSINESS_START_MINUTES && wanted + service.duration_minutes <= BUSINESS_END_MINUTES) {
+          if (wanted !== null && wanted >= window[0] && wanted + service.duration_minutes <= window[1]) {
             const candidates = stylist ? [stylist] : store.getStylistRows();
             const freeWith = candidates.filter((row) => slotFree(day.offset, row.id, wanted, wanted + service.duration_minutes));
             payload.requested_time = {
@@ -681,7 +801,11 @@ function createAssistant({ store, llm, faqPath }) {
                 : "Time is taken — offer the slots list instead."
             };
           } else if (wanted !== null) {
-            payload.requested_time = { time: args.time, available: false, reason: "outside working hours 9:00-19:00" };
+            payload.requested_time = {
+              time: args.time,
+              available: false,
+              reason: `outside working hours ${hoursLabelForOffset(day.offset)} on ${dayLabel(day.offset)}`
+            };
           }
         }
         return payload;
@@ -726,16 +850,17 @@ function createAssistant({ store, llm, faqPath }) {
         const service = matches[0];
         const day = resolveDay(args.day);
         if (day.error) return { error: day.error, note: "Ask for a concrete day." };
-        if (CLOSED_WEEKDAYS.includes(dayWeekday(day.offset))) {
-          return { closed: true, note: "Salon is closed Sun/Mon — offer another day." };
+        const window = hoursForOffset(day.offset);
+        if (!window) {
+          return { closed: true, note: `Salon is closed that day. Nearest open day: ${dayLabel(nextOpenOffset(day.offset))}.` };
         }
         const startMinutes = parseTimeFlexible(args.time);
         if (startMinutes === null) return { error: "unparsed_time", note: "Ask for a concrete time like 14:00." };
         const endMinutes = startMinutes + service.duration_minutes;
-        if (startMinutes < BUSINESS_START_MINUTES || endMinutes > BUSINESS_END_MINUTES) {
+        if (startMinutes < window[0] || endMinutes > window[1]) {
           return {
             error: "outside_hours",
-            note: "Working hours are 9:00-19:00.",
+            note: `Working hours on ${dayLabel(day.offset)} are ${hoursLabelForOffset(day.offset)}. Tell the client honestly and offer times inside those hours.`,
             alternatives: freeSlots(day.offset, service.duration_minutes, null).map((s) => ({ stylist: s.stylist, time: s.time }))
           };
         }
@@ -843,13 +968,14 @@ function createAssistant({ store, llm, faqPath }) {
         if (!target) return { ok: false, reason: "no_appointment_found", note: "Ask for the client's phone and call get_client_context first." };
         const day = resolveDay(args.day);
         if (day.error) return { error: day.error, note: "Ask for a concrete day." };
-        if (CLOSED_WEEKDAYS.includes(dayWeekday(day.offset))) return { closed: true, note: "Closed Sun/Mon — offer another day." };
+        const window = hoursForOffset(day.offset);
+        if (!window) return { closed: true, note: `Salon is closed that day. Nearest open day: ${dayLabel(nextOpenOffset(day.offset))}.` };
         const startMinutes = parseTimeFlexible(args.time);
         if (startMinutes === null) return { error: "unparsed_time" };
         const duration = target.end_minutes - target.start_minutes;
         const endMinutes = startMinutes + duration;
-        if (startMinutes < BUSINESS_START_MINUTES || endMinutes > BUSINESS_END_MINUTES) {
-          return { error: "outside_hours", note: "Working hours are 9:00-19:00." };
+        if (startMinutes < window[0] || endMinutes > window[1]) {
+          return { error: "outside_hours", note: `Working hours on ${dayLabel(day.offset)} are ${hoursLabelForOffset(day.offset)}.` };
         }
         const stylist = args.stylist ? resolveStylist(args.stylist) : db.prepare(`SELECT * FROM stylists WHERE id = ?`).get(target.stylist_id);
         if (!stylist) return { stylist_not_found: true, stylists: store.getStylistRows().map((row) => ({ name: row.name, role: row.role })) };
@@ -984,7 +1110,38 @@ function createAssistant({ store, llm, faqPath }) {
       reply = localized(FALLBACKS.notBooked, language);
     }
 
-    // Gate 2: price quote-guard — every price in the reply must have come from a tool result.
+    // Gate 2: unknown-stylist guard — if the client named a stylist who does not
+    // exist, the reply may not affirm/praise that name. It survives only as an
+    // explicit correction; anything else is rewritten to the honest correction.
+    const unknownStylists = turn.unknownStylists || [];
+    if (unknownStylists.length) {
+      const replyLower = reply.toLowerCase();
+      const offender = unknownStylists.find((entry) => replyLower.includes(entry.stem));
+      const corrected = STYLIST_CORRECTION_RE.test(reply);
+      if (offender && (!corrected || STYLIST_PRAISE_RE.test(reply))) {
+        gates.push(`stylist_gate:${offender.raw}`);
+        recordEvent(session, "stylist_gate", { name: offender.raw, original: reply.slice(0, 300) });
+        reply = stylistCorrectionReply(language);
+      }
+    }
+
+    // Gate 2b: the model itself may not introduce a stylist name that is not in
+    // the stylists table ("мастер X" / "stylist X" where X is invented).
+    const invented = [];
+    const replyMentionRe = /(?:мастер|майстер|майстр|стилист|стиліст|stylist)[аеуоыиі]{0,2}\s+(?:по имени\s+|на ім'?я\s+|named\s+)?([A-ZА-ЯЁІЇЄҐ][a-zа-яёіїєґ'’-]{2,})/g;
+    let mention;
+    while ((mention = replyMentionRe.exec(reply)) !== null) {
+      const candidate = mention[1];
+      if (STYLIST_NAME_STOPWORDS.test(candidate)) continue;
+      if (!resolveStylist(candidate)) invented.push(candidate);
+    }
+    if (invented.length && !STYLIST_CORRECTION_RE.test(reply)) {
+      gates.push(`stylist_gate:invented:${invented[0]}`);
+      recordEvent(session, "stylist_gate", { name: invented[0], invented: true, original: reply.slice(0, 300) });
+      reply = stylistCorrectionReply(language);
+    }
+
+    // Gate 3: price quote-guard — every price in the reply must have come from a tool result.
     const allowed = new Set((session.state.quotedPrices || []).map(Number));
     const prices = extractPriceNumbers(reply);
     const unknownPrice = prices.find((price) => !allowed.has(price));
@@ -994,7 +1151,7 @@ function createAssistant({ store, llm, faqPath }) {
       reply = localized(FALLBACKS.unknown, language);
     }
 
-    // Gate 3: banned phrases (style scrub, non-blocking).
+    // Gate 4: banned phrases (style scrub, non-blocking).
     for (const [re, replacement] of BANNED_REPLACEMENTS) {
       if (re.test(reply)) {
         gates.push("style_scrub");
@@ -1031,7 +1188,13 @@ function createAssistant({ store, llm, faqPath }) {
     persistMessage(session, "incoming", text);
     recordEvent(session, "message_in", { text: text.slice(0, 300) });
 
-    const turn = { userMessage: text, actionCommitted: false, handoffRequested: false, escalateAfter: null };
+    const turn = {
+      userMessage: text,
+      actionCommitted: false,
+      handoffRequested: false,
+      escalateAfter: null,
+      unknownStylists: detectUnknownStylists(text)
+    };
 
     // Hard triggers answer without the LLM; soft ones steer this turn then escalate.
     const trigger = checkTriggers(text);
@@ -1069,6 +1232,13 @@ function createAssistant({ store, llm, faqPath }) {
       messages.push({
         role: "system",
         content: "Клиент напряжён или спорит о цене. Ответь спокойно и коротко, без продаж, затем вызови request_human_handoff с причиной."
+      });
+    }
+    if (turn.unknownStylists.length) {
+      const staffNames = store.getStylistRows().map((row) => row.name).join(", ");
+      messages.push({
+        role: "system",
+        content: `Проверка по базе: мастера «${turn.unknownStylists.map((entry) => entry.raw).join("», «")}» в салоне НЕ СУЩЕСТВУЕТ. Реальные мастера: ${staffNames}. В ПЕРВОМ ЖЕ ответе честно скажи, что такого мастера у нас нет — без похвал и подтверждений несуществующему имени — и предложи записать к одному из реальных мастеров.`
       });
     }
     messages.push(...buildHistoryMessages(session));
@@ -1264,6 +1434,9 @@ function createAssistant({ store, llm, faqPath }) {
       resolveDay,
       parseTimeFlexible,
       freeSlots,
+      hoursForOffset,
+      nextOpenOffset,
+      detectUnknownStylists,
       ensureSession,
       loadSession,
       saveSession,

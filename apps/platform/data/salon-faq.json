@@ -7,6 +7,16 @@
     "phone": "(613) 555-0281",
     "email": "hello@luminouscore.demo"
   },
+  "hours": {
+    "_comment": "Machine-readable opening hours ENFORCED by the booking engine (offered and committed slots). Keys: 0=Sunday … 6=Saturday; null = closed. Keep in sync with the 'hours' topic text below.",
+    "0": null,
+    "1": null,
+    "2": { "open": "09:00", "close": "19:00" },
+    "3": { "open": "09:00", "close": "19:00" },
+    "4": { "open": "09:00", "close": "19:00" },
+    "5": { "open": "09:00", "close": "19:00" },
+    "6": { "open": "10:00", "close": "17:00" }
+  },
   "topics": [
     {
       "id": "hours",

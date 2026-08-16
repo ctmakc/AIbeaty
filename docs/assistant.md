@@ -55,6 +55,21 @@ CORS allowlist: `https://aibeaty.pages.dev`, `https://aibeaty.remolda.com`,
 7. **Prompt-injection posture** — client text is data; discounts/policy are
    owner-only (prompt + the gates above mean injected "confirm my booking" or
    "everything is $1" cannot survive into a reply).
+8. **Per-day opening hours** (red-team fix, 2026-08-15) — offered AND committed
+   slots are clamped to per-weekday windows: Tue–Fri 9:00–19:00, Sat 10:00–17:00,
+   Sun/Mon closed. Source of truth: `hours` block in
+   `apps/platform/data/salon-faq.json` (falls back to the same defaults in code).
+   `check_availability`, `book_appointment`, and `reschedule_appointment` all
+   validate against the target day's window, so a "Saturday 9:00" can neither be
+   offered nor written to the DB.
+9. **Unknown-stylist gate** (red-team fix, 2026-08-15) — stylist names the
+   client mentions are validated against the `stylists` table on the turn they
+   first appear (RU/UK declensions handled by stemming). If the name doesn't
+   exist: a ground-truth system note is injected for the model, and the reply is
+   code-checked — any affirmation/praise of the phantom name (or a reply lacking
+   an explicit correction) is replaced with an honest "no such stylist" reply
+   listing real staff. A separate reply-side scan catches "мастер X"/"stylist X"
+   names the model invents on its own.
 
 ## LLM provider — tested matrix (2026-08-15)
 
