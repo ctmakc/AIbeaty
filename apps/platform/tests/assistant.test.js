@@ -685,6 +685,22 @@ async function test(name, fn) {
     assert.ok(!/пропала связь/i.test(result.reply), "no error fallback after successful backstop");
   });
 
+  await test("watchdog fast-path: ping answers pong with no LLM, no session, no conversation", async () => {
+    const assistant = createAssistant({ store, llm: scriptedLlm([]) }); // empty script — any LLM call would throw
+    const conversationsBefore = store.db.prepare("SELECT COUNT(*) AS c FROM conversations").get().c;
+    const sessionsBefore = store.db.prepare("SELECT COUNT(*) AS c FROM assistant_sessions").get().c;
+    const eventsBefore = store.db.prepare("SELECT COUNT(*) AS c FROM assistant_events").get().c;
+    const result = await assistant.chat({ sessionId: "watchdog-probe", message: "ping" });
+    assert.strictEqual(result.reply, "pong");
+    assert.strictEqual(result.watchdog, true);
+    assert.strictEqual(store.db.prepare("SELECT COUNT(*) AS c FROM conversations").get().c, conversationsBefore, "no conversation created");
+    assert.strictEqual(store.db.prepare("SELECT COUNT(*) AS c FROM assistant_sessions").get().c, sessionsBefore, "no session created");
+    assert.strictEqual(store.db.prepare("SELECT COUNT(*) AS c FROM assistant_events").get().c, eventsBefore, "no events recorded");
+    // A normal-looking session saying ping must NOT hit the fast-path.
+    const normal = await assistant.chat({ sessionId: "s-ping-normal", message: "ping" }).catch((e) => ({ threw: e.message }));
+    assert.ok(normal.threw || !normal.watchdog, "non-watchdog session must go through the normal path");
+  });
+
   console.log(`\n${passed} passed, ${failures.length} failed`);
   if (failures.length) {
     failures.forEach((failure) => console.error(`FAILED: ${failure.name}\n${failure.error.stack}`));

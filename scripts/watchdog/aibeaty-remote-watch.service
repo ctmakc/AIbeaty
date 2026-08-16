@@ -1,0 +1,6 @@
+[Unit]
+Description=AIbeaty external demo watchdog (public probe + ssh restart)
+
+[Service]
+Type=oneshot
+ExecStart=/data/projects/AIbeaty/scripts/remote-watch.sh

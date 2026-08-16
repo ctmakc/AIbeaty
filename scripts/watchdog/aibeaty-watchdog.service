@@ -1,0 +1,6 @@
+[Unit]
+Description=AIbeaty local uptime watchdog (health probe, auto-restart, alert)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/aibeaty/scripts/watchdog/aibeaty-watchdog.sh
