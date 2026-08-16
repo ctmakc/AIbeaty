@@ -1,0 +1,104 @@
+# Maya — the AIbeaty conversational assistant
+
+Maya is the AI layer of the platform demo: a salon assistant that answers on the
+salon's channels, books/reschedules/cancels appointments in the real SQLite
+database, hands off to humans, and writes a daily owner digest. She discloses
+being an AI, mirrors the client's language (RU/UK/EN), and is hard-gated in
+code so she cannot invent prices, slots, staff, or booking confirmations.
+
+## Architecture
+
+```
+POST /api/assistant/chat ──► backend/assistant.js  (engine: tool loop + gates)
+                              ├─ backend/assistant-prompt.js  (persona, few-shots — editable)
+                              ├─ backend/llm-client.js        (provider-agnostic OpenAI-compat fetch)
+                              ├─ data/salon-faq.json          (owner-editable FAQ facts, RU/EN)
+                              └─ backend/store.js             (same SQLite the whole platform uses)
+```
+
+Assistant chats are ordinary inbox conversations: they appear in the Unified
+Inbox screen with all messages, and booking actions land in the schedule,
+clients, and activity screens like any other data.
+
+## Endpoints
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/api/assistant/chat` | `{sessionId, message, channel?, clientPhone?}` → `{reply, state}`. `reply: null` means the bot is silenced (takeover/escalated); the message is still stored for the owner. |
+| GET | `/api/assistant/digest?day=YYYY-MM-DD` | Structured daily summary (escalations first, bookings, owner messages, per-conversation stats). Default: today. |
+| GET | `/screens/digest.html` | Human-readable rendering of the digest. |
+| PATCH | `/api/assistant/conversations/:id/takeover` | `{enabled: true\|false}` — manual takeover toggle. Staff replying by hand in the inbox enables it automatically. |
+| GET | `/api/assistant/health` | Model + base URL currently wired (no secrets). |
+
+CORS allowlist: `https://aibeaty.pages.dev`, `https://aibeaty.remolda.com`,
+`http://localhost:*` / `http://127.0.0.1:*`.
+
+## Hard gates (enforced in code, not prompt)
+
+1. **Booking-claim gate** — "вы записаны"-class phrases are only allowed in a
+   turn where a booking/reschedule/cancel tool actually committed and verified
+   a DB write. Otherwise the reply is replaced with an honest fallback and an
+   owner task is created.
+2. **Read-back state machine** — `book_appointment` (and reschedule/cancel) is
+   two-phase: the first call stages the action server-side and returns a
+   read-back; the commit only happens when the staged action matches AND the
+   client's latest message is an explicit affirmation.
+3. **Price quote-guard** — every price in a reply must have appeared in a tool
+   result during the session; unknown numbers get the reply replaced + owner task.
+4. **Auto-escalation** — explicit "позовите человека" and medical topics get a
+   canned handoff without the LLM; complaints/frustration/price disputes get one
+   guided reply then escalate. Two misunderstandings in a session also escalate.
+   Escalated threads silence the bot.
+5. **Takeover** — a manual staff reply in an assistant thread flips
+   `assistant_state='takeover'`; the bot stays silent until toggled back.
+6. **Rate limit** — 20 messages / 5 min per session (in-memory), HTTP 429 beyond.
+7. **Prompt-injection posture** — client text is data; discounts/policy are
+   owner-only (prompt + the gates above mean injected "confirm my booking" or
+   "everything is $1" cannot survive into a reply).
+
+## LLM provider — tested matrix (2026-08-15)
+
+Smoke test: 10 scripted turns (8 must emit a correct `check_availability`
+function call with parseable args, 2 must answer plainly and warmly in the
+client's language). Script: kept in repo history; acceptance bar was 9/10.
+
+| Model | Provider | Tools | Notes |
+| --- | --- | --- | --- |
+| **deepseek-v4-pro:0813** | Ollama Cloud Pro | **10/10** | **Winner.** Fastest (avg ~1.0s/turn), natural warm RU, correct RU/UK/EN mirroring. Default. |
+| glm-5.2 | Ollama Cloud Pro | 10/10 | Avg ~1.7s. Warm, uses emoji freely. Solid fallback. |
+| qwen3.5:397b | Ollama Cloud Pro | 10/10 | Avg ~2.2s. Slightly formal RU. Fallback. |
+| kimi-k3 | Ollama Cloud | 0/10 | Blocked: HTTP 402 — model is "extra usage only" on our plan. |
+| kimi-k3 | OpenCode Zen | 0/10 | Blocked: HTTP 429 — monthly usage limit reached (resets ~2026-08-26). |
+
+End-to-end (booking dialogue → SQLite row → schedule API) verified live with
+deepseek-v4-pro:0813.
+
+### Wiring (env — see `.env.example`)
+
+- `LLM_BASE_URL` — default `https://ollama.com/v1`
+- `LLM_API_KEY` or `LLM_API_KEY_FILE` — default file `~/.ollama/api_key`
+- `LLM_MODEL` — default `deepseek-v4-pro:0813`
+
+Any OpenAI-compatible endpoint with function calling drops in (a future
+Anthropic OpenAI-compat endpoint is a 2-var swap). No SDK — plain `fetch`.
+
+Switch to OpenCode Zen (when its monthly window resets):
+`LLM_BASE_URL=https://opencode.ai/zen/go/v1`, `LLM_API_KEY=$OPENCODE_API_KEY`,
+`LLM_MODEL=kimi-k3` (or `glm-5.2` etc.).
+
+## Running
+
+```bash
+npm run platform:serve                   # http://127.0.0.1:4174 (PORT env to change)
+npm run assistant:test                   # mock gate tests + live LLM e2e smoke
+ASSISTANT_SMOKE_SKIP=1 npm run assistant:test   # offline: mock tests only
+npm run platform:state:reset             # reseed demo data (also clears assistant threads)
+```
+
+Parallel instances: set `PORT` and `PLATFORM_DB_PATH` per instance.
+
+## Editing the persona / facts
+
+- Tone, few-shots, rules: `apps/platform/backend/assistant-prompt.js`
+- Salon facts (hours, address, parking, policies): `apps/platform/data/salon-faq.json`
+  — the only non-database facts Maya may state. Restart the server after edits.
