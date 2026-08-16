@@ -547,6 +547,7 @@ async function handleAssistantRoutes(request, requestUrl, response) {
       ok: true,
       service: "assistant-api",
       persona: "Maya",
+      salon: store.getSalon().name,
       model: llm.model,
       baseUrl: llm.baseUrl
     });

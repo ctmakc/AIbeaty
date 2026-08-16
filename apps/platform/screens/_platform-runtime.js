@@ -1546,10 +1546,16 @@
         ? items
             .map(function (conversation) {
               var active = conversation.id === selectedId;
+              var isAssistantThread = conversation.channelTone === "webchat";
               var channelBadge =
-                conversation.channelTone === "instagram"
+                isAssistantThread
+                  ? '<div class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border border-surface-container-lowest flex items-center justify-center" style="background:linear-gradient(135deg,#4d2afa,#7a25db)"><span class="material-symbols-outlined text-white" style="font-variation-settings: \'FILL\' 1; font-size:10px;">smart_toy</span></div>'
+                  : conversation.channelTone === "instagram"
                   ? '<div class="absolute -bottom-1 -right-1 w-4 h-4 bg-gradient-to-tr from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] rounded-full border border-surface-container-lowest flex items-center justify-center"><span class="material-symbols-outlined text-[10px] text-white" style="font-variation-settings: \'FILL\' 1;">photo_camera</span></div>'
                   : '<div class="absolute -bottom-1 -right-1 w-4 h-4 bg-[#25D366] rounded-full border border-surface-container-lowest flex items-center justify-center"><span class="material-symbols-outlined text-[10px] text-white" style="font-variation-settings: \'FILL\' 1;">chat</span></div>';
+              var aiChip = isAssistantThread
+                ? '<span class="flex-shrink-0" style="font-size:9px;font-weight:800;letter-spacing:0.04em;color:#450087;background:rgba(199,158,255,0.4);border-radius:4px;padding:1px 4px;margin-left:4px;" title="Maya (AI assistant) thread">AI</span>'
+                : "";
               var avatar =
                 conversation.avatar
                   ? '<img alt="Client Avatar" class="w-10 h-10 rounded-full object-cover" src="' + conversation.avatar + '"/>'
@@ -1563,8 +1569,10 @@
                 '<div class="relative flex-shrink-0">' +
                 avatar +
                 channelBadge +
-                '</div><div class="flex-1 min-w-0"><div class="flex justify-between items-center mb-0.5"><span class="font-semibold text-sm text-on-surface truncate">' +
+                '</div><div class="flex-1 min-w-0"><div class="flex justify-between items-center mb-0.5"><span class="flex items-center min-w-0"><span class="font-semibold text-sm text-on-surface truncate">' +
                 conversation.name +
+                "</span>" +
+                aiChip +
                 '</span><span class="text-[11px] ' +
                 (active ? "font-medium text-primary" : "text-on-surface-variant") +
                 '">' +
