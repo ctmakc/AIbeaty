@@ -4,7 +4,9 @@ const Database = require("better-sqlite3");
 
 const ROOT_DIR = path.join(__dirname, "..");
 const DEMO_FILE = path.join(ROOT_DIR, "data", "demo-platform.json");
-const DB_FILE = path.join(ROOT_DIR, "data", "platform.db");
+const DB_FILE = process.env.PLATFORM_DB_PATH
+  ? path.resolve(process.env.PLATFORM_DB_PATH)
+  : path.join(ROOT_DIR, "data", "platform.db");
 
 const LIVE_SCREEN_FILES = {
   inventory: "inventory-management-luminous-core.html",
@@ -381,6 +383,28 @@ function createPlatformStore() {
         text_value TEXT NOT NULL,
         sort_order INTEGER NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS assistant_sessions (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        client_id TEXT NOT NULL DEFAULT '',
+        client_phone TEXT NOT NULL DEFAULT '',
+        channel TEXT NOT NULL DEFAULT 'Webchat',
+        language TEXT NOT NULL DEFAULT 'ru',
+        state_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS assistant_events (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL DEFAULT '',
+        day TEXT NOT NULL,
+        type TEXT NOT NULL,
+        payload_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL
+      );
     `);
   }
 
@@ -420,6 +444,10 @@ function createPlatformStore() {
     ensureColumn("conversations", "client_id", "TEXT NOT NULL DEFAULT ''");
     ensureColumn("conversations", "recovery_state", "TEXT NOT NULL DEFAULT ''");
     ensureColumn("conversations", "recovery_sent_count", "INTEGER NOT NULL DEFAULT 0");
+    // AI assistant (Maya) threads: which chat session owns the thread and
+    // whether the bot may speak ('' / 'active' = yes, 'escalated' / 'takeover' = silent).
+    ensureColumn("conversations", "assistant_session_id", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn("conversations", "assistant_state", "TEXT NOT NULL DEFAULT ''");
   }
 
   function touch(now = new Date().toISOString()) {
@@ -453,6 +481,8 @@ function createPlatformStore() {
       "conversation_history",
       "conversation_messages",
       "conversation_suggestions",
+      "assistant_sessions",
+      "assistant_events",
       "metadata"
     ].forEach((table) => db.prepare(`DELETE FROM ${table}`).run());
   }
@@ -3018,6 +3048,19 @@ function createPlatformStore() {
 
   return {
     dbFile: DB_FILE,
+    db,
+    // Internal helpers exposed for the AI assistant module (backend/assistant.js).
+    logActivity,
+    getStylistRows,
+    getServiceById,
+    getServiceByName,
+    findClientRecord,
+    getClientRecordById,
+    getClientPreferences,
+    getClientHistory,
+    getActiveAppointmentForClient,
+    formatTimeRange,
+    parseClockLabel,
     getLastUpdated,
     getSalon,
     getScreen,

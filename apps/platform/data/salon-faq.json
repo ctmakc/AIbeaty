@@ -1,0 +1,62 @@
+{
+  "_comment": "Editable FAQ for the Maya AI assistant. Facts here are the ONLY non-database facts Maya may state. Edit freely; the server reloads this file on restart.",
+  "salon": {
+    "name": "Luminous Core",
+    "city": "Ottawa",
+    "address": { "ru": "281 Bank Street, Оттава (вход с Bank St, второй этаж)", "en": "281 Bank Street, Ottawa (entrance on Bank St, 2nd floor)" },
+    "phone": "(613) 555-0281",
+    "email": "hello@luminouscore.demo"
+  },
+  "topics": [
+    {
+      "id": "hours",
+      "ru": "Мы работаем: вт–пт 9:00–19:00, сб 10:00–17:00. Воскресенье и понедельник — выходные.",
+      "en": "We are open Tue–Fri 9:00–19:00 and Sat 10:00–17:00. Closed Sunday and Monday."
+    },
+    {
+      "id": "address",
+      "ru": "Адрес: 281 Bank Street, Оттава, второй этаж. Ориентир — кофейня Arlington Five на первом этаже.",
+      "en": "Address: 281 Bank Street, Ottawa, 2nd floor. Look for Arlington Five coffee shop on the ground floor."
+    },
+    {
+      "id": "parking",
+      "ru": "Парковка: городская стоянка на Somerset St W (2 минуты пешком), после 18:00 бесплатная парковка вдоль Bank St. Велопарковка у входа.",
+      "en": "Parking: city lot on Somerset St W (2-minute walk); street parking on Bank St is free after 6 pm. Bike racks at the entrance."
+    },
+    {
+      "id": "cancellation_policy",
+      "ru": "Перенос или отмена — бесплатно не позднее чем за 24 часа до визита. При более поздней отмене депозит за окрашивание не возвращается.",
+      "en": "Free reschedule or cancellation up to 24 hours before the visit. Later cancellations forfeit the colour-service deposit."
+    },
+    {
+      "id": "deposit_policy",
+      "ru": "Для сложного окрашивания (балаяж, полное окрашивание) бронь подтверждается депозитом 30% — вы платите его по ссылке после записи.",
+      "en": "Complex colour services (balayage, full colour) require a 30% deposit paid via a link after booking."
+    },
+    {
+      "id": "late_policy",
+      "ru": "Если опаздываете до 15 минут — предупредите, мы вас дождёмся. При опоздании больше 15 минут визит может понадобиться перенести.",
+      "en": "Running up to 15 minutes late? Let us know and we'll hold your slot. Later than that, we may need to reschedule."
+    },
+    {
+      "id": "payment",
+      "ru": "Оплата: карты, Apple Pay / Google Pay, наличные. Чаевые — на ваше усмотрение.",
+      "en": "We accept cards, Apple Pay / Google Pay, and cash. Tips are at your discretion."
+    },
+    {
+      "id": "kids_pets",
+      "ru": "Дети — добро пожаловать вместе с родителями. Животных, кроме собак-помощников, попросим оставить дома.",
+      "en": "Kids are welcome with a parent. Pets other than service dogs — please leave them at home."
+    },
+    {
+      "id": "consultation",
+      "ru": "Перед сложным окрашиванием мы делаем бесплатную 15-минутную консультацию — очно или по видео.",
+      "en": "Before any complex colour work we offer a free 15-minute consultation, in person or by video."
+    },
+    {
+      "id": "products",
+      "ru": "Работаем на профессиональных линиях Olaplex, Redken и Kevin Murphy.",
+      "en": "We work with Olaplex, Redken and Kevin Murphy professional lines."
+    }
+  ]
+}

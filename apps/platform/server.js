@@ -3,11 +3,39 @@ const http = require("http");
 const path = require("path");
 const { URL } = require("url");
 const { createPlatformStore } = require("./backend/store");
+const { createLlmClient } = require("./backend/llm-client");
+const { createAssistant } = require("./backend/assistant");
 
 const ROOT_DIR = __dirname;
 const HOST = process.env.PLATFORM_HOST || "127.0.0.1";
-const PORT = Number(process.env.PLATFORM_PORT || 4174);
+const PORT = Number(process.env.PORT || process.env.PLATFORM_PORT || 4174);
 const store = createPlatformStore();
+const llm = createLlmClient();
+const assistant = createAssistant({ store, llm });
+
+// CORS allowlist for the public assistant API (marketing site + demo host + local dev).
+const CORS_ALLOWED = [
+  "https://aibeaty.pages.dev",
+  "https://aibeaty.remolda.com"
+];
+
+function corsOriginAllowed(origin) {
+  if (!origin) return false;
+  if (CORS_ALLOWED.includes(origin)) return true;
+  return /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+}
+
+function applyCors(request, headers = {}) {
+  const origin = request.headers.origin;
+  if (corsOriginAllowed(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+    headers["Vary"] = "Origin";
+    headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, OPTIONS";
+    headers["Access-Control-Allow-Headers"] = "Content-Type";
+    headers["Access-Control-Max-Age"] = "600";
+  }
+  return headers;
+}
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -440,6 +468,10 @@ async function handleApiMutation(request, requestUrl, response) {
     const result = store.createConversationMessage(conversationId, body);
     if (!result) return sendNotFound(response, `Unknown conversation: ${conversationId}`);
     if (result.error) return sendBadRequest(response, result.error);
+    // Staff replied manually in an assistant thread → human takeover, Maya goes silent.
+    if (body.type !== "incoming" && body.type !== "system") {
+      assistant.noteStaffMessage(conversationId);
+    }
     return json(response, 201, {
       ok: true,
       action: "conversation_message_created",
@@ -493,9 +525,73 @@ async function handleApiMutation(request, requestUrl, response) {
   return sendNotFound(response, `Unknown platform mutation endpoint: ${pathname}`);
 }
 
+function jsonCors(request, response, statusCode, payload) {
+  response.writeHead(statusCode, applyCors(request, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store"
+  }));
+  response.end(JSON.stringify(payload, null, 2));
+}
+
+async function handleAssistantRoutes(request, requestUrl, response) {
+  const pathname = requestUrl.pathname;
+
+  if (request.method === "OPTIONS") {
+    response.writeHead(204, applyCors(request, {}));
+    response.end();
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/assistant/health") {
+    return jsonCors(request, response, 200, {
+      ok: true,
+      service: "assistant-api",
+      persona: "Maya",
+      model: llm.model,
+      baseUrl: llm.baseUrl
+    });
+  }
+
+  if (request.method === "GET" && pathname === "/api/assistant/digest") {
+    return jsonCors(request, response, 200, assistant.getDigest(requestUrl.searchParams.get("day")));
+  }
+
+  if (request.method === "POST" && pathname === "/api/assistant/chat") {
+    let body = {};
+    try {
+      body = await parseRequestBody(request);
+    } catch (error) {
+      return jsonCors(request, response, 400, { error: "bad_request", message: "Request body must be valid JSON." });
+    }
+    const result = await assistant.chat({
+      sessionId: body.sessionId,
+      message: body.message,
+      channel: body.channel,
+      clientPhone: body.clientPhone
+    });
+    if (result.error === "bad_request") return jsonCors(request, response, 400, result);
+    if (result.error === "rate_limited") return jsonCors(request, response, 429, result);
+    return jsonCors(request, response, 200, result);
+  }
+
+  const takeoverMatch = pathname.match(/^\/api\/assistant\/conversations\/([^/]+)\/takeover$/);
+  if (takeoverMatch && request.method === "PATCH") {
+    let body = {};
+    try {
+      body = await parseRequestBody(request);
+    } catch (error) {
+      return jsonCors(request, response, 400, { error: "bad_request", message: "Request body must be valid JSON." });
+    }
+    const result = assistant.setTakeover(decodeURIComponent(takeoverMatch[1]), Boolean(body.enabled));
+    if (!result) return jsonCors(request, response, 404, { error: "not_found", message: "Unknown conversation." });
+    return jsonCors(request, response, 200, Object.assign({ ok: true }, result));
+  }
+
+  return jsonCors(request, response, 404, { error: "not_found", message: `Unknown assistant endpoint: ${pathname}` });
+}
+
 function safePathFromUrl(requestUrl) {
-  let pathname = decodeURIComponent(requestUrl.pathname);
-  if (pathname === "/") pathname = "/screens/salon-performance-luminous-core.html";
+  const pathname = decodeURIComponent(requestUrl.pathname);
   const filePath = path.normalize(path.join(ROOT_DIR, pathname));
   if (!filePath.startsWith(ROOT_DIR)) return null;
   return filePath;
@@ -537,6 +633,11 @@ function serveFile(requestUrl, response) {
 async function requestHandler(request, response) {
   const requestUrl = new URL(request.url, `http://${request.headers.host || `${HOST}:${PORT}`}`);
 
+  if (requestUrl.pathname.startsWith("/api/assistant")) {
+    await handleAssistantRoutes(request, requestUrl, response);
+    return;
+  }
+
   if (requestUrl.pathname.startsWith("/api/platform")) {
     if (request.method === "GET") return handleApiGet(requestUrl, response);
     if (request.method === "POST" || request.method === "PATCH" || request.method === "DELETE") {
@@ -555,6 +656,16 @@ async function requestHandler(request, response) {
       error: "method_not_allowed",
       message: `Unsupported method: ${request.method}`
     });
+    return;
+  }
+
+  // Bare root used to serve the dashboard HTML in place, which broke its
+  // relative ./_*.js and ../styles/ paths (silent static placeholder data).
+  // Redirect instead so the screen loads from its real /screens/ base.
+  // (/index.html still serves the self-contained launcher page.)
+  if (requestUrl.pathname === "/") {
+    response.writeHead(302, { Location: "/screens/salon-performance-luminous-core.html" });
+    response.end();
     return;
   }
 
