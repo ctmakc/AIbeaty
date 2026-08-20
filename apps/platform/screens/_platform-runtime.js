@@ -6,6 +6,9 @@
     window.localStorage.getItem("aibeaty_api_base") ||
     "/api/platform";
   var demoUrl = "../data/demo-platform.json";
+  // Which salon's data these screens show. Threaded onto every API call and
+  // carried across in-app navigation so the operator stays in one salon.
+  var salonSlug = searchParams.get("salon") || "";
 
   function formatUpdated(value) {
     try {
@@ -463,6 +466,7 @@
   function screenApiUrl(query) {
     var base = apiBase.replace(/\/$/, "") + "/" + pageFile.replace(".html", "");
     var params = new URLSearchParams();
+    if (salonSlug) params.set("salon", salonSlug);
     Object.keys(query || {}).forEach(function (key) {
       var value = query[key];
       if (value === null || value === undefined) return;
@@ -617,6 +621,7 @@
     if (apiBase && apiBase !== "/api/platform") {
       params.set("api", apiBase);
     }
+    if (salonSlug) params.set("salon", salonSlug);
     var queryString = params.toString();
     return file + (queryString ? "?" + queryString : "");
   }
@@ -796,7 +801,7 @@
     if (exportButton) {
       exportButton.dataset.actionBound = "true";
       exportButton.onclick = function () {
-        fetchJson(apiBase.replace(/\/$/, "") + "/reports/performance?" + new URLSearchParams({ q: currentQuery.q || "", limit: "12" }).toString())
+        fetchJson(apiBase.replace(/\/$/, "") + "/reports/performance?" + new URLSearchParams(salonSlug ? { q: currentQuery.q || "", limit: "12", salon: salonSlug } : { q: currentQuery.q || "", limit: "12" }).toString())
           .then(function (payload) {
             return presentReport({
               title: "Performance Report",

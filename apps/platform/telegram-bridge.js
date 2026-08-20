@@ -17,6 +17,8 @@
 //   ASSISTANT_BASE_URL         default http://127.0.0.1:4174
 //   TELEGRAM_API_BASE          default https://api.telegram.org (tests point it at a stub)
 //   TELEGRAM_POLL_TIMEOUT_SEC  default 50 (long-poll hold time)
+//   TELEGRAM_SALON_SLUG        which salon this bot answers for (default: the
+//                              server's default salon). One bot = one salon.
 //
 // Run: npm run assistant:telegram
 // Only ONE bridge instance may poll a given bot token at a time.
@@ -31,6 +33,9 @@ const ASSISTANT_BASE = (
   `http://127.0.0.1:${process.env.PORT || process.env.PLATFORM_PORT || 4174}`
 ).replace(/\/+$/, "");
 const POLL_TIMEOUT_SEC = Math.max(1, Number(process.env.TELEGRAM_POLL_TIMEOUT_SEC) || 50);
+// A Telegram bot belongs to exactly one salon: every message it relays is
+// tagged with this slug, so two salons can run two bots against one server.
+const SALON_SLUG = (process.env.TELEGRAM_SALON_SLUG || "").trim();
 const ASSISTANT_TIMEOUT_MS = Number(process.env.ASSISTANT_TIMEOUT_MS) || 120000;
 const TYPING_INTERVAL_MS = 4000; // Telegram "typing…" status fades after ~5s
 const MAX_TG_MESSAGE = 4096;
@@ -62,17 +67,40 @@ function log(...parts) {
 
 // --- persona texts -----------------------------------------------------------
 
-function loadSalon() {
+// The salon's display name comes from the server (the salon record), with the
+// local FAQ file as an offline fallback. Never a hardcoded salon.
+function loadSalonFallback() {
   try {
     const faq = JSON.parse(fs.readFileSync(path.join(__dirname, "data", "salon-faq.json"), "utf8"));
     if (faq && faq.salon && faq.salon.name) return faq.salon;
   } catch (error) {
     // fall through to the generic name
   }
-  return { name: "Luminous Core", city: "Ottawa" };
+  return { name: "нашего салона", city: "" };
 }
 
-const SALON = loadSalon();
+let SALON = loadSalonFallback();
+
+async function refreshSalonFromServer() {
+  const url = `${ASSISTANT_BASE}/api/assistant/health${SALON_SLUG ? `?salon=${encodeURIComponent(SALON_SLUG)}` : ""}`;
+  const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+  const info = await response.json();
+  if (info && info.salon) {
+    SALON = { name: info.salon, city: info.city || "" };
+    TEXTS.greeting = buildGreeting(SALON.name);
+  }
+  return info;
+}
+
+function buildGreeting(name) {
+  return (
+    `Привет! Я Майя — ассистентка салона «${name}» 🙂 Я ИИ, но расписание знаю наизусть: ` +
+    "могу записать, перенести визит или ответить на вопросы о ценах и услугах. " +
+    "Если захотите живого человека — просто напишите «позвать человека». " +
+    "(English is fine too — just write to me.)\n\n" +
+    "С чего начнём?"
+  );
+}
 
 const TEXTS = {
   greeting:
@@ -144,6 +172,7 @@ const phonesByChat = new Map(); // chat_id -> phone from a contact share
 
 async function askMaya(chatId, text) {
   const body = { sessionId: `tg:${chatId}`, message: text, channel: "telegram" };
+  if (SALON_SLUG) body.salon = SALON_SLUG;
   const phone = phonesByChat.get(chatId);
   if (phone) body.clientPhone = phone;
 
@@ -246,14 +275,15 @@ async function main() {
   const me = await tgCall("getMe", {});
   // A leftover webhook blocks getUpdates — clear it (no-op when none is set).
   await tgCall("deleteWebhook", { drop_pending_updates: false }).catch(() => {});
-  log(`bridge up: @${me.result.username} ↔ ${ASSISTANT_BASE} (long poll ${POLL_TIMEOUT_SEC}s)`);
+  log(`bridge up: @${me.result.username} ↔ ${ASSISTANT_BASE} salon=${SALON_SLUG || "(default)"} (long poll ${POLL_TIMEOUT_SEC}s)`);
 
   try {
-    const health = await fetch(`${ASSISTANT_BASE}/api/assistant/health`, {
-      signal: AbortSignal.timeout(5000)
-    });
-    const info = await health.json();
-    log(`assistant reachable: persona=${info.persona} model=${info.model}`);
+    const info = await refreshSalonFromServer();
+    if (info && info.error === "unknown_salon") {
+      log(`FATAL: TELEGRAM_SALON_SLUG="${SALON_SLUG}" is not a salon on this server.`);
+      process.exit(1);
+    }
+    log(`assistant reachable: persona=${info.persona} model=${info.model} salon=${info.salon} (${info.salonSlug || "default"})`);
   } catch (error) {
     log(`WARNING: assistant not reachable at ${ASSISTANT_BASE} yet — start the platform server (npm run platform:serve)`);
   }

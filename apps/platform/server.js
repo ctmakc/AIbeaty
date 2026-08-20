@@ -111,6 +111,37 @@ function parseRequestBody(request) {
   });
 }
 
+// Which salon's data does this request get?
+//
+// On every gated route the answer was already decided — and authorised — by
+// enforceAuth() via backend/salon-scope.js, which is the single source of truth
+// for that question. Re-deriving it from the query string here would ignore the
+// session's salon: an owner of salon B who omits ?salon= would silently be
+// served the default salon. So the gate's verdict always wins.
+//
+// Only the PUBLIC assistant routes (no session, no gate) resolve from the
+// request itself, and an unknown slug there is a 404 rather than a fallback.
+function resolveSalonStore(request, requestUrl, body) {
+  if (request && request.salonSlug) {
+    return { slug: request.salonSlug, scope: store.forSalon(request.salonSlug) };
+  }
+  const requested = String(
+    (requestUrl && requestUrl.searchParams.get("salon")) ||
+    (body && body.salon) ||
+    ""
+  ).trim();
+  const slug = requested || store.DEFAULT_SALON_SLUG;
+  return { slug, scope: store.forSalon(slug) };
+}
+
+function sendUnknownSalon(response, slug) {
+  return json(response, 404, {
+    error: "unknown_salon",
+    message: `Unknown salon: ${slug}`,
+    salons: store.listSalons().map((salon) => salon.slug)
+  });
+}
+
 function parseViewOptions(requestUrl) {
   const params = requestUrl.searchParams;
   return {
@@ -132,34 +163,57 @@ function parseViewOptions(requestUrl) {
   };
 }
 
-function pagePayload(screenSlug, requestUrl) {
-  return store.getScreen(screenSlug, parseViewOptions(requestUrl));
-}
-
-function handleApiGet(requestUrl, response) {
+function handleApiGet(request, requestUrl, response) {
   const screenSlug = requestUrl.pathname.replace(/^\/api\/platform\/?/, "");
-
-  if (!screenSlug || screenSlug === "index") {
-    return json(response, 200, {
-      lastUpdated: store.getLastUpdated(),
-      salon: store.getSalon(),
-      screens: store.listScreens()
-    });
-  }
 
   if (screenSlug === "health") {
     return json(response, 200, store.health());
   }
 
+  // Salon directory. A signed-in owner sees ONLY the salon their account is
+  // bound to — listing every salon here would tell one client who the other
+  // clients are. Ops gets the full list from the box with `npm run salon:list`.
+  if (screenSlug === "salons") {
+    const visible = request && request.salonSlug ? [request.salonSlug] : [store.DEFAULT_SALON_SLUG];
+    return json(response, 200, {
+      defaultSalon: store.DEFAULT_SALON_SLUG,
+      salons: visible
+        .filter((slug) => store.salonExists(slug))
+        .map((slug) => {
+          const salon = store.getSalonRecord(slug);
+          const summary = store.forSalon(slug).summary();
+          return {
+            slug: salon.slug,
+            name: salon.name,
+            city: salon.city,
+            timezone: salon.timezone,
+            services: summary.services,
+            staff: summary.staff
+          };
+        })
+    });
+  }
+
+  const { slug, scope } = resolveSalonStore(request, requestUrl, null);
+  if (!scope) return sendUnknownSalon(response, slug);
+
+  if (!screenSlug || screenSlug === "index") {
+    return json(response, 200, {
+      lastUpdated: scope.getLastUpdated(),
+      salon: scope.getSalon(),
+      screens: scope.listScreens()
+    });
+  }
+
   if (screenSlug === "reports/performance") {
-    return json(response, 200, store.getPerformanceReport(parseViewOptions(requestUrl)));
+    return json(response, 200, scope.getPerformanceReport(parseViewOptions(requestUrl)));
   }
 
   if (screenSlug === "reports/activity") {
-    return json(response, 200, store.getActivityReport(parseViewOptions(requestUrl)));
+    return json(response, 200, scope.getActivityReport(parseViewOptions(requestUrl)));
   }
 
-  const payload = pagePayload(screenSlug, requestUrl);
+  const payload = scope.getScreen(screenSlug, parseViewOptions(requestUrl));
   if (!payload) {
     return sendNotFound(response, `Unknown platform screen: ${screenSlug}`);
   }
@@ -176,29 +230,31 @@ async function handleApiMutation(request, requestUrl, response) {
   }
 
   const pathname = requestUrl.pathname;
+  const { slug, scope } = resolveSalonStore(request, requestUrl, body);
+  if (!scope) return sendUnknownSalon(response, slug);
 
   if (request.method === "POST" && pathname === "/api/platform/inventory/restock-orders") {
-    const touchedItems = store.createRestockOrder();
+    const touchedItems = scope.createRestockOrder();
     return json(response, 200, {
       ok: true,
       action: "inventory_restock_order",
       touchedItems,
-      page: store.getInventoryPage(),
-      lastUpdated: store.getLastUpdated()
+      page: scope.getInventoryPage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   const inventoryMatch = pathname.match(/^\/api\/platform\/inventory\/items\/([^/]+)$/);
   if (inventoryMatch && request.method === "PATCH") {
     const sku = decodeURIComponent(inventoryMatch[1]);
-    const item = store.updateInventoryItem(sku, body);
+    const item = scope.updateInventoryItem(sku, body);
     if (!item) return sendNotFound(response, `Unknown inventory SKU: ${sku}`);
     return json(response, 200, {
       ok: true,
       action: "inventory_item_updated",
       item,
-      page: store.getInventoryPage(),
-      lastUpdated: store.getLastUpdated()
+      page: scope.getInventoryPage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
@@ -208,81 +264,81 @@ async function handleApiMutation(request, requestUrl, response) {
       return sendBadRequest(response, "`enabled` must be boolean.");
     }
     const workflowName = decodeURIComponent(workflowMatch[1]);
-    const workflow = store.toggleWorkflow(workflowName, body.enabled);
+    const workflow = scope.toggleWorkflow(workflowName, body.enabled);
     if (!workflow) return sendNotFound(response, `Unknown workflow: ${workflowName}`);
     return json(response, 200, {
       ok: true,
       action: "workflow_toggled",
       workflow,
-      page: store.getAutomationsPage(),
-      lastUpdated: store.getLastUpdated()
+      page: scope.getAutomationsPage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   if (request.method === "POST" && pathname === "/api/platform/automations/builder/test-run") {
-    const page = store.upsertBuilderWorkflow(body);
+    const page = scope.upsertBuilderWorkflow(body);
     return json(response, 200, {
       ok: true,
       action: "builder_test_run",
       preview: `Preview sent for trigger "${page.builder.trigger}" via ${page.builder.action}.`,
       page,
-      lastUpdated: store.getLastUpdated()
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   if (request.method === "POST" && pathname === "/api/platform/automations/builder/activate") {
-    const page = store.upsertBuilderWorkflow(body);
+    const page = scope.upsertBuilderWorkflow(body);
     return json(response, 200, {
       ok: true,
       action: "builder_activate",
       page,
-      lastUpdated: store.getLastUpdated()
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   const serviceMatch = pathname.match(/^\/api\/platform\/services\/([^/]+)$/);
   if (serviceMatch && request.method === "PATCH") {
     const serviceId = decodeURIComponent(serviceMatch[1]);
-    const updatedId = store.updateService(serviceId, body);
+    const updatedId = scope.updateService(serviceId, body);
     if (!updatedId) return sendNotFound(response, `Unknown service: ${serviceId}`);
     return json(response, 200, {
       ok: true,
       action: "service_updated",
-      page: store.getServicesPage(),
-      lastUpdated: store.getLastUpdated()
+      page: scope.getServicesPage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   if (request.method === "POST" && pathname === "/api/platform/schedule/appointments") {
-    const appointmentId = store.createAppointment(body);
+    const appointmentId = scope.createAppointment(body);
     if (!appointmentId) return sendBadRequest(response, "Unable to create appointment.");
     return json(response, 201, {
       ok: true,
       action: "appointment_created",
       appointmentId,
-      page: store.getSchedulePage(),
-      lastUpdated: store.getLastUpdated()
+      page: scope.getSchedulePage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   const appointmentMatch = pathname.match(/^\/api\/platform\/schedule\/appointments\/([^/]+)$/);
   if (appointmentMatch && request.method === "PATCH") {
     const appointmentId = decodeURIComponent(appointmentMatch[1]);
-    const updatedId = store.updateAppointment(appointmentId, body);
+    const updatedId = scope.updateAppointment(appointmentId, body);
     if (!updatedId) return sendNotFound(response, `Unknown appointment: ${appointmentId}`);
     return json(response, 200, {
       ok: true,
       action: "appointment_updated",
       appointmentId: updatedId,
-      page: store.getSchedulePage(),
-      lastUpdated: store.getLastUpdated()
+      page: scope.getSchedulePage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   const checkoutMatch = pathname.match(/^\/api\/platform\/schedule\/appointments\/([^/]+)\/checkout$/);
   if (checkoutMatch && request.method === "POST") {
     const appointmentId = decodeURIComponent(checkoutMatch[1]);
-    const checkedOutId = store.checkoutAppointment(appointmentId, body);
+    const checkedOutId = scope.checkoutAppointment(appointmentId, body);
     if (checkedOutId && checkedOutId.error === "checked_out") {
       return sendBadRequest(response, "Appointment is already checked out.");
     }
@@ -291,15 +347,15 @@ async function handleApiMutation(request, requestUrl, response) {
       ok: true,
       action: "appointment_checked_out",
       appointmentId: checkedOutId,
-      page: store.getSchedulePage(),
-      lastUpdated: store.getLastUpdated()
+      page: scope.getSchedulePage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   const depositMatch = pathname.match(/^\/api\/platform\/schedule\/appointments\/([^/]+)\/deposit$/);
   if (depositMatch && request.method === "POST") {
     const appointmentId = decodeURIComponent(depositMatch[1]);
-    const updatedId = store.captureAppointmentDeposit(appointmentId, body);
+    const updatedId = scope.captureAppointmentDeposit(appointmentId, body);
     if (updatedId && updatedId.error === "checked_out") {
       return sendBadRequest(response, "Cannot capture deposit after checkout.");
     }
@@ -308,15 +364,15 @@ async function handleApiMutation(request, requestUrl, response) {
       ok: true,
       action: "appointment_deposit_captured",
       appointmentId: updatedId,
-      page: store.getSchedulePage(),
-      lastUpdated: store.getLastUpdated()
+      page: scope.getSchedulePage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   const refundMatch = pathname.match(/^\/api\/platform\/schedule\/appointments\/([^/]+)\/refund$/);
   if (refundMatch && request.method === "POST") {
     const appointmentId = decodeURIComponent(refundMatch[1]);
-    const updatedId = store.refundAppointment(appointmentId, body);
+    const updatedId = scope.refundAppointment(appointmentId, body);
     if (updatedId && updatedId.error === "not_checked_out") {
       return sendBadRequest(response, "Cannot refund an appointment before checkout.");
     }
@@ -328,15 +384,15 @@ async function handleApiMutation(request, requestUrl, response) {
       ok: true,
       action: "appointment_refunded",
       appointmentId: updatedId,
-      page: store.getSchedulePage(),
-      lastUpdated: store.getLastUpdated()
+      page: scope.getSchedulePage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   const rescheduleMatch = pathname.match(/^\/api\/platform\/schedule\/appointments\/([^/]+)\/reschedule$/);
   if (rescheduleMatch && request.method === "POST") {
     const appointmentId = decodeURIComponent(rescheduleMatch[1]);
-    const updatedId = store.rescheduleAppointment(appointmentId, body);
+    const updatedId = scope.rescheduleAppointment(appointmentId, body);
     if (updatedId && updatedId.error === "checked_out") {
       return sendBadRequest(response, "Cannot reschedule a checked-out appointment.");
     }
@@ -348,15 +404,15 @@ async function handleApiMutation(request, requestUrl, response) {
       ok: true,
       action: "appointment_rescheduled",
       appointmentId: updatedId,
-      page: store.getSchedulePage(),
-      lastUpdated: store.getLastUpdated()
+      page: scope.getSchedulePage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   const cancelMatch = pathname.match(/^\/api\/platform\/schedule\/appointments\/([^/]+)\/cancel$/);
   if (cancelMatch && request.method === "POST") {
     const appointmentId = decodeURIComponent(cancelMatch[1]);
-    const updatedId = store.cancelAppointment(appointmentId, body);
+    const updatedId = scope.cancelAppointment(appointmentId, body);
     if (updatedId && updatedId.error === "checked_out") {
       return sendBadRequest(response, "Cannot cancel a checked-out appointment.");
     }
@@ -365,15 +421,15 @@ async function handleApiMutation(request, requestUrl, response) {
       ok: true,
       action: "appointment_canceled",
       appointmentId: updatedId,
-      page: store.getSchedulePage(),
-      lastUpdated: store.getLastUpdated()
+      page: scope.getSchedulePage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   const noShowMatch = pathname.match(/^\/api\/platform\/schedule\/appointments\/([^/]+)\/no-show$/);
   if (noShowMatch && request.method === "POST") {
     const appointmentId = decodeURIComponent(noShowMatch[1]);
-    const updatedId = store.markAppointmentNoShow(appointmentId, body);
+    const updatedId = scope.markAppointmentNoShow(appointmentId, body);
     if (updatedId && updatedId.error === "checked_out") {
       return sendBadRequest(response, "Cannot mark a checked-out appointment as no-show.");
     }
@@ -382,8 +438,8 @@ async function handleApiMutation(request, requestUrl, response) {
       ok: true,
       action: "appointment_no_show",
       appointmentId: updatedId,
-      page: store.getSchedulePage(),
-      lastUpdated: store.getLastUpdated()
+      page: scope.getSchedulePage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
@@ -391,58 +447,58 @@ async function handleApiMutation(request, requestUrl, response) {
     if (typeof body.name !== "string" || !body.name.trim()) {
       return sendBadRequest(response, "`name` is required.");
     }
-    const clientId = store.createClient(body);
+    const clientId = scope.createClient(body);
     return json(response, 201, {
       ok: true,
       action: "client_created",
       clientId,
-      client: store.getClientsPage().clients.find((client) => client.id === clientId),
-      page: store.getClientsPage(),
-      lastUpdated: store.getLastUpdated()
+      client: scope.getClientsPage().clients.find((client) => client.id === clientId),
+      page: scope.getClientsPage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   const clientMatch = pathname.match(/^\/api\/platform\/clients\/([^/]+)$/);
   if (clientMatch && request.method === "PATCH") {
     const clientId = decodeURIComponent(clientMatch[1]);
-    const updatedId = store.updateClient(clientId, body);
+    const updatedId = scope.updateClient(clientId, body);
     if (!updatedId) return sendNotFound(response, `Unknown client: ${clientId}`);
     return json(response, 200, {
       ok: true,
       action: "client_updated",
       clientId: updatedId,
-      client: store.getClientsPage().clients.find((client) => client.id === updatedId),
-      page: store.getClientsPage(),
-      lastUpdated: store.getLastUpdated()
+      client: scope.getClientsPage().clients.find((client) => client.id === updatedId),
+      page: scope.getClientsPage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   if (clientMatch && request.method === "DELETE") {
     const clientId = decodeURIComponent(clientMatch[1]);
-    const removed = store.deleteClient(clientId);
+    const removed = scope.deleteClient(clientId);
     if (!removed) return sendNotFound(response, `Unknown client: ${clientId}`);
     return json(response, 200, {
       ok: true,
       action: "client_deleted",
       clientId,
       client: removed,
-      page: store.getClientsPage(),
-      lastUpdated: store.getLastUpdated()
+      page: scope.getClientsPage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   const clientBookingMatch = pathname.match(/^\/api\/platform\/clients\/([^/]+)\/bookings$/);
   if (clientBookingMatch && request.method === "POST") {
     const clientId = decodeURIComponent(clientBookingMatch[1]);
-    const updatedId = store.createClientBooking(clientId, body);
+    const updatedId = scope.createClientBooking(clientId, body);
     if (!updatedId) return sendNotFound(response, `Unknown client: ${clientId}`);
     return json(response, 200, {
       ok: true,
       action: "client_booking_created",
       clientId: updatedId,
-      client: store.getClientsPage().clients.find((client) => client.id === updatedId),
-      page: store.getClientsPage(),
-      lastUpdated: store.getLastUpdated()
+      client: scope.getClientsPage().clients.find((client) => client.id === updatedId),
+      page: scope.getClientsPage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
@@ -450,50 +506,50 @@ async function handleApiMutation(request, requestUrl, response) {
     if (typeof body.name !== "string" || !body.name.trim()) {
       return sendBadRequest(response, "`name` is required.");
     }
-    const conversationId = store.createConversation(body);
+    const conversationId = scope.createConversation(body);
     return json(response, 201, {
       ok: true,
       action: "conversation_created",
       conversationId,
-      conversation: store.getInboxPage().conversations.find((conversation) => conversation.id === conversationId),
-      page: store.getInboxPage(),
-      lastUpdated: store.getLastUpdated()
+      conversation: scope.getInboxPage().conversations.find((conversation) => conversation.id === conversationId),
+      page: scope.getInboxPage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   const conversationMatch = pathname.match(/^\/api\/platform\/inbox\/conversations\/([^/]+)$/);
   if (conversationMatch && request.method === "PATCH") {
     const conversationId = decodeURIComponent(conversationMatch[1]);
-    const updatedId = store.updateConversation(conversationId, body);
+    const updatedId = scope.updateConversation(conversationId, body);
     if (!updatedId) return sendNotFound(response, `Unknown conversation: ${conversationId}`);
     return json(response, 200, {
       ok: true,
       action: "conversation_updated",
       conversationId: updatedId,
-      conversation: store.getInboxPage().conversations.find((conversation) => conversation.id === updatedId),
-      page: store.getInboxPage(),
-      lastUpdated: store.getLastUpdated()
+      conversation: scope.getInboxPage().conversations.find((conversation) => conversation.id === updatedId),
+      page: scope.getInboxPage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   if (conversationMatch && request.method === "DELETE") {
     const conversationId = decodeURIComponent(conversationMatch[1]);
-    const removed = store.deleteConversation(conversationId);
+    const removed = scope.deleteConversation(conversationId);
     if (!removed) return sendNotFound(response, `Unknown conversation: ${conversationId}`);
     return json(response, 200, {
       ok: true,
       action: "conversation_deleted",
       conversationId,
       conversation: removed,
-      page: store.getInboxPage(),
-      lastUpdated: store.getLastUpdated()
+      page: scope.getInboxPage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   const messageMatch = pathname.match(/^\/api\/platform\/inbox\/conversations\/([^/]+)\/messages$/);
   if (messageMatch && request.method === "POST") {
     const conversationId = decodeURIComponent(messageMatch[1]);
-    const result = store.createConversationMessage(conversationId, body);
+    const result = scope.createConversationMessage(conversationId, body);
     if (!result) return sendNotFound(response, `Unknown conversation: ${conversationId}`);
     if (result.error) return sendBadRequest(response, result.error);
     // Staff replied manually in an assistant thread → human takeover, Maya goes silent.
@@ -504,16 +560,16 @@ async function handleApiMutation(request, requestUrl, response) {
       ok: true,
       action: "conversation_message_created",
       conversationId: result,
-      conversation: store.getInboxPage().conversations.find((conversation) => conversation.id === result),
-      page: store.getInboxPage(),
-      lastUpdated: store.getLastUpdated()
+      conversation: scope.getInboxPage().conversations.find((conversation) => conversation.id === result),
+      page: scope.getInboxPage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   const recoveryMatch = pathname.match(/^\/api\/platform\/inbox\/conversations\/([^/]+)\/recovery-offer$/);
   if (recoveryMatch && request.method === "POST") {
     const conversationId = decodeURIComponent(recoveryMatch[1]);
-    const result = store.sendRecoveryOffer(conversationId, body);
+    const result = scope.sendRecoveryOffer(conversationId, body);
     if (!result) return sendNotFound(response, `Unknown conversation: ${conversationId}`);
     if (result.error === "no_recovery_state") {
       return sendBadRequest(response, "Conversation is not in a recovery state.");
@@ -522,16 +578,16 @@ async function handleApiMutation(request, requestUrl, response) {
       ok: true,
       action: "conversation_recovery_offer_sent",
       conversationId: result,
-      conversation: store.getInboxPage().conversations.find((conversation) => conversation.id === result),
-      page: store.getInboxPage(),
-      lastUpdated: store.getLastUpdated()
+      conversation: scope.getInboxPage().conversations.find((conversation) => conversation.id === result),
+      page: scope.getInboxPage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
   const conversationBookingMatch = pathname.match(/^\/api\/platform\/inbox\/conversations\/([^/]+)\/bookings$/);
   if (conversationBookingMatch && request.method === "POST") {
     const conversationId = decodeURIComponent(conversationBookingMatch[1]);
-    const result = store.createConversationBooking(conversationId, body);
+    const result = scope.createConversationBooking(conversationId, body);
     if (!result) return sendNotFound(response, `Unknown conversation: ${conversationId}`);
     return json(response, 201, {
       ok: true,
@@ -544,9 +600,9 @@ async function handleApiMutation(request, requestUrl, response) {
         amount: result.amount,
         stylist: result.stylist
       },
-      conversation: store.getInboxPage().conversations.find((conversation) => conversation.id === conversationId),
-      page: store.getInboxPage(),
-      lastUpdated: store.getLastUpdated()
+      conversation: scope.getInboxPage().conversations.find((conversation) => conversation.id === conversationId),
+      page: scope.getInboxPage(),
+      lastUpdated: scope.getLastUpdated()
     });
   }
 
@@ -571,22 +627,36 @@ async function handleAssistantRoutes(request, requestUrl, response) {
   }
 
   if (request.method === "GET" && pathname === "/api/assistant/health") {
+    const { slug, scope } = resolveSalonStore(request, requestUrl, null);
+    if (!scope) {
+      return jsonCors(request, response, 404, { error: "unknown_salon", message: `Unknown salon: ${slug}` });
+    }
+    const salon = scope.getSalon();
     return jsonCors(request, response, 200, {
       ok: true,
       service: "assistant-api",
       persona: "Maya",
-      salon: store.getSalon().name,
+      salon: salon.name,
+      salonSlug: salon.slug,
+      city: salon.city,
+      timezone: salon.timezone,
       model: llm.model,
       baseUrl: llm.baseUrl
     });
   }
 
   if (request.method === "GET" && pathname === "/api/assistant/digest") {
-    return jsonCors(request, response, 200, assistant.getDigest(requestUrl.searchParams.get("day")));
+    const salonSlug = requestUrl.searchParams.get("salon") || store.DEFAULT_SALON_SLUG;
+    const digest = assistant.getDigest(requestUrl.searchParams.get("day"), salonSlug);
+    if (!digest) return jsonCors(request, response, 404, { error: "unknown_salon", message: `Unknown salon: ${salonSlug}` });
+    return jsonCors(request, response, 200, digest);
   }
 
   if (request.method === "GET" && pathname === "/api/assistant/usage") {
-    return jsonCors(request, response, 200, assistant.getUsage(requestUrl.searchParams.get("day")));
+    const salonSlug = requestUrl.searchParams.get("salon") || store.DEFAULT_SALON_SLUG;
+    const usage = assistant.getUsage(requestUrl.searchParams.get("day"), salonSlug);
+    if (!usage) return jsonCors(request, response, 404, { error: "unknown_salon", message: `Unknown salon: ${salonSlug}` });
+    return jsonCors(request, response, 200, usage);
   }
 
   if (request.method === "POST" && pathname === "/api/assistant/chat") {
@@ -597,11 +667,14 @@ async function handleAssistantRoutes(request, requestUrl, response) {
       return jsonCors(request, response, 400, { error: "bad_request", message: "Request body must be valid JSON." });
     }
     const result = await assistant.chat({
+      // Optional: which salon this guest is talking to. Absent → default salon.
+      salon: body.salon || requestUrl.searchParams.get("salon") || "",
       sessionId: body.sessionId,
       message: body.message,
       channel: body.channel,
       clientPhone: body.clientPhone
     });
+    if (result.error === "unknown_salon") return jsonCors(request, response, 404, result);
     if (result.error === "bad_request") return jsonCors(request, response, 400, result);
     if (result.error === "rate_limited") return jsonCors(request, response, 429, result);
     return jsonCors(request, response, 200, result);
@@ -773,7 +846,7 @@ async function requestHandler(request, response) {
   }
 
   if (requestUrl.pathname.startsWith("/api/platform")) {
-    if (request.method === "GET") return handleApiGet(requestUrl, response);
+    if (request.method === "GET") return handleApiGet(request, requestUrl, response);
     if (request.method === "POST" || request.method === "PATCH" || request.method === "DELETE") {
       await handleApiMutation(request, requestUrl, response);
       return;
@@ -807,23 +880,33 @@ async function requestHandler(request, response) {
 }
 
 function runCheckMode() {
-  const missing = store.listScreens()
+  const scope = store.forSalon(store.DEFAULT_SALON_SLUG);
+  const missing = scope.listScreens()
     .map((screen) => screen.id)
-    .filter((screenId) => !store.getScreen(screenId));
+    .filter((screenId) => !scope.getScreen(screenId));
 
   if (missing.length) {
     console.error(`Platform API payloads missing for: ${missing.join(", ")}`);
     process.exit(1);
   }
 
-  console.log(`Platform API check passed for ${store.listScreens().length} screens.`);
+  console.log(`Platform API check passed for ${scope.listScreens().length} screens across ${store.listSalons().length} salon(s).`);
 }
 
 if (process.argv.includes("--check")) {
   runCheckMode();
 } else if (process.argv.includes("--reset-state")) {
-  store.reset();
-  console.log("Platform state reset.");
+  // Resets the demo salon only — a salon created by the intake importer keeps
+  // its data unless --reset-salon names it explicitly.
+  const salonArg = process.argv.find((arg) => arg.startsWith("--salon="));
+  const targetSlug = salonArg ? salonArg.split("=")[1] : store.DEFAULT_SALON_SLUG;
+  const scope = store.forSalon(targetSlug);
+  if (!scope) {
+    console.error(`Unknown salon: ${targetSlug}. Known: ${store.listSalons().map((salon) => salon.slug).join(", ")}`);
+    process.exit(1);
+  }
+  scope.reset();
+  console.log(`Platform state reset for salon "${targetSlug}".`);
 } else {
   const server = http.createServer((request, response) => {
     requestHandler(request, response).catch((error) => {

@@ -269,6 +269,13 @@
 (function () {
   "use strict";
   var API_BASE = (window.AIBEATY_API_BASE || "").replace(/\/+$/, "");
+  // Which salon this chat belongs to: ?salon=<slug> on the URL, or the value
+  // the embedding page set. Empty means the server's default salon.
+  var SALON = (function () {
+    var fromUrl = /(^|[?&])salon=([^&#]+)/.exec(location.search);
+    if (fromUrl) return decodeURIComponent(fromUrl[2]);
+    return String(window.AIBEATY_SALON || "");
+  })();
   var EMBED = /(^|[?&])embed=1/.test(location.search);
   if (EMBED) document.body.classList.add("embed");
 
@@ -425,8 +432,8 @@
   var store = { get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
                 set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
                 del: function (k) { try { localStorage.removeItem(k); } catch (e) {} } };
-  var SESSION_KEY = "aibeaty.chat.session";
-  var LOG_KEY = "aibeaty.chat.log";
+  var SESSION_KEY = "aibeaty.chat.session" + (SALON ? "." + SALON : "");
+  var LOG_KEY = "aibeaty.chat.log" + (SALON ? "." + SALON : "");
   var sessionId = store.get(SESSION_KEY);
   if (!sessionId) { sessionId = "web-" + rid(); store.set(SESSION_KEY, sessionId); }
   var log = [];
@@ -486,7 +493,7 @@
   }
 
   // --- salon name in the header ---
-  fetch(API_BASE + "/api/assistant/health").then(function (r) { return r.json(); }).then(function (data) {
+  fetch(API_BASE + "/api/assistant/health" + (SALON ? "?salon=" + encodeURIComponent(SALON) : "")).then(function (r) { return r.json(); }).then(function (data) {
     if (data && data.salon) document.getElementById("sub").textContent = T.subPrefix + data.salon;
   }).catch(function () {});
 
@@ -513,7 +520,7 @@
     fetch(API_BASE + "/api/assistant/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: sessionId, message: text, channel: "Webchat" })
+      body: JSON.stringify({ sessionId: sessionId, message: text, channel: "Webchat", salon: SALON || undefined })
     }).then(function (response) {
       return response.json().then(function (data) { return { status: response.status, data: data }; });
     }).then(function (result) {

@@ -15,11 +15,14 @@
     "platform:serve": "node apps/platform/server.js",
     "platform:api:check": "node apps/platform/server.js --check",
     "platform:state:reset": "node apps/platform/server.js --reset-state",
-    "assistant:test": "node apps/platform/tests/assistant.test.js && node apps/platform/tests/telegram-bridge.test.js && node apps/platform/tests/auth.test.js && node apps/platform/tests/assistant-live-smoke.js",
+    "assistant:test": "node apps/platform/tests/scope-audit.test.js && node apps/platform/tests/assistant.test.js && node apps/platform/tests/multi-salon.test.js && node apps/platform/tests/multi-salon-http.test.js && node apps/platform/tests/telegram-bridge.test.js && node apps/platform/tests/auth.test.js && node apps/platform/tests/assistant-live-smoke.js",
     "assistant:telegram": "node apps/platform/telegram-bridge.js",
     "assistant:telegram:test": "node apps/platform/tests/telegram-bridge.test.js",
     "auth:test": "node apps/platform/tests/auth.test.js",
-    "owner:create": "node scripts/create-owner.mjs"
+    "owner:create": "node scripts/create-owner.mjs",
+    "salon:onboard": "node scripts/onboard-salon.mjs",
+    "salon:list": "node -e \"const{createPlatformStore}=require('./apps/platform/backend/store');const s=createPlatformStore();s.listSalons().forEach(x=>console.log(x.slug.padEnd(24),x.name,'|',x.timezone,'|',s.forSalon(x.slug).summary().services+' услуг,',s.forSalon(x.slug).summary().staff+' мастеров'))\"",
+    "salon:test": "node apps/platform/tests/scope-audit.test.js && node apps/platform/tests/multi-salon.test.js && node apps/platform/tests/multi-salon-http.test.js"
   },
   "devDependencies": {
     "@tailwindcss/container-queries": "^0.1.1",

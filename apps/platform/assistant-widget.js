@@ -9,6 +9,8 @@
  *   - Mount point: <div id="aibeaty-chat"></div> (falls back to document.body).
  *   - Config: window.AIBEATY_API_BASE = assistant API origin
  *     (e.g. "https://aibeaty.remolda.com"). Without it — silent no-op.
+ *   - Optional: window.AIBEATY_SALON = salon slug this site belongs to
+ *     (e.g. "aurora-nail-lab"). Omitted — the server's default salon.
  *   - The chat page itself lives at {AIBEATY_API_BASE}/screens/chat.html.
  */
 (function () {
@@ -20,7 +22,9 @@
   window.__aibeatyWidgetMounted = true;
 
   var API_BASE = String(window.AIBEATY_API_BASE).replace(/\/+$/, "");
-  var CHAT_URL = API_BASE + "/screens/chat.html?embed=1";
+  var SALON = String(window.AIBEATY_SALON || "").trim();
+  var CHAT_URL = API_BASE + "/screens/chat.html?embed=1" +
+    (SALON ? "&salon=" + encodeURIComponent(SALON) : "");
   var API_ORIGIN;
   try { API_ORIGIN = new URL(API_BASE).origin; } catch (e) { return; }
 
