@@ -80,6 +80,10 @@ function loadSalonFallback() {
 }
 
 let SALON = loadSalonFallback();
+// Until the server confirms the salon's real name, the greeting uses the local
+// fallback. The bridge and the server restart together, so the first probe often
+// loses the race — retry lazily instead of wearing the wrong name until a restart.
+let salonResolved = false;
 
 async function refreshSalonFromServer() {
   const url = `${ASSISTANT_BASE}/api/assistant/health${SALON_SLUG ? `?salon=${encodeURIComponent(SALON_SLUG)}` : ""}`;
@@ -88,6 +92,7 @@ async function refreshSalonFromServer() {
   if (info && info.salon) {
     SALON = { name: info.salon, city: info.city || "" };
     TEXTS.greeting = buildGreeting(SALON.name);
+    salonResolved = true;
   }
   return info;
 }
@@ -245,6 +250,9 @@ async function handleMessage(message) {
   // /start (including deep links "/start something") → instant canned greeting
   // per the persona: honest AI disclosure + escape hatch, no LLM round-trip.
   if (/^\/start(\s|$)/.test(text)) {
+    if (!salonResolved) {
+      await refreshSalonFromServer().catch(() => {});
+    }
     await sendText(chatId, TEXTS.greeting, {
       reply_markup: {
         keyboard: [[{ text: TEXTS.shareHint, request_contact: true }]],
@@ -256,6 +264,9 @@ async function handleMessage(message) {
   }
 
   if (/^\/help(\s|$)/.test(text)) {
+    if (!salonResolved) {
+      await refreshSalonFromServer().catch(() => {});
+    }
     await sendText(chatId, TEXTS.greeting);
     return;
   }

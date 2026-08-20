@@ -21,7 +21,7 @@
     "auth:test": "node apps/platform/tests/auth.test.js",
     "owner:create": "node scripts/create-owner.mjs",
     "salon:onboard": "node scripts/onboard-salon.mjs",
-    "salon:list": "node -e \"const{createPlatformStore}=require('./apps/platform/backend/store');const s=createPlatformStore();s.listSalons().forEach(x=>console.log(x.slug.padEnd(24),x.name,'|',x.timezone,'|',s.forSalon(x.slug).summary().services+' услуг,',s.forSalon(x.slug).summary().staff+' мастеров'))\"",
+    "salon:list": "node scripts/list-salons.mjs",
     "salon:test": "node apps/platform/tests/scope-audit.test.js && node apps/platform/tests/multi-salon.test.js && node apps/platform/tests/multi-salon-http.test.js"
   },
   "devDependencies": {
