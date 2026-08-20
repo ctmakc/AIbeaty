@@ -1619,13 +1619,20 @@ function createPlatformStore() {
 
   function getScheduleWeek(page, appointments, weekOffset) {
     const referenceDate = new Date(getLastUpdated());
+    // `dayOffset` on an appointment counts days from TODAY — the same anchor the
+    // day view (getSchedulePage) and the assistant's resolveDay() use. Anchoring
+    // the week grid on the Monday of the week instead silently shifted every
+    // appointment by (weekday - 1) days on any day except Monday, so a booking
+    // Maya confirmed for "Tue, Aug 25" rendered on Sat, Aug 22.
+    const referenceDay = new Date(referenceDate);
+    referenceDay.setHours(0, 0, 0, 0);
     const weekStart = addDays(startOfWeek(referenceDate), weekOffset * 7);
     return {
       weekOffset,
       label: `Week of ${formatShortDate(weekStart)}`,
       days: Array.from({ length: 7 }, (_, index) => {
-        const absoluteOffset = weekOffset * 7 + index;
         const date = addDays(weekStart, index);
+        const absoluteOffset = Math.round((date.getTime() - referenceDay.getTime()) / 86400000);
         const dayAppointments = appointments.filter((appointment) => Number(appointment.dayOffset || 0) === absoluteOffset);
         const revenue = dayAppointments.reduce((sum, appointment) => sum + parseMoney(appointment.price || 0), 0);
         const stylistCounts = {};
