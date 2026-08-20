@@ -2119,9 +2119,18 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
 
   // A conversation id is globally unique, so staff-side actions (takeover,
   // manual reply) can find their salon from the row itself.
-  function salonForConversation(conversationId) {
+  //
+  // That lookup crosses salons by construction, so every caller MUST say which
+  // salon it is allowed to act on. `expectedSalonSlug` is that fence: a row from
+  // any other salon comes back null, so the caller answers "unknown conversation"
+  // and learns nothing about whether the id exists elsewhere on the box. Callers
+  // pass the salon on the signed-in session, never a salon read from the request.
+  function salonForConversation(conversationId, expectedSalonSlug) {
     const row = db.prepare(`SELECT salon_id FROM conversations WHERE id = ?`).get(conversationId);
-    return row ? forSalon(row.salon_id) : null;
+    if (!row) return null;
+    const expected = String(expectedSalonSlug || "").trim().toLowerCase();
+    if (expected && String(row.salon_id).trim().toLowerCase() !== expected) return null;
+    return forSalon(row.salon_id);
   }
 
   const defaultAssistant = forSalon(rootStore.DEFAULT_SALON_SLUG);
@@ -2143,12 +2152,12 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       const salon = forSalon(salonSlug);
       return salon ? salon.getUsage(day) : null;
     },
-    setTakeover(conversationId, enabled) {
-      const salon = salonForConversation(conversationId);
+    setTakeover(conversationId, enabled, expectedSalonSlug) {
+      const salon = salonForConversation(conversationId, expectedSalonSlug);
       return salon ? salon.setTakeover(conversationId, enabled) : null;
     },
-    noteStaffMessage(conversationId) {
-      const salon = salonForConversation(conversationId);
+    noteStaffMessage(conversationId, expectedSalonSlug) {
+      const salon = salonForConversation(conversationId, expectedSalonSlug);
       return salon ? salon.noteStaffMessage(conversationId) : undefined;
     },
     // Default-salon internals, kept for the existing single-salon test suite.

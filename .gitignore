@@ -11,6 +11,9 @@ coverage/
 apps/platform/data/platform-state.json
 apps/platform/data/platform.db
 apps/platform/data/platform.db-*
+# Auto-generated on first run. It signs owner session cookies: committing it would
+# let anyone forge a signed-in session on every box that shares this repo.
+apps/platform/data/session-secret
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

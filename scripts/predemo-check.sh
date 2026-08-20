@@ -87,24 +87,58 @@ else
   add 1 "Telegram-мост (@aibeaty_maya_bot)" "состояние: $tg_state"
 fi
 
-# 6. Дайджест
-digest=$(curl -sm 10 "$BASE/api/assistant/digest" 2>/dev/null || true)
-if grep -q '"day"' <<<"$digest" && grep -q '"totals"' <<<"$digest"; then
-  add 0 "Дайджест /api/assistant/digest" "отдаёт день $(grep -o '"day": "[^"]*"' <<<"$digest" | head -1 | cut -d'"' -f4)"
+# 6. Замок на кабинете: чужой человек без входа не должен видеть данные салона.
+#    Это главная проверка перед показом двух салонов одному клиенту.
+locked=0
+locked_detail=""
+for guarded in "/api/assistant/digest?salon=luminous-core" "/api/assistant/usage?salon=luminous-core"; do
+  code=$(curl -sm 10 -o /dev/null -w '%{http_code}' "$BASE$guarded" 2>/dev/null || echo 000)
+  if [ "$code" != "401" ]; then
+    locked=1
+    locked_detail="$locked_detail ${guarded%%\?*}=$code"
+  fi
+done
+takeover_code=$(curl -sm 10 -o /dev/null -w '%{http_code}' -X PATCH \
+  -H 'Content-Type: application/json' -d '{"enabled":true}' \
+  "$BASE/api/assistant/conversations/emma/takeover" 2>/dev/null || echo 000)
+if [ "$takeover_code" != "401" ]; then
+  locked=1
+  locked_detail="$locked_detail takeover=$takeover_code"
+fi
+if [ "$locked" -eq 0 ]; then
+  add 0 "Данные закрыты без входа" "дайджест, расход и переключатель Майи отвечают 401"
 else
-  add 1 "Дайджест /api/assistant/digest" "нет корректного JSON"
+  add 1 "Данные закрыты без входа" "УТЕЧКА:$locked_detail (ожидалось 401)"
 fi
 
-# 7. Сегодняшняя нагрузка vs мягкий потолок
-replies=$(grep -o '"assistantReplies": [0-9]*' <<<"$digest" | grep -o '[0-9]*' | head -1)
-if [ -n "${replies:-}" ]; then
-  if [ "$replies" -lt "$DAILY_CAP" ]; then
-    add 0 "Нагрузка сегодня" "$replies ответов Майи (потолок $DAILY_CAP)"
+# 7. Сегодняшняя нагрузка vs мягкий потолок.
+#    Дайджест теперь только для владельца, поэтому цифры читаем со входом.
+#    Логин задаётся снаружи: PREDEMO_OWNER_EMAIL / PREDEMO_OWNER_PASSWORD.
+if [ -n "${PREDEMO_OWNER_EMAIL:-}" ] && [ -n "${PREDEMO_OWNER_PASSWORD:-}" ]; then
+  jar=$(mktemp)
+  login_code=$(curl -sm 10 -c "$jar" -o /dev/null -w '%{http_code}' -X POST "$BASE/api/auth/login" \
+    -H "Content-Type: application/json" \
+    -d "{\"email\":\"$PREDEMO_OWNER_EMAIL\",\"password\":\"$PREDEMO_OWNER_PASSWORD\"}" 2>/dev/null || echo 000)
+  if [ "$login_code" = "200" ]; then
+    digest=$(curl -sm 10 -b "$jar" "$BASE/api/assistant/digest" 2>/dev/null || true)
+    salon_seen=$(grep -o '"salonSlug": "[^"]*"' <<<"$digest" | head -1 | cut -d'"' -f4)
+    add 0 "Дайджест владельца" "салон: ${salon_seen:-?}, день $(grep -o '"day": "[^"]*"' <<<"$digest" | head -1 | cut -d'"' -f4)"
+    replies=$(grep -o '"assistantReplies": [0-9]*' <<<"$digest" | grep -o '[0-9]*' | head -1)
+    if [ -n "${replies:-}" ]; then
+      if [ "$replies" -lt "$DAILY_CAP" ]; then
+        add 0 "Нагрузка сегодня" "$replies ответов Майи (потолок $DAILY_CAP)"
+      else
+        add 1 "Нагрузка сегодня" "$replies ответов — выше потолка $DAILY_CAP, квота LLM под угрозой"
+      fi
+    else
+      add 1 "Нагрузка сегодня" "не удалось прочитать assistantReplies из дайджеста"
+    fi
   else
-    add 1 "Нагрузка сегодня" "$replies ответов — выше потолка $DAILY_CAP, квота LLM под угрозой"
+    add 1 "Дайджест владельца" "вход не удался (HTTP $login_code)"
   fi
+  rm -f "$jar"
 else
-  add 1 "Нагрузка сегодня" "не удалось прочитать assistantReplies из дайджеста"
+  rows+=("➖  Нагрузка сегодня — пропущено: задайте PREDEMO_OWNER_EMAIL и PREDEMO_OWNER_PASSWORD")
 fi
 
 echo "────────  AIbeaty pre-demo check  ────────"

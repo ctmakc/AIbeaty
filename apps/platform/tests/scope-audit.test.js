@@ -130,3 +130,92 @@ if (leaks.length) {
 }
 
 console.log(`scope-audit: ${scopedCount} salon-table statements checked, all carry salon_id (${SCOPED_TABLES.length} scoped tables).`);
+
+// ---------------------------------------------------------------------------
+// Second audit: the PUBLIC surface.
+//
+// Storage isolation is worthless if a route serves the data without asking who
+// is calling. `isPublicPath()` once opened the entire `/api/assistant/` prefix,
+// which published the owner digest, the spend meter and the takeover switch to
+// anyone on the internet. A prefix cannot be reviewed — every route written
+// later inherits it silently — so the audit below pins the surface to an
+// exact-match allowlist and fails the suite if a prefix rule comes back.
+// ---------------------------------------------------------------------------
+const SERVER_FILE = path.join(__dirname, "..", "server.js");
+const serverSource = fs.readFileSync(SERVER_FILE, "utf8");
+const publicFailures = [];
+
+function functionBody(text, marker) {
+  const start = text.indexOf(marker);
+  if (start < 0) return "";
+  let depth = 0;
+  for (let i = start + marker.length - 1; i < text.length; i += 1) {
+    if (text[i] === "{") depth += 1;
+    else if (text[i] === "}") {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return "";
+}
+
+const gateBody = functionBody(serverSource, "function isPublicPath(pathname) {");
+if (!gateBody) {
+  publicFailures.push("  isPublicPath(pathname) not found in server.js");
+} else if (/startsWith\(\s*["'`]\/api\/assistant/.test(gateBody)) {
+  publicFailures.push("  isPublicPath() opens /api/assistant by PREFIX — every route under it becomes public. Use the exact-match allowlist.");
+}
+
+// The allowlist itself: exactly the two endpoints a salon's guest needs.
+const ALLOWED_PUBLIC_ASSISTANT = ["/api/assistant/health", "/api/assistant/chat"];
+const allowlist = /const PUBLIC_ASSISTANT_PATHS = new Set\(\[([\s\S]*?)\]\)/.exec(serverSource);
+if (!allowlist) {
+  publicFailures.push("  PUBLIC_ASSISTANT_PATHS allowlist not found in server.js");
+} else {
+  const entries = allowlist[1]
+    .split(",")
+    .map((entry) => entry.replace(/\/\/.*$/gm, "").trim().replace(/^["'`]|["'`]$/g, ""))
+    .filter(Boolean);
+  const unexpected = entries.filter((entry) => !ALLOWED_PUBLIC_ASSISTANT.includes(entry));
+  if (unexpected.length) {
+    publicFailures.push(`  PUBLIC_ASSISTANT_PATHS published something new without review: ${unexpected.join(", ")}`);
+  }
+}
+
+// Owner-only assistant handlers must take the salon from the authorised session
+// (request.salonSlug), never re-read ?salon= — that is what served salon B's
+// owner salon A's digest.
+for (const route of ["digest", "usage"]) {
+  const marker = `pathname === "/api/assistant/${route}"`;
+  const at = serverSource.indexOf(marker);
+  if (at < 0) {
+    publicFailures.push(`  /api/assistant/${route} handler not found`);
+    continue;
+  }
+  const handler = serverSource.slice(at, at + 500);
+  const upToNextRoute = handler.split("\n  if (request.method")[0];
+  if (/searchParams\.get\(\s*["'`]salon["'`]\s*\)/.test(upToNextRoute)) {
+    publicFailures.push(`  /api/assistant/${route} reads ?salon= instead of the session's request.salonSlug`);
+  }
+  if (!/request\.salonSlug/.test(upToNextRoute)) {
+    publicFailures.push(`  /api/assistant/${route} does not scope to request.salonSlug`);
+  }
+}
+
+// The takeover switch resolves its salon from the conversation row, so it must
+// be handed the session's salon as a fence.
+const ASSISTANT_FILE = path.join(__dirname, "..", "backend", "assistant.js");
+const assistantSource = fs.readFileSync(ASSISTANT_FILE, "utf8");
+if (!/function salonForConversation\(conversationId, expectedSalonSlug\)/.test(assistantSource)) {
+  publicFailures.push("  salonForConversation() must require an expectedSalonSlug fence");
+}
+if (!/setTakeover\(\s*\n?\s*decodeURIComponent\(takeoverMatch\[1\]\),[\s\S]{0,120}request\.salonSlug/.test(serverSource)) {
+  publicFailures.push("  the takeover route must pass request.salonSlug to setTakeover()");
+}
+
+if (publicFailures.length) {
+  console.error(`\nscope-audit FAILED — public surface:\n${publicFailures.join("\n")}\n`);
+  process.exit(1);
+}
+
+console.log(`scope-audit: public surface OK — only ${ALLOWED_PUBLIC_ASSISTANT.join(" and ")} are anonymous; digest, usage and takeover are session-scoped.`);

@@ -278,11 +278,24 @@
     document.querySelectorAll(".reveal").forEach((el, i) => { el.style.animationDelay = Math.min(i * 28, 280) + "ms"; });
   }
 
+  // The digest is owner-only. It never asks for a salon: the server answers for
+  // the salon on the session, so this screen cannot be pointed at another one.
   function load(day) {
     fetch("/api/assistant/digest" + (day ? "?day=" + encodeURIComponent(day) : ""))
-      .then((r) => r.json())
+      .then((r) => {
+        if (r.status === 401) {
+          var next = window.location.pathname + window.location.search;
+          window.location.replace("login.html?next=" + encodeURIComponent(next));
+          throw new Error("HTTP 401");
+        }
+        if (r.status === 403) throw new Error("HTTP 403");
+        return r.json();
+      })
       .then((data) => { $("day").value = data.day; render(data); })
-      .catch(() => { $("kpis").innerHTML = emptyRow("Could not load the digest — is the platform server running?"); });
+      .catch((error) => {
+        if (error && /HTTP 401/.test(error.message)) return;
+        $("kpis").innerHTML = emptyRow("Could not load the digest — is the platform server running?");
+      });
   }
 
   function shiftDay(delta) {

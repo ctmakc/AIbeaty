@@ -18,8 +18,8 @@ const auth = createAuth({ store });
 
 const LOGIN_PAGE = "/screens/login.html";
 
-// Surfaces a salon's CLIENT must reach without any account: the assistant API, the
-// chat page the widget frames, the widget itself, and the login door.
+// Surfaces a salon's CLIENT must reach without any account: the chat page the widget
+// frames, the widget itself, and the login door.
 const PUBLIC_EXACT_PATHS = new Set([
   LOGIN_PAGE,
   "/screens/chat.html",
@@ -28,8 +28,24 @@ const PUBLIC_EXACT_PATHS = new Set([
   "/mmix-logo.png"
 ]);
 
+// The ONLY two assistant endpoints a salon's guest reaches without an account:
+// the greeting/health probe the widget uses to title itself, and the conversation.
+//
+// This is an exact-match allowlist ON PURPOSE. It replaced a `/api/assistant/`
+// PREFIX rule that made every present and future route under that namespace
+// world-readable — which silently published the owner-only daily digest
+// (`?salon=` → any salon's clients, bookings and chat previews), the usage/spend
+// meter, and a takeover switch anyone could flip on any salon's conversation.
+// A prefix cannot be audited: adding one owner route under /api/assistant/ was
+// enough to publish it. An allowlist fails closed, so a new route is private
+// until someone deliberately writes it down here.
+const PUBLIC_ASSISTANT_PATHS = new Set([
+  "/api/assistant/health",
+  "/api/assistant/chat"
+]);
+
 function isPublicPath(pathname) {
-  if (pathname === "/api/assistant" || pathname.startsWith("/api/assistant/")) return true;
+  if (PUBLIC_ASSISTANT_PATHS.has(pathname)) return true;
   if (pathname.startsWith("/api/auth/")) return true;
   if (PUBLIC_EXACT_PATHS.has(pathname)) return true;
   // Stylesheets are the login page's only asset dependency and carry no salon data.
@@ -553,8 +569,9 @@ async function handleApiMutation(request, requestUrl, response) {
     if (!result) return sendNotFound(response, `Unknown conversation: ${conversationId}`);
     if (result.error) return sendBadRequest(response, result.error);
     // Staff replied manually in an assistant thread → human takeover, Maya goes silent.
+    // Scoped to the session's salon like every other conversation action here.
     if (body.type !== "incoming" && body.type !== "system") {
-      assistant.noteStaffMessage(conversationId);
+      assistant.noteStaffMessage(conversationId, request.salonSlug);
     }
     return json(response, 201, {
       ok: true,
@@ -632,28 +649,38 @@ async function handleAssistantRoutes(request, requestUrl, response) {
       return jsonCors(request, response, 404, { error: "unknown_salon", message: `Unknown salon: ${slug}` });
     }
     const salon = scope.getSalon();
-    return jsonCors(request, response, 200, {
+    // Anonymous surface: only what the widget actually paints — the salon's own
+    // public identity. Which model we run and where it lives is ours, not the
+    // guest's; a signed-in owner gets that from /api/platform/health.
+    const payload = {
       ok: true,
       service: "assistant-api",
       persona: "Maya",
       salon: salon.name,
       salonSlug: salon.slug,
       city: salon.city,
-      timezone: salon.timezone,
-      model: llm.model,
-      baseUrl: llm.baseUrl
-    });
+      timezone: salon.timezone
+    };
+    if (request.session) {
+      payload.model = llm.model;
+      payload.baseUrl = llm.baseUrl;
+    }
+    return jsonCors(request, response, 200, payload);
   }
 
+  // Owner analytics. Gated: enforceAuth() already required a session and already
+  // refused any ?salon= that is not this session's own salon, so the salon here
+  // is `request.salonSlug` and never the raw query parameter. Reading the query
+  // string again is exactly the bug that served salon B's owner salon A's digest.
   if (request.method === "GET" && pathname === "/api/assistant/digest") {
-    const salonSlug = requestUrl.searchParams.get("salon") || store.DEFAULT_SALON_SLUG;
+    const salonSlug = request.salonSlug;
     const digest = assistant.getDigest(requestUrl.searchParams.get("day"), salonSlug);
     if (!digest) return jsonCors(request, response, 404, { error: "unknown_salon", message: `Unknown salon: ${salonSlug}` });
     return jsonCors(request, response, 200, digest);
   }
 
   if (request.method === "GET" && pathname === "/api/assistant/usage") {
-    const salonSlug = requestUrl.searchParams.get("salon") || store.DEFAULT_SALON_SLUG;
+    const salonSlug = request.salonSlug;
     const usage = assistant.getUsage(requestUrl.searchParams.get("day"), salonSlug);
     if (!usage) return jsonCors(request, response, 404, { error: "unknown_salon", message: `Unknown salon: ${salonSlug}` });
     return jsonCors(request, response, 200, usage);
@@ -688,7 +715,16 @@ async function handleAssistantRoutes(request, requestUrl, response) {
     } catch (error) {
       return jsonCors(request, response, 400, { error: "bad_request", message: "Request body must be valid JSON." });
     }
-    const result = assistant.setTakeover(decodeURIComponent(takeoverMatch[1]), Boolean(body.enabled));
+    // Staff-only switch: it silences Maya in a live client thread. It resolves the
+    // salon FROM THE CONVERSATION ROW, so without the session's salon pinned here
+    // any caller who knew (or guessed) a conversation id could mute any salon's
+    // assistant. Passing request.salonSlug makes a foreign id indistinguishable
+    // from a missing one — same 404 the rest of the API gives for cross-salon ids.
+    const result = assistant.setTakeover(
+      decodeURIComponent(takeoverMatch[1]),
+      Boolean(body.enabled),
+      request.salonSlug
+    );
     if (!result) return jsonCors(request, response, 404, { error: "not_found", message: "Unknown conversation." });
     return jsonCors(request, response, 200, Object.assign({ ok: true }, result));
   }

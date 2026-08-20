@@ -27,6 +27,7 @@ const INTAKE_FILE = path.join(TEST_DIR, "salon-b.json");
 
 const SALON_A = "luminous-core";
 const SALON_B = "iris-http-bar";
+const OWNER_A = { email: "owner-a@example.test", password: "correct-horse-battery-A1", name: "Сара" };
 const OWNER_B = { email: "owner-b@example.test", password: "correct-horse-battery-B2", name: "Ирина" };
 
 const INTAKE = {
@@ -107,6 +108,17 @@ function get(pathname, cookie) {
   });
 }
 
+function patch(pathname, body, cookie) {
+  const headers = { "Content-Type": "application/json", Accept: "application/json" };
+  if (cookie) headers.Cookie = cookie;
+  return fetch(`${baseUrl}${pathname}`, {
+    method: "PATCH",
+    redirect: "manual",
+    headers,
+    body: JSON.stringify(body)
+  });
+}
+
 async function login(email, password) {
   const response = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
@@ -142,10 +154,13 @@ async function test(name, fn) {
     runCli(ONBOARD_CLI, [INTAKE_FILE, "--dry-run"]);
     runCli(ONBOARD_CLI, [INTAKE_FILE]);
     runCli(OWNER_CLI, ["--email", OWNER_B.email, "--salon", SALON_B, "--name", OWNER_B.name, "--password-stdin"], `${OWNER_B.password}\n`);
+    runCli(OWNER_CLI, ["--email", OWNER_A.email, "--salon", SALON_A, "--name", OWNER_A.name, "--password-stdin"], `${OWNER_A.password}\n`);
     await startServer();
 
     const cookieB = await login(OWNER_B.email, OWNER_B.password);
     assert.ok(cookieB, "owner B signed in");
+    const cookieA = await login(OWNER_A.email, OWNER_A.password);
+    assert.ok(cookieA, "owner A signed in");
 
     await test("signed-in owner with NO ?salon= gets their OWN salon, not the default", async () => {
       const response = await get("/api/platform/services-pricing-luminous-core", cookieB);
@@ -198,6 +213,98 @@ async function test(name, fn) {
 
       const ghost = await get("/api/assistant/health?salon=ghost-salon");
       assert.strictEqual(ghost.status, 404, "unknown salon is refused on the public route too");
+    });
+
+    // ---------------------------------------------------------------------
+    // Regressions for the four holes found under /api/assistant/*.
+    //
+    // The root cause was one line: isPublicPath() opened that whole PREFIX, so
+    // every owner-only route that happened to live under it was world-readable
+    // and the handlers underneath, trusting the gate had run, read ?salon=
+    // straight off the query string. The tests below pin each consequence.
+    // ---------------------------------------------------------------------
+
+    await test("LEAK 1: the daily digest is refused without a session, for any salon", async () => {
+      for (const target of ["/api/assistant/digest", `/api/assistant/digest?salon=${SALON_A}`, `/api/assistant/digest?salon=${SALON_B}`]) {
+        const response = await get(target);
+        assert.strictEqual(response.status, 401, `anonymous ${target} must be 401, got ${response.status}`);
+        const body = await response.text();
+        assert.ok(!/"totals"|"bookings"|Ирина|Маникюр/.test(body), `refusal body leaked digest data: ${body.slice(0, 200)}`);
+      }
+    });
+
+    await test("LEAK 2: the usage/spend meter is refused without a session, for any salon", async () => {
+      for (const target of ["/api/assistant/usage", `/api/assistant/usage?salon=${SALON_A}`, `/api/assistant/usage?salon=${SALON_B}`]) {
+        const response = await get(target);
+        assert.strictEqual(response.status, 401, `anonymous ${target} must be 401, got ${response.status}`);
+        const body = await response.text();
+        assert.ok(!/"turns"|"promptTokens"|"cap"/.test(body), `refusal body leaked usage data: ${body.slice(0, 200)}`);
+      }
+    });
+
+    await test("LEAK 3: an owner's digest follows their session, never ?salon= or the default", async () => {
+      // Salon B's owner opening their own digest screen sends no ?salon= at all.
+      // This used to hand them the DEFAULT salon's digest — salon A's clients.
+      const own = await get("/api/assistant/digest", cookieB);
+      assert.strictEqual(own.status, 200);
+      const payload = await own.json();
+      assert.strictEqual(payload.salonSlug, SALON_B, `digest must follow the session, got ${payload.salonSlug}`);
+      assert.strictEqual(payload.salon, "Iris HTTP Bar");
+      assert.ok(!JSON.stringify(payload).includes("Luminous"), "no default-salon data in B's digest");
+
+      const usage = await (await get("/api/assistant/usage", cookieB)).json();
+      assert.ok(usage.cap > 0, "B gets a usage payload of their own");
+
+      // And naming another salon out loud is refused rather than served.
+      const crossed = await get(`/api/assistant/digest?salon=${SALON_A}`, cookieB);
+      assert.strictEqual(crossed.status, 403, `cross-salon digest must be 403, got ${crossed.status}`);
+      const refusal = await crossed.json();
+      assert.strictEqual(refusal.reason, "cross_salon");
+      assert.ok(!/Balayage|Sarah|"totals"/.test(JSON.stringify(refusal)), "no salon-A data in the refusal");
+
+      const crossedUsage = await get(`/api/assistant/usage?salon=${SALON_A}`, cookieB);
+      assert.strictEqual(crossedUsage.status, 403, `cross-salon usage must be 403, got ${crossedUsage.status}`);
+    });
+
+    await test("LEAK 4: the takeover switch needs a session and refuses another salon's thread", async () => {
+      // A real conversation id from salon A, read the way its own owner would.
+      const inbox = await (await get("/api/platform/unified-inbox-luminous-core", cookieA)).json();
+      const conversationId = (inbox.page.conversations || [])[0] && inbox.page.conversations[0].id;
+      assert.ok(conversationId, "salon A has a seeded conversation to aim at");
+
+      // Anonymous: this used to answer 200 and silence Maya in that salon.
+      const anonymous = await patch(`/api/assistant/conversations/${encodeURIComponent(conversationId)}/takeover`, { enabled: true });
+      assert.strictEqual(anonymous.status, 401, `anonymous takeover must be 401, got ${anonymous.status}`);
+
+      // Salon B's owner aiming at salon A's thread: indistinguishable from a
+      // conversation that does not exist, so the id itself stays private.
+      const crossed = await patch(`/api/assistant/conversations/${encodeURIComponent(conversationId)}/takeover`, { enabled: true }, cookieB);
+      assert.strictEqual(crossed.status, 404, `cross-salon takeover must be 404, got ${crossed.status}`);
+
+      // The thread is untouched by either attempt.
+      const after = await (await get("/api/platform/unified-inbox-luminous-core", cookieA)).json();
+      const row = after.page.conversations.find((conversation) => conversation.id === conversationId);
+      assert.notStrictEqual(row.assistantState, "takeover", "neither attempt may flip the switch");
+
+      // Its own owner still can.
+      const allowed = await patch(`/api/assistant/conversations/${encodeURIComponent(conversationId)}/takeover`, { enabled: true }, cookieA);
+      assert.strictEqual(allowed.status, 200, "the salon's own owner keeps the switch");
+      assert.strictEqual((await allowed.json()).assistantState, "takeover");
+      await patch(`/api/assistant/conversations/${encodeURIComponent(conversationId)}/takeover`, { enabled: false }, cookieA);
+    });
+
+    await test("the public health probe tells an anonymous caller nothing about our LLM", async () => {
+      const anonymous = await (await get(`/api/assistant/health?salon=${SALON_B}`)).json();
+      assert.strictEqual(anonymous.salon, "Iris HTTP Bar", "the widget still gets the salon name");
+      assert.strictEqual(anonymous.model, undefined, "model must not be published");
+      assert.strictEqual(anonymous.baseUrl, undefined, "LLM endpoint must not be published");
+    });
+
+    await test("nothing new under /api/assistant/ is public by accident", async () => {
+      // The old prefix rule made any unrecognised path here public, so a future
+      // owner route would ship open. It must land on the gate instead.
+      const response = await get("/api/assistant/some-future-owner-route");
+      assert.strictEqual(response.status, 401, `unknown assistant route must hit the gate, got ${response.status}`);
     });
 
     await test("re-running the importer against a live server stays idempotent", async () => {
