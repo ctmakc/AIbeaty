@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # aibeaty-remote-watch — external probe of the public Maya demo, runs on the
 # workstation from the aibeaty-remote-watch.timer (systemd --user) every 15 min.
-# Probes: authed /api/platform/health + zero-LLM chat ping fast-path (sessionId
+# Probes: public /api/assistant/health + zero-LLM chat ping fast-path (sessionId
 # 'watchdog-probe' -> instant 'pong', no LLM call, no conversation created).
 # Two consecutive failures -> best-effort ssh restart of the box service + ONE
 # alert email via formsubmit (max 1/hour). State+log: ~/.local/state/aibeaty-watch/
 set -u
 
 BASE="https://aibeaty.remolda.com"
-BASIC_AUTH="demo:LuminousMaya-2026"   # demo-grade shared credentials, deliberately inline
 BOX="root@46.175.145.180"
 ALERT_EMAIL="ctmakc@gmail.com"
 
@@ -22,7 +21,7 @@ log() { printf '%s %s\n' "$(date -Is)" "$*" >> "$LOG_FILE"; }
 
 problems=()
 
-health=$(curl -sm 10 -u "$BASIC_AUTH" "$BASE/api/platform/health" 2>/dev/null || true)
+health=$(curl -sm 10 "$BASE/api/assistant/health" 2>/dev/null || true)
 if ! grep -Eq '"ok": ?true' <<<"$health"; then
   problems+=("platform health: no ok:true (got: $(head -c 120 <<<"$health"))")
 fi

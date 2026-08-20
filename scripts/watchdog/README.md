@@ -6,7 +6,8 @@ curl, systemd.
 ## Layer 1 — on the box (root@46.175.145.180)
 
 `aibeaty-watchdog.timer` runs `aibeaty-watchdog.sh` every 5 min:
-local health probe -> on the 2nd consecutive failure `systemctl restart aibeaty`
+local health probe (PUBLIC /api/assistant/health — the platform one is behind
+the owner login) -> on the 2nd consecutive failure `systemctl restart aibeaty`
 plus one alert email via the formsubmit relay (throttled to 1/hour).
 State: `/run/aibeaty-watchdog/`. Logs: `journalctl -u aibeaty-watchdog`.
 
@@ -21,7 +22,7 @@ systemctl enable --now aibeaty-watchdog.timer
 ## Layer 2 — on the workstation
 
 `aibeaty-remote-watch.timer` (systemd **--user**) runs
-`scripts/remote-watch.sh` every 15 min: authed public health probe + zero-LLM
+`scripts/remote-watch.sh` every 15 min: public health probe + zero-LLM
 chat ping (`sessionId: watchdog-probe`, `message: ping` -> instant `pong`,
 no conversation created, no quota burned). Two consecutive failures ->
 best-effort ssh restart + one alert email (1/hour).

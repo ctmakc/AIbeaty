@@ -51,6 +51,30 @@ when the server answers faster. `prefers-reduced-motion`: dots static, settle re
 - «Позвать человека» is a permanent quick chip (escape hatch law), not buried in a menu.
 - Error state is honest and warm: «Майя отошла на минутку — попробуйте ещё раз» + explicit retry; silenced threads say the humans have it now.
 
+## Owner door (2026-08-20): `screens/login.html`
+
+**Inheritance, not a new direction** — same locked Luminous Core M3 tokens, mirrored as
+CSS custom properties exactly like `digest.html`. The one new surface law:
+
+- **Layout**: asymmetric 5/7 split with named grid areas — mark · shelf on the left,
+  the card on the right. The phone reorders to mark → card → shelf from the same
+  markup, because a bare form with no product mark above it reads as a phishing page
+  (loop cycle 1 caught exactly this: the mark had fallen below the fold).
+- **Primitive**: the digest's ledger row, reused for "what is behind this door" —
+  hairline rules, no second card.
+- **Accent budget**: three appearances per viewport — the Maya disc, the sign-in
+  button, the client-chat link. Ledger glyphs are `--outline` on purpose; the first
+  pass had them primary and pushed the count to seven.
+- **Bilingual**: RU label + EN twin on every control, separated by weight and case
+  rather than a paler grey (11px at `--outline-variant` measured 2.25:1 — a real
+  contrast failure, now `--on-surface-variant`). Decorative glyphs carry
+  `aria-hidden` so a screen reader never announces "calendar_month".
+- **Motion**: the system's single settle, 340ms `cubic-bezier(.2,0,0,1)`, stagger
+  ≤280ms (mark 60 · card 140 · shelf 220). Nothing loops except the submit spinner,
+  and only while a login is genuinely in flight. `prefers-reduced-motion` = 0 animations.
+- **Honesty**: the footer states that a salon's clients need no login at all and
+  links them to Maya's chat — the door explains who it is not for.
+
 ### Widget (`/assistant-widget.js`)
 Self-contained IIFE, Shadow DOM, zero deps. Honors the landing contract: silent no-op
 without `window.AIBEATY_API_BASE`; mounts into `#aibeaty-chat` (falls back to body).

@@ -7,7 +7,9 @@
 # and the last-alert timestamp.
 set -u
 
-HEALTH_URL="http://127.0.0.1:4174/api/platform/health"
+# Liveness probe must be a PUBLIC path: /api/platform/health sits behind the owner
+# login since 2026-08-20, and a probe that gets 401 would restart a healthy service.
+HEALTH_URL="http://127.0.0.1:4174/api/assistant/health"
 STATE_DIR="/run/aibeaty-watchdog"
 FAIL_FILE="$STATE_DIR/consecutive_failures"
 ALERT_FILE="$STATE_DIR/last_alert_epoch"

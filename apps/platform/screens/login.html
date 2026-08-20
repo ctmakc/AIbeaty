@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html class="light" lang="ru"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta content="noindex, nofollow" name="robots"/>
+<title>Salon OS — Вход в кабинет</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@500;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+  /* Tokens mirror apps/platform/tailwind.config.js (Luminous Core M3 light system).
+     This surface INHERITS the locked system — see apps/platform/DESIGN.md. */
+  :root {
+    --bg: #f5f6f7;
+    --surface-lowest: #ffffff;
+    --surface-low: #eff1f2;
+    --surface-container: #e6e8ea;
+    --surface-high: #e0e3e4;
+    --surface-variant: #dadddf;
+    --on-surface: #2c2f30;
+    --on-surface-variant: #595c5d;
+    --outline: #757778;
+    --outline-variant: #abadae;
+    --primary: #4d2afa;
+    --primary-dim: #400aef;
+    --primary-container: #9c93ff;
+    --on-primary-container: #1b007a;
+    --tertiary: #7a25db;
+    --tertiary-container: #c79eff;
+    --on-tertiary-container: #450087;
+    --secondary: #006384;
+    --secondary-container: #97daff;
+    --on-secondary-container: #004d68;
+    --error: #b41340;
+    --error-container: #f74b6d;
+    --on-error-container: #510017;
+    --r-sm: 0.125rem;
+    --r-lg: 0.25rem;
+    --r-xl: 0.5rem;
+    --r-full: 0.75rem;
+    --font-headline: "Manrope", sans-serif;
+    --font-body: "Inter", sans-serif;
+    --settle: cubic-bezier(.2, 0, 0, 1);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--on-surface);
+    font-family: var(--font-body);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  .material-symbols-outlined { font-variation-settings: "FILL" 0, "wght" 400; vertical-align: middle; }
+  .icon-fill { font-variation-settings: "FILL" 1; }
+
+  /* Asymmetric split (5/7): the salon's shelf on the left, the door on the right.
+     One layout primitive on this page — the ledger row, borrowed from the digest.
+     Named areas so the phone can reorder into mark → door → shelf without a second
+     copy of the markup. */
+  .door {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    grid-template-areas: "mark card" "body card";
+    grid-template-rows: auto auto;
+    align-content: center;
+    column-gap: 64px;
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 48px 32px;
+  }
+
+  .shelf { grid-area: body; max-width: 420px; }
+  .card { grid-area: card; align-self: center; }
+  .mark {
+    grid-area: mark;
+    display: flex; align-items: center; gap: 12px; margin-bottom: 28px;
+    max-width: 420px;
+  }
+  /* The single brand mark of the product: Maya's gradient disc (chat = widget = here). */
+  .disc {
+    width: 44px; height: 44px; border-radius: var(--r-full);
+    background: linear-gradient(135deg, #4d2afa, #7a25db);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-headline); font-weight: 800; font-size: 20px; color: #fff;
+    flex-shrink: 0;
+  }
+  .mark .name {
+    font-family: var(--font-headline); font-weight: 800; font-size: 17px;
+    letter-spacing: -0.02em; color: #17181b; line-height: 1.15;
+  }
+  .mark .sub { font-size: 12px; color: var(--on-surface-variant); font-weight: 500; margin-top: 2px; }
+
+  .shelf h1 {
+    font-family: var(--font-headline); font-weight: 800; font-size: 34px;
+    line-height: 1.1; letter-spacing: -0.03em; margin: 0 0 10px; color: #17181b;
+    text-wrap: balance;
+  }
+  .shelf .lede {
+    font-size: 14.5px; line-height: 1.55; color: var(--on-surface-variant);
+    margin: 0 0 28px; max-width: 38ch;
+  }
+
+  /* Ledger rows — the platform's signature list form (hairline rules, no cards). */
+  .ledger { border-top: 1px solid var(--surface-variant); }
+  .ledger .row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 13px 2px; border-bottom: 1px solid var(--surface-variant);
+  }
+  /* Quiet glyphs on purpose: the accent belongs to the Maya disc, the sign-in button
+     and the one client-chat link — three appearances per viewport, not seven. */
+  .ledger .row .material-symbols-outlined {
+    font-size: 20px; color: var(--outline); flex-shrink: 0;
+  }
+  .ledger .row .ru { font-weight: 600; font-size: 13.5px; color: var(--on-surface); }
+  .ledger .row .en { font-size: 11.5px; color: var(--on-surface-variant); font-weight: 500; margin-top: 1px; }
+
+  /* The card: the only elevated-by-border container on the page. */
+  .card {
+    background: var(--surface-lowest);
+    border: 1px solid var(--surface-variant);
+    border-radius: var(--r-full);
+    padding: 34px 34px 30px;
+    max-width: 440px;
+    width: 100%;
+  }
+  .card h2 {
+    font-family: var(--font-headline); font-weight: 800; font-size: 21px;
+    letter-spacing: -0.02em; margin: 0 0 4px; color: #17181b;
+  }
+  .card .h2-en { font-size: 12px; color: var(--on-surface-variant); font-weight: 500; margin: 0 0 24px; }
+
+  .field { display: grid; gap: 7px; margin-bottom: 16px; }
+  .field label { display: flex; align-items: baseline; gap: 8px; }
+  .field .ru {
+    font-size: 12px; font-weight: 700; color: var(--on-surface-variant);
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  /* The EN twin is separated from the RU label by weight and case, never by a
+     paler grey — 11px at --outline-variant measured 2.25:1 against the card. */
+  .field .en { font-size: 11px; color: var(--on-surface-variant); font-weight: 500; }
+  .field input {
+    width: 100%; font-family: var(--font-body); font-size: 15px; color: var(--on-surface);
+    background: var(--surface-lowest); border: 1px solid var(--outline-variant);
+    border-radius: var(--r-xl); padding: 12px 14px; outline: none;
+    transition: border-color 150ms var(--settle), box-shadow 150ms var(--settle);
+  }
+  .field input:hover { border-color: var(--outline); }
+  .field input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(77, 42, 250, .14);
+  }
+
+  button.submit {
+    width: 100%; margin-top: 8px;
+    font-family: var(--font-body); font-size: 14.5px; font-weight: 700; color: #fff;
+    background: var(--primary); border: 1px solid var(--primary);
+    border-radius: var(--r-xl); padding: 13px 18px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: background 150ms var(--settle), transform 120ms var(--settle);
+  }
+  button.submit:hover { background: var(--primary-dim); }
+  button.submit:active { transform: scale(.985); }
+  button.submit[disabled] { opacity: .6; cursor: default; }
+  button.submit .en { font-weight: 500; opacity: .72; font-size: 12.5px; }
+
+  .alert {
+    display: none; align-items: flex-start; gap: 9px;
+    background: rgba(180, 19, 64, .07); border: 1px solid rgba(180, 19, 64, .22);
+    color: var(--on-error-container); border-radius: var(--r-xl);
+    padding: 11px 13px; font-size: 13px; font-weight: 500; margin-bottom: 16px;
+    line-height: 1.45;
+  }
+  .alert.on { display: flex; }
+  .alert .material-symbols-outlined { font-size: 19px; color: var(--error); flex-shrink: 0; }
+
+  .foot {
+    margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--surface-variant);
+    font-size: 12px; color: var(--on-surface-variant); line-height: 1.5;
+  }
+  .foot a { color: var(--primary); text-decoration: none; font-weight: 600; }
+  .foot a:hover { text-decoration: underline; }
+
+  .spinner {
+    width: 15px; height: 15px; border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, .35); border-top-color: #fff;
+    animation: spin 800ms linear infinite; display: none;
+  }
+  button.submit.busy .spinner { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Motion law: ONE gesture — a settle. Stagger ≤280ms, nothing loops. */
+  .settle { opacity: 0; transform: translateY(10px); animation: settle 340ms var(--settle) forwards; }
+  @keyframes settle { to { opacity: 1; transform: none; } }
+  .d1 { animation-delay: 60ms; }
+  .d2 { animation-delay: 140ms; }
+  .d3 { animation-delay: 220ms; }
+
+  @media (max-width: 900px) {
+    /* The door comes first on a phone, but the product still names itself above it —
+       a bare form with no mark reads like a phishing page. */
+    .door {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: "mark" "card" "body";
+      grid-template-rows: auto auto auto;
+      row-gap: 26px; padding: 28px 20px 44px; align-content: start;
+    }
+    .mark { margin-bottom: 0; max-width: none; }
+    .shelf { max-width: none; }
+    .card { max-width: none; padding: 26px 22px 24px; }
+    .shelf h1 { font-size: 26px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .settle { opacity: 1; transform: none; animation: none; }
+    .spinner { animation: none; }
+    * { transition-duration: 1ms !important; }
+  }
+</style>
+</head>
+<body>
+<main class="door">
+  <div class="mark settle d1">
+    <div class="disc" aria-hidden="true">M</div>
+    <div>
+      <div class="name">AIbeaty Salon OS</div>
+      <div class="sub">Кабинет владельца · Owner console</div>
+    </div>
+  </div>
+
+  <section class="shelf settle d3">
+    <h1>Ваш салон.<br/>Ваш вход.</h1>
+    <p class="lede">
+      Логин и пароль выданы вашему салону. Внутри — только ваши записи, ваши клиенты
+      и ваша Майя.
+    </p>
+    <div class="ledger">
+      <div class="row">
+        <span class="material-symbols-outlined" aria-hidden="true">calendar_month</span>
+        <div>
+          <div class="ru">Расписание и записи</div>
+          <div class="en">Schedule &amp; appointments</div>
+        </div>
+      </div>
+      <div class="row">
+        <span class="material-symbols-outlined" aria-hidden="true">forum</span>
+        <div>
+          <div class="ru">Единый входящий по всем каналам</div>
+          <div class="en">Unified inbox</div>
+        </div>
+      </div>
+      <div class="row">
+        <span class="material-symbols-outlined" aria-hidden="true">smart_toy</span>
+        <div>
+          <div class="ru">Майя отвечает клиентам круглосуточно</div>
+          <div class="en">Maya answers around the clock</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card settle d2">
+    <h2>Вход в кабинет</h2>
+    <p class="h2-en">Sign in to your salon workspace</p>
+
+    <div class="alert" id="alert" role="alert" aria-live="polite">
+      <span class="material-symbols-outlined" aria-hidden="true">error</span>
+      <span id="alert-text"></span>
+    </div>
+
+    <form id="login-form" novalidate="">
+      <div class="field">
+        <label for="email"><span class="ru">Почта</span><span class="en">Email</span></label>
+        <input autocapitalize="none" autocomplete="username" autofocus="" id="email" inputmode="email" name="email" spellcheck="false" type="email"/>
+      </div>
+      <div class="field">
+        <label for="password"><span class="ru">Пароль</span><span class="en">Password</span></label>
+        <input autocomplete="current-password" id="password" name="password" type="password"/>
+      </div>
+      <button class="submit" id="submit" type="submit">
+        <span class="spinner" aria-hidden="true"></span>
+        <span>Войти</span><span class="en">Sign in</span>
+      </button>
+    </form>
+
+    <div class="foot">
+      Забыли пароль или нужен доступ для мастера — напишите нам, выдадим новый.
+      <br/>Клиентам салона вход не нужен: <a href="chat.html">чат с Майей</a> открыт всем.
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  var form = document.getElementById("login-form");
+  var emailInput = document.getElementById("email");
+  var passwordInput = document.getElementById("password");
+  var submit = document.getElementById("submit");
+  var alertBox = document.getElementById("alert");
+  var alertText = document.getElementById("alert-text");
+  var DASHBOARD = "salon-performance-luminous-core.html";
+
+  // Only ever bounce to a path on this origin — an attacker-supplied ?next= must not
+  // turn the login page into an open redirector.
+  function safeNext() {
+    var raw = new URLSearchParams(window.location.search).get("next") || "";
+    if (!raw || raw.charAt(0) !== "/" || raw.charAt(1) === "/" || raw.charAt(1) === "\\") return DASHBOARD;
+    if (raw === "/" || raw === "/screens/login.html") return DASHBOARD;
+    return raw;
+  }
+
+  function showError(message) {
+    alertText.textContent = message;
+    alertBox.classList.add("on");
+  }
+
+  function clearError() {
+    alertBox.classList.remove("on");
+  }
+
+  function setBusy(busy) {
+    submit.disabled = busy;
+    submit.classList.toggle("busy", busy);
+  }
+
+  // Already signed in? Skip the door.
+  fetch("/api/auth/session", { headers: { Accept: "application/json" } })
+    .then(function (response) { return response.json(); })
+    .then(function (payload) {
+      if (payload && payload.authenticated) window.location.replace(safeNext());
+    })
+    .catch(function () { /* offline: just show the form */ });
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    clearError();
+    var email = (emailInput.value || "").trim();
+    var password = passwordInput.value || "";
+    if (!email || !password) {
+      showError("Введите почту и пароль. / Enter email and password.");
+      return;
+    }
+    setBusy(true);
+    fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ email: email, password: password })
+    })
+      .then(function (response) {
+        return response.json().then(function (payload) {
+          return { status: response.status, payload: payload };
+        });
+      })
+      .then(function (result) {
+        if (result.status === 200 && result.payload && result.payload.ok) {
+          window.location.replace(safeNext());
+          return;
+        }
+        setBusy(false);
+        passwordInput.value = "";
+        var message = result.payload && result.payload.message ? result.payload.message : null;
+        var text = message && message.ru ? message.ru + " / " + message.en : "Неверная почта или пароль. / Invalid email or password.";
+        if (result.status === 429) {
+          text = "Слишком много попыток. Попробуйте через 15 минут. / Too many attempts. Try again in 15 minutes.";
+        }
+        showError(text);
+      })
+      .catch(function () {
+        setBusy(false);
+        showError("Сервер не отвечает. Попробуйте ещё раз. / Server did not respond. Try again.");
+      });
+  });
+})();
+</script>
+</body></html>

@@ -6,7 +6,6 @@ set -u
 
 BASE="https://aibeaty.remolda.com"
 HOST="aibeaty.remolda.com"
-BASIC_AUTH="demo:LuminousMaya-2026"   # demo-grade shared credentials, deliberately inline
 PAGES="https://aibeaty.pages.dev"
 BOX="root@46.175.145.180"
 DAILY_CAP="${PREDEMO_DAILY_CAP:-300}" # мягкий потолок ответов Майи в день (квота Ollama Cloud общая)
@@ -17,12 +16,39 @@ add() { # $1 = 0|1 (ok/fail), $2 = name, $3 = detail
   if [ "$1" -eq 0 ]; then rows+=("✅  $2 — $3"); else rows+=("❌  $2 — $3"); fail=$((fail+1)); fi
 }
 
-# 1. Публичный health (за basic auth)
-health=$(curl -sm 10 -u "$BASIC_AUTH" "$BASE/api/platform/health" 2>/dev/null || true)
+# 1. Публичный health (открыт всем — им же живёт сторожок)
+health=$(curl -sm 10 "$BASE/api/assistant/health" 2>/dev/null || true)
 if grep -Eq '"ok": ?true' <<<"$health"; then
   add 0 "Health $HOST" "ok:true"
 else
   add 1 "Health $HOST" "нет ok:true (получено: $(head -c 100 <<<"$health"))"
+fi
+
+# 1b. Страница входа отдаётся и выглядит как форма (клиент видит её первой)
+login_body=$(curl -sm 10 "$BASE/screens/login.html" 2>/dev/null || true)
+if grep -q 'id="login-form"' <<<"$login_body" && grep -q 'Вход в кабинет' <<<"$login_body"; then
+  add 0 "Страница входа" "форма отдаётся, $(wc -c <<<"$login_body") байт"
+else
+  add 1 "Страница входа" "нет формы входа по $BASE/screens/login.html"
+fi
+
+# 1c. Замок закрыт: кабинет без входа не отдаёт данные
+gate_api=$(curl -sm 10 -o /dev/null -w '%{http_code}' "$BASE/api/platform/health" 2>/dev/null || echo 000)
+gate_screen=$(curl -sm 10 -o /dev/null -w '%{http_code}' -H 'Accept: text/html' \
+  "$BASE/screens/salon-performance-luminous-core.html" 2>/dev/null || echo 000)
+if [ "$gate_api" = "401" ] && [ "$gate_screen" = "302" ]; then
+  add 0 "Замок кабинета" "без входа API=401, экран=302 на форму входа"
+else
+  add 1 "Замок кабинета" "ожидали 401/302, получили API=$gate_api экран=$gate_screen"
+fi
+
+# 1d. Приём логина жив (заведомо неверный пароль обязан получить 401, а не 500)
+bad_login=$(curl -sm 10 -o /dev/null -w '%{http_code}' -X POST "$BASE/api/auth/login" \
+  -H 'Content-Type: application/json' --data '{"email":"predemo@probe.invalid","password":"wrong-on-purpose"}' 2>/dev/null || echo 000)
+if [ "$bad_login" = "401" ] || [ "$bad_login" = "429" ]; then
+  add 0 "Приём логина" "отвечает $bad_login на заведомо неверный пароль"
+else
+  add 1 "Приём логина" "ожидали 401, получили $bad_login"
 fi
 
 # 2. TLS: сколько дней осталось сертификату

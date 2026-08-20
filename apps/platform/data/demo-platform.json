@@ -1,6 +1,7 @@
 {
   "salon": {
     "name": "Luminous Core",
+    "slug": "luminous-core",
     "workspaceLabel": "Salon Workspace",
     "location": "Ottawa Downtown",
     "lastUpdated": "2026-04-17T20:40:00Z"

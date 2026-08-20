@@ -35,6 +35,8 @@
       ".aibeaty-overlay-card{min-width:280px;max-width:420px;padding:18px 20px;border-radius:18px;background:rgba(255,255,255,.96);border:1px solid rgba(171,173,174,.26);box-shadow:0 24px 60px rgba(44,47,48,.12)}" +
       ".aibeaty-spinner{width:18px;height:18px;border-radius:999px;border:2px solid rgba(77,42,250,.15);border-top-color:#4d2afa;animation:aibeaty-spin 1s linear infinite}" +
       ".aibeaty-action-muted{opacity:.55;pointer-events:none}" +
+      ".aibeaty-logout{margin-left:8px;border:1px solid rgba(171,173,174,.28);background:#fff;color:#595c5d;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;transition:background .15s ease,color .15s ease}" +
+      ".aibeaty-logout:hover{background:rgba(77,42,250,.06);color:#4d2afa;border-color:rgba(77,42,250,.24)}" +
       ".aibeaty-modal-backdrop{position:fixed;inset:0;background:rgba(44,47,48,.24);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:24px;z-index:10000}" +
       ".aibeaty-modal{width:min(560px,100%);max-height:min(90vh,820px);overflow:auto;border-radius:24px;background:rgba(255,255,255,.98);border:1px solid rgba(171,173,174,.24);box-shadow:0 30px 80px rgba(44,47,48,.18)}" +
       ".aibeaty-modal__header{padding:24px 24px 12px;border-bottom:1px solid rgba(171,173,174,.16)}" +
@@ -483,8 +485,33 @@
     };
   }
 
+  var LOGIN_PAGE = "login.html";
+  var redirectingToLogin = false;
+
+  // The session expired (or never existed) mid-session: send the owner back to their
+  // door instead of leaving a half-empty console on screen.
+  function redirectToLogin() {
+    if (redirectingToLogin) return;
+    redirectingToLogin = true;
+    var next = window.location.pathname + window.location.search;
+    window.location.replace(LOGIN_PAGE + "?next=" + encodeURIComponent(next));
+  }
+
+  function guardAuthStatus(response) {
+    if (response.status === 401) {
+      redirectToLogin();
+      throw new Error("HTTP 401");
+    }
+    if (response.status === 403) {
+      notify("Этот аккаунт не имеет доступа к данным этого салона.", "error");
+      throw new Error("HTTP 403");
+    }
+    return response;
+  }
+
   function fetchJson(url) {
     return fetch(url, { headers: { Accept: "application/json" } }).then(function (response) {
+      guardAuthStatus(response);
       if (!response.ok) throw new Error("HTTP " + response.status);
       return response.json();
     });
@@ -499,9 +526,62 @@
       },
       body: JSON.stringify(payload || {})
     }).then(function (response) {
+      guardAuthStatus(response);
       if (!response.ok) throw new Error("HTTP " + response.status);
       return response.json();
     });
+  }
+
+  function logout() {
+    return fetch("/api/auth/logout", {
+      method: "POST",
+      headers: { Accept: "application/json" }
+    }).then(function () {
+      window.location.replace(LOGIN_PAGE);
+    });
+  }
+
+  // Every screen ships a "Logout" affordance from the original mockup; make it real.
+  // Screens that only have an account glyph get a labelled control injected next to it.
+  function wireAuthChrome() {
+    var wired = 0;
+    qsa("a, button").forEach(function (node) {
+      var label = (node.textContent || "").trim().toLowerCase();
+      if (label !== "logout" && label !== "log out" && label !== "выйти") return;
+      node.dataset.wiredRoute = "true"; // keep _router.js from hijacking it to index.html
+      node.setAttribute("href", "#");
+      node.addEventListener("click", function (event) {
+        event.preventDefault();
+        logout();
+      });
+      wired += 1;
+    });
+
+    fetchJson("/api/auth/session")
+      .then(function (payload) {
+        if (!payload || !payload.authenticated) return;
+        var owner = payload.owner || {};
+        qsa("[data-owner-name]").forEach(function (node) {
+          node.textContent = owner.displayName || owner.email || "";
+        });
+        if (wired) return;
+        var anchor = qs(".material-symbols-outlined[data-icon='account_circle']") ||
+          qsa(".material-symbols-outlined").filter(function (node) {
+            return (node.textContent || "").trim() === "account_circle";
+          })[0];
+        if (!anchor) return;
+        var host = anchor.parentElement || anchor;
+        var button = document.createElement("button");
+        button.type = "button";
+        button.className = "aibeaty-logout";
+        button.title = (owner.displayName || owner.email || "") + " — выйти / sign out";
+        button.textContent = "Выйти";
+        button.addEventListener("click", logout);
+        host.insertAdjacentElement("afterend", button);
+      })
+      .catch(function () {
+        /* the gate already redirects on 401; nothing to do here */
+      });
   }
 
   function loadLivePage(query) {
@@ -2777,6 +2857,8 @@
   }
 
   window.addEventListener("DOMContentLoaded", function () {
+    ensureRuntimeStyle();
+    wireAuthChrome();
     mountLoading();
     loadData().then(function (state) {
       unmountLoading();

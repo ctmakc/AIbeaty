@@ -1944,8 +1944,24 @@ function createPlatformStore() {
     return getStaticScreen(pageFile);
   }
 
+  // Salon identity. Today this instance hosts exactly one salon; these two functions
+  // are the seam multi-salon storage widens (see backend/salon-scope.js, which is the
+  // only place HTTP requests are allowed to ask "which salon is this?").
+  function getSalonSlug() {
+    return (
+      String(process.env.SALON_SLUG || "").trim().toLowerCase() ||
+      String(demo.salon && demo.salon.slug ? demo.salon.slug : "").trim().toLowerCase() ||
+      slugify((demo.salon && demo.salon.name) || "salon")
+    );
+  }
+
+  function hasSalon(slug) {
+    return String(slug || "").trim().toLowerCase() === getSalonSlug();
+  }
+
   function getSalon() {
     const salon = clone(demo.salon || {});
+    salon.slug = getSalonSlug();
     salon.lastUpdated = getLastUpdated();
     return salon;
   }
@@ -3085,6 +3101,8 @@ function createPlatformStore() {
     parseClockLabel,
     getLastUpdated,
     getSalon,
+    getSalonSlug,
+    hasSalon,
     getScreen,
     listScreens,
     getPerformanceReport,

@@ -5,6 +5,8 @@ const { URL } = require("url");
 const { createPlatformStore } = require("./backend/store");
 const { createLlmClient } = require("./backend/llm-client");
 const { createAssistant } = require("./backend/assistant");
+const { createAuth } = require("./backend/auth");
+const { resolveSalonScope } = require("./backend/salon-scope");
 
 const ROOT_DIR = __dirname;
 const HOST = process.env.PLATFORM_HOST || "127.0.0.1";
@@ -12,6 +14,32 @@ const PORT = Number(process.env.PORT || process.env.PLATFORM_PORT || 4174);
 const store = createPlatformStore();
 const llm = createLlmClient();
 const assistant = createAssistant({ store, llm });
+const auth = createAuth({ store });
+
+const LOGIN_PAGE = "/screens/login.html";
+
+// Surfaces a salon's CLIENT must reach without any account: the assistant API, the
+// chat page the widget frames, the widget itself, and the login door.
+const PUBLIC_EXACT_PATHS = new Set([
+  LOGIN_PAGE,
+  "/screens/chat.html",
+  "/assistant-widget.js",
+  "/favicon.ico",
+  "/mmix-logo.png"
+]);
+
+function isPublicPath(pathname) {
+  if (pathname === "/api/assistant" || pathname.startsWith("/api/assistant/")) return true;
+  if (pathname.startsWith("/api/auth/")) return true;
+  if (PUBLIC_EXACT_PATHS.has(pathname)) return true;
+  // Stylesheets are the login page's only asset dependency and carry no salon data.
+  if (pathname.startsWith("/styles/")) return true;
+  return false;
+}
+
+function wantsHtml(request) {
+  return String(request.headers.accept || "").includes("text/html");
+}
 
 // CORS allowlist for the public assistant API (marketing site + demo host + local dev).
 const CORS_ALLOWED = [
@@ -635,8 +663,109 @@ function serveFile(requestUrl, response) {
   });
 }
 
+async function handleAuthRoutes(request, requestUrl, response) {
+  const pathname = requestUrl.pathname;
+
+  if (pathname === "/api/auth/session" && request.method === "GET") {
+    const session = auth.readSession(request);
+    if (!session) return json(response, 200, { authenticated: false });
+    return json(response, 200, {
+      authenticated: true,
+      owner: {
+        email: session.email,
+        displayName: session.displayName,
+        role: session.role,
+        salonSlug: session.salonSlug
+      }
+    });
+  }
+
+  if (pathname === "/api/auth/login" && request.method === "POST") {
+    let body = {};
+    try {
+      body = await parseRequestBody(request);
+    } catch (error) {
+      return json(response, 400, { error: "bad_request", message: auth.GENERIC_LOGIN_ERROR });
+    }
+    const result = auth.login({ email: body.email, password: body.password, request });
+    if (!result.ok) {
+      const headers = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" };
+      if (result.retryAfter) headers["Retry-After"] = String(result.retryAfter);
+      response.writeHead(result.status, headers);
+      // Same body for "no such account", "wrong password" and "too many tries" —
+      // the status code differs, the text never does.
+      response.end(JSON.stringify({ error: result.error, message: result.message }, null, 2));
+      return;
+    }
+    response.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "Set-Cookie": result.setCookie
+    });
+    response.end(JSON.stringify({ ok: true, owner: result.owner }, null, 2));
+    return;
+  }
+
+  if (pathname === "/api/auth/logout" && request.method === "POST") {
+    const session = auth.readSession(request);
+    if (session) auth.revokeSession(session.sessionId);
+    response.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "Set-Cookie": auth.clearCookieHeader(request)
+    });
+    response.end(JSON.stringify({ ok: true }, null, 2));
+    return;
+  }
+
+  return json(response, 404, { error: "not_found", message: `Unknown auth endpoint: ${pathname}` });
+}
+
+// The gate. Everything that is not explicitly public needs a session, and a session
+// may only ever touch its own salon.
+function enforceAuth(request, requestUrl, response) {
+  const pathname = requestUrl.pathname;
+  if (isPublicPath(pathname)) return true;
+
+  const session = auth.readSession(request);
+  if (!session) {
+    if (wantsHtml(request) && request.method === "GET") {
+      const next = requestUrl.pathname + (requestUrl.search || "");
+      response.writeHead(302, {
+        Location: `${LOGIN_PAGE}?next=${encodeURIComponent(next)}`,
+        "Cache-Control": "no-store"
+      });
+      response.end();
+      return false;
+    }
+    json(response, 401, { error: "unauthorized", message: "Sign in to continue." });
+    return false;
+  }
+
+  request.session = session;
+
+  const scope = resolveSalonScope(store, request, requestUrl);
+  if (!scope.ok) {
+    json(response, 403, {
+      error: "forbidden",
+      reason: scope.reason,
+      message: "This account has no access to that salon."
+    });
+    return false;
+  }
+  request.salonSlug = scope.slug;
+  return true;
+}
+
 async function requestHandler(request, response) {
   const requestUrl = new URL(request.url, `http://${request.headers.host || `${HOST}:${PORT}`}`);
+
+  if (requestUrl.pathname.startsWith("/api/auth/")) {
+    await handleAuthRoutes(request, requestUrl, response);
+    return;
+  }
+
+  if (!enforceAuth(request, requestUrl, response)) return;
 
   if (requestUrl.pathname.startsWith("/api/assistant")) {
     await handleAssistantRoutes(request, requestUrl, response);
