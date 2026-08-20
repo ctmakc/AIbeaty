@@ -294,7 +294,10 @@ async function main() {
       log(`FATAL: TELEGRAM_SALON_SLUG="${SALON_SLUG}" is not a salon on this server.`);
       process.exit(1);
     }
-    log(`assistant reachable: persona=${info.persona} model=${info.model} salon=${info.salon} (${info.salonSlug || "default"})`);
+    // The public health probe deliberately no longer names our model to an
+    // anonymous caller, and the bridge is one — so only print it if it is there.
+    const model = info.model ? ` model=${info.model}` : "";
+    log(`assistant reachable: persona=${info.persona}${model} salon=${info.salon} (${info.salonSlug || "default"})`);
   } catch (error) {
     log(`WARNING: assistant not reachable at ${ASSISTANT_BASE} yet — start the platform server (npm run platform:serve)`);
   }
