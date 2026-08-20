@@ -543,10 +543,25 @@
 
   // Every screen ships a "Logout" affordance from the original mockup; make it real.
   // Screens that only have an account glyph get a labelled control injected next to it.
+  // A control's visible label, ignoring Material Symbols children — their glyph name
+  // is text too, so a plain textContent read turns "Logout" into "logout Logout" and
+  // an exact match silently wires nothing.
+  function controlLabel(node) {
+    var text = "";
+    Array.prototype.forEach.call(node.childNodes, function (child) {
+      if (child.nodeType === 3) {
+        text += child.textContent;
+      } else if (child.nodeType === 1 && !(child.classList && child.classList.contains("material-symbols-outlined"))) {
+        text += child.textContent;
+      }
+    });
+    return text.replace(/\s+/g, " ").trim().toLowerCase();
+  }
+
   function wireAuthChrome() {
     var wired = 0;
     qsa("a, button").forEach(function (node) {
-      var label = (node.textContent || "").trim().toLowerCase();
+      var label = controlLabel(node);
       if (label !== "logout" && label !== "log out" && label !== "выйти") return;
       node.dataset.wiredRoute = "true"; // keep _router.js from hijacking it to index.html
       node.setAttribute("href", "#");
