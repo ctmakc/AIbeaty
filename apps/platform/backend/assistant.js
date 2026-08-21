@@ -1011,6 +1011,13 @@ function createAssistant({ store, llm, faqPath }) {
     const text = String(message || "").trim().slice(0, 2000);
     const sid = String(sessionId || "").trim();
     if (!sid || !text) return { error: "bad_request", message: "sessionId and message are required." };
+
+    // Zero-LLM watchdog fast-path: uptime probes get an instant reply and must
+    // never touch the LLM, sessions, conversations, or the digest.
+    if (text === "ping" && sid.startsWith("watchdog-")) {
+      return { reply: "pong", watchdog: true };
+    }
+
     if (rateLimited(sid)) return { error: "rate_limited", message: "Too many messages; slow down a little." };
 
     const session = ensureSession({ sessionId: sid, channel, clientPhone, language: detectLanguage(text) });
