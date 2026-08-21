@@ -235,6 +235,22 @@ img { max-width: 100%; height: auto; display: block; }
   gap: 3rem;
   align-items: center;
 }
+.aib-hero-figure {
+  margin: 0 0 1rem;
+  overflow: hidden;
+  border: 1px solid var(--aib-line);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 18px 44px rgba(76, 29, 149, 0.08);
+}
+.aib-hero-figure img { display: block; width: 100%; height: auto; }
+.aib-hero-figure figcaption {
+  padding: 0.65rem 0.85rem;
+  color: #6b7280;
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 .aib-card {
   padding: 1.6rem;
   border-radius: 22px;
