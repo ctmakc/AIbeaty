@@ -3,4 +3,7 @@ Description=AIbeaty external demo watchdog (public probe + ssh restart)
 
 [Service]
 Type=oneshot
-ExecStart=/data/projects/AIbeaty/scripts/remote-watch.sh
+# Never point this at a git worktree: a branch checkout can leave a stale
+# untracked copy behind and systemd will happily keep running it.
+# Installed by scripts/watchdog/install-workstation.sh.
+ExecStart=%h/.local/bin/aibeaty-remote-watch

@@ -28,21 +28,34 @@ no conversation created, no quota burned). Two consecutive failures ->
 best-effort ssh restart + one alert email (1/hour).
 State + log: `~/.local/state/aibeaty-watch/`.
 
-Install:
+Alerts back off inside one incident (immediately, +1h, +4h, then silence until
+the demo recovers, which sends one closing ✅ mail); remote restarts are capped
+at 4 per incident.
+
+Install — always through the script, never by pointing systemd at the checkout:
 
 ```bash
-cp scripts/watchdog/aibeaty-remote-watch.{service,timer} ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now aibeaty-remote-watch.timer
+scripts/watchdog/install-workstation.sh
 ```
+
+It copies `remote-watch.sh` to `~/.local/bin/aibeaty-remote-watch` and installs
+both units. **Why a copy:** the timer used to run
+`/data/projects/AIbeaty/scripts/remote-watch.sh` — a worktree parked on a branch
+that does not track `scripts/`. When the probe was fixed on the deployed branch
+on 2026-08-20, systemd went on executing the stale untracked leftovers there for
+another day: ~29 false-alarm mails and a remote restart of a healthy demo every
+30 minutes. Re-run the installer after any pull that touches the watchdog.
 
 ## Pre-demo checklist
 
 10 minutes before the client call:
 
 ```bash
-/data/projects/AIbeaty/scripts/predemo-check.sh
+aibeaty-predemo-check
 ```
+
+(installed by `install-workstation.sh` alongside the watchdog — same reason: an
+ops entry point must not depend on which branch a worktree happens to hold)
 
 Prints a ✅/❌ table: public health, TLS days left, chat ping fast-path,
 widget on pages.dev, Telegram bridge, digest, today's load vs soft cap

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # predemo-check — прогон за 10 минут до звонка с клиентом.
-# Запуск с рабочей станции: /data/projects/AIbeaty/scripts/predemo-check.sh
+# Запуск с рабочей станции: aibeaty-predemo-check (ставится
+# через scripts/watchdog/install-workstation.sh — не запускать из воркри репо)
 # Печатает таблицу ✅/❌; код выхода = число проваленных проверок.
 set -u
 
