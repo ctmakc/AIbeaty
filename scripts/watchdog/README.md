@@ -3,13 +3,21 @@
 Two best-effort layers keep the Maya demo alive. Zero new dependencies — bash,
 curl, systemd.
 
+The zero-LLM assistant chat ping is the authoritative liveness signal for both
+layers. `/api/assistant/health` is still collected as a diagnostic, but a 401 or
+other health-only failure does not restart a healthy service and does not send an
+alert. This avoids false restart/email loops when a deploy leaves the health route
+auth-gated while the public assistant endpoint is working.
+
 ## Layer 1 — on the box (root@46.175.145.180)
 
 `aibeaty-watchdog.timer` runs `aibeaty-watchdog.sh` every 5 min:
-local health probe (PUBLIC /api/assistant/health — the platform one is behind
-the owner login) -> on the 2nd consecutive failure `systemctl restart aibeaty`
-plus one alert email via the formsubmit relay (throttled to 1/hour).
-State: `/run/aibeaty-watchdog/`. Logs: `journalctl -u aibeaty-watchdog`.
+local zero-LLM chat ping (`sessionId: watchdog-local`, `message: ping` -> instant
+`pong`, no conversation or LLM call), with `/api/assistant/health` recorded as a
+diagnostic. On the 2nd consecutive chat-ping failure it runs
+`systemctl restart aibeaty` plus one alert email via the formsubmit relay
+(throttled to 1/hour). State: `/run/aibeaty-watchdog/`. Logs:
+`journalctl -u aibeaty-watchdog`.
 
 Install (after `git pull` in /opt/aibeaty):
 
@@ -22,11 +30,12 @@ systemctl enable --now aibeaty-watchdog.timer
 ## Layer 2 — on the workstation
 
 `aibeaty-remote-watch.timer` (systemd **--user**) runs
-`scripts/remote-watch.sh` every 15 min: public health probe + zero-LLM
-chat ping (`sessionId: watchdog-probe`, `message: ping` -> instant `pong`,
-no conversation created, no quota burned). Two consecutive failures ->
-best-effort ssh restart + one alert email (1/hour).
-State + log: `~/.local/state/aibeaty-watch/`.
+`scripts/remote-watch.sh` every 15 min: zero-LLM chat ping
+(`sessionId: watchdog-probe`, `message: ping` -> instant `pong`, no conversation
+created, no quota burned) plus a diagnostic public-health probe. Two consecutive
+chat-ping failures -> best-effort ssh restart + one alert email (1/hour). A
+health-only failure is logged as WARN and does not count toward the failure
+counter. State + log: `~/.local/state/aibeaty-watch/`.
 
 Install:
 
