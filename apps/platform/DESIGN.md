@@ -81,3 +81,20 @@ without `window.AIBEATY_API_BASE`; mounts into `#aibeaty-chat` (falls back to bo
 Launcher = 56px gradient disc (the same Maya disc, so the brand mark IS the persona),
 panel = 384×min(640px, viewport) iframe of `chat.html?embed=1`, full-screen ≤560px.
 Open/close 220ms scale+fade from bottom-right; teaser pill once per session.
+
+## Self-serve door (2026-09-18): `screens/signup.html` + `screens/setup.html`
+
+**Inheritance, not a new direction.** Sign-up is the owner door's twin (same 5/7
+split, mark → card → shelf on a phone). The shelf's ledger rows are NUMBERED here
+(01–04) because they describe the sequence the owner is about to walk.
+English first (Canadian salons), a Русский toggle, choice kept in localStorage and
+sent as the tenant's language, so server validation speaks it too.
+
+Setup wizard: one primitive, the ledger row, everywhere: the step rail, the
+service list, the team, Q&A, add-ons. The only tinted surface on the services step
+is the "Let Maya read your price list" box (Maya disc + textarea + URL). Rail status
+glyphs: check = done, error = blocking; the go-live step lists server errors with a
+Fix link to the owning step. Phone: the rail becomes a horizontal tab strip that
+scrolls the current step into view; the bar drops salon name, save state and the
+trial half of the pill (no horizontal scroll at 390px, checked by script).
+Motion: the system settle (300ms) on step change only.
