@@ -100,7 +100,7 @@ function detectLanguage(text) {
 
 // --- escalation triggers (checked in code, before/independent of the LLM) ---
 const TRIGGERS = [
-  { reason: "explicit_request", hard: true, re: /(позов[иі]те|позвать|зовите|позови)\s+(человека|менеджера|адміністратора|администратора)|живо[йг]о? человек|хочу (поговорить|говорить) с человеком|соедините с|talk to a human|real person|human,? please|speak (to|with) (a )?(human|person|manager|someone real)|передай(те)? человеку/i },
+  { reason: "explicit_request", hard: true, re: /(позов[иі]те|позвать|зовите|позови)\s+(человека|менеджера|адміністратора|администратора)|живо[йг]о? человек|хочу (поговорить|говорить) с человеком|соедините с|talk to a human|(talk|speak|chat) (to|with) (a |an |some )?(person|human|real person|someone)|real person|parler à (un|une) (humain|personne)|human,? please|speak (to|with) (a )?(human|person|manager|someone real)|передай(те)? человеку/i },
   { reason: "medical", hard: true, re: /жжени|жж[её]т|печ[её]т|аллерги|алерг|беремен|вагітн|зуд|сыпь|свербіж|висип|ожог|опік|раздражение кожи|подразнення|кожа болит|allerg|pregnan|burn(ing|ed|s)?\b|rash|itch|scalp (pain|hurts)|chemical reaction/i },
   { reason: "complaint", hard: false, re: /испортил|зіпсував|сожгли|спалили|ужасн|жахлив|отвратительн|кошмар|верн[иу]те (мне )?деньги|возврат денег|повернить гроші|жалоб|скарг|плохо (по)?(стригли|красили)|ruined|terrible|awful|worst|complain|refund|botched/i },
   { reason: "price_dispute", hard: false, re: /слишком дорого|почему так дорого|это грабёж|занадто дорого|чому так дорого|too expensive|overpriced|rip[- ]?off|why so expensive/i },

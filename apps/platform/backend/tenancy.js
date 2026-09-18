@@ -147,6 +147,7 @@ const ALERT_TEXT = {
     medicalHidden: "Question médicale. Ouvrez la conversation pour la lire.",
     textHidden: "Ouvrez la conversation pour lire le message.",
     said: "Message",
+    colon: "\u00a0: ",
     replyHint: (name) => `↩️ Répondez à ce message et votre réponse ira à ${name}.`,
     webHint: (name) => `↩️ Répondez à ce message : ${name} verra votre réponse en rouvrant le clavardage.`,
     open: "Ouvrir la conversation",
@@ -1303,7 +1304,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       // Medspa / clinic: health details stay inside the conversation, never in
       // a Telegram notification that may show up on a lock screen.
       if (medspa) body = medical ? t.medicalHidden : t.textHidden;
-      else if (clientText) body = `${t.said}: ${quote(clientText)}`;
+      else if (clientText) body = `${t.said}${t.colon || ": "}${quote(clientText)}`;
       blocks.unshift([
         type === "escalation" ? t.escalation(name) : t.ownerMessage(name),
         who(payload) !== name ? who(payload) : "",
@@ -1317,7 +1318,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     if (conversationId && facts) {
       const name = nameFor(events[0].payload);
       if (facts.sessionId) footer.push(facts.telegram ? t.replyHint(name) : t.webHint(name));
-      footer.push(`${t.open}: ${PUBLIC_BASE}/screens/unified-inbox-luminous-core.html?conversationId=${encodeURIComponent(conversationId)}`);
+      footer.push(`${t.open}${t.colon || ": "}${PUBLIC_BASE}/screens/unified-inbox-luminous-core.html?conversationId=${encodeURIComponent(conversationId)}`);
     }
     const head = facts && facts.preview ? `[${t.test}] ` : "";
     return `${head}${blocks.join("\n\n")}${footer.length ? `\n\n${footer.join("\n")}` : ""}`;
@@ -1629,6 +1630,8 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
         messages
       };
     });
+    // Clients first; the owner's own test chats sink to the bottom.
+    conversations.sort((a, b) => Number(a.test) - Number(b.test));
     return {
       salon: { slug, name: record.name || slug, city: record.city || "", timezone: record.timezone || "America/Toronto" },
       selfServe: Boolean(tenant),

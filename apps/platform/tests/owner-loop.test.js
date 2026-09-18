@@ -306,7 +306,7 @@ async function main() {
       db.prepare(`UPDATE tenants SET language = 'fr' WHERE salon_slug = ?`).run(slug);
       db.close();
       telegramCalls.length = 0;
-      await postHook({ chat: { id: 781, type: "private" }, from: { id: 781, first_name: "Julie", language_code: "fr" }, text: "je veux parler à un humain, talk to a human please" });
+      await postHook({ chat: { id: 781, type: "private" }, from: { id: 781, first_name: "Julie", language_code: "fr" }, text: "Bonjour, je veux parler à une personne svp" });
       const frAlert = await waitFor(() => toChat(555)[0]);
       assert.ok(frAlert, "alert sent");
       assert.match(frAlert.body.text, /Julie veut parler à quelqu'un/);

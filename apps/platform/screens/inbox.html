@@ -70,6 +70,8 @@
     border: 1px solid var(--surface-variant); border-radius: var(--r-xl); padding: 6px 10px; cursor: pointer; text-decoration: none; white-space: nowrap;
   }
   .ghost:hover { border-color: var(--outline); color: var(--on-surface); }
+  .ghost { display: inline-flex; align-items: center; gap: 4px; }
+  .ghost .ico { display: none; font-size: 18px; }
 
   /* ---- two panes ---- */
   .panes { flex: 1; min-height: 0; display: grid; grid-template-columns: 340px minmax(0, 1fr); }
@@ -138,8 +140,10 @@
   .msg.staff .bubble { background: var(--primary); color: var(--on-primary); border-top-right-radius: 4px; }
   .msg .by { font-size: 11.5px; color: var(--on-surface-variant); margin: 4px 4px 0; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
   .msg .by .material-symbols-outlined { font-size: 14px; }
-  .msg .by.failed { color: var(--error); font-weight: 600; }
-  .msg .by.ok { color: var(--ok); }
+  .msg .by .status { display: inline-flex; align-items: center; gap: 3px; }
+  .msg .by + .by { margin-top: 1px; }
+  .msg .by .status.failed { color: var(--error); font-weight: 600; }
+  .msg .by .status.ok { color: var(--ok); }
   .sys { align-self: center; max-width: 88%; text-align: center; font-size: 12px; color: var(--on-surface-variant); background: var(--surface-container); padding: 6px 12px; border-radius: var(--r-xl); line-height: 1.45; }
   .settle { animation: settle 260ms var(--settle); }
   @keyframes settle { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -164,6 +168,9 @@
   @media (max-width: 760px) {
     .bar { padding: 10px 16px; gap: 8px; }
     .bar .hide-sm { display: none; }
+    .ghost { padding: 6px 8px; }
+    .ghost .ico { display: inline; }
+    .ghost .lbl { display: none; }
     .panes { grid-template-columns: minmax(0, 1fr); }
     .list { border-right: 0; }
     body[data-view="thread"] .list { display: none; }
@@ -191,8 +198,8 @@
   <span class="where hide-sm" id="where">Inbox</span>
   <div class="grow"></div>
   <span class="who hide-sm" id="who"></span>
-  <a class="ghost" href="/screens/setup.html" id="setupLink">Setup</a>
-  <button class="ghost" id="logout" type="button">Sign out</button>
+  <a class="ghost" href="/screens/setup.html" id="setupLink"><span class="material-symbols-outlined ico" aria-hidden="true">tune</span><span class="lbl">Setup</span></a>
+  <button class="ghost" id="logout" type="button"><span class="material-symbols-outlined ico" aria-hidden="true">logout</span><span class="lbl">Sign out</span></button>
 </header>
 
 <div class="panes">
@@ -216,6 +223,7 @@
 
   var TEXT = {
     en: {
+      colon: ": ",
       inbox: "Inbox", conversations: "Conversations", all: "All", need: "Needs you", setup: "Setup", signOut: "Sign out",
       telegram: "Telegram client", web: "Web client", other: "Client",
       viaTelegram: "Telegram", viaWeb: "Web chat", noChannel: "No live channel",
@@ -228,7 +236,8 @@
       noteOther: "This conversation has no live channel. Your note is saved here only.",
       maya: "Maya", you: "You", client: "Client",
       delivered: "Delivered in Telegram", failed: "Not delivered", waiting: "Waiting for the client to open the chat", seen: "Seen in the web chat", sending: "Sending…",
-      failedWhy: { telegram_not_connected: "the Telegram bot is not connected" },
+      failedWhy: { telegram_not_connected: "the Telegram bot is not connected", blocked: "the client blocked the salon's bot", noChat: "the client has not started the bot", other: "Telegram refused it" },
+      testChat: "Your test chat",
       emptyTitle: "No conversations yet",
       emptyBody: "When a client writes to Maya in your web chat or on Telegram, the conversation shows up here. Want to see how it looks? Open your test chat.",
       emptyNeed: "Nobody is waiting for you right now.",
@@ -239,6 +248,7 @@
       today: "Today", yesterday: "Yesterday"
     },
     fr: {
+      colon: "\u00a0: ",
       inbox: "Boîte de réception", conversations: "Conversations", all: "Toutes", need: "À traiter", setup: "Configuration", signOut: "Se déconnecter",
       telegram: "Client Telegram", web: "Client web", other: "Client",
       viaTelegram: "Telegram", viaWeb: "Clavardage web", noChannel: "Aucun canal actif",
@@ -251,7 +261,8 @@
       noteOther: "Cette conversation n'a aucun canal actif. Votre note est seulement enregistrée ici.",
       maya: "Maya", you: "Vous", client: "Client",
       delivered: "Livré dans Telegram", failed: "Non livré", waiting: "En attente : le client n'a pas encore rouvert le clavardage", seen: "Vu dans le clavardage web", sending: "Envoi…",
-      failedWhy: { telegram_not_connected: "le robot Telegram n'est pas connecté" },
+      failedWhy: { telegram_not_connected: "le robot Telegram n'est pas connecté", blocked: "le client a bloqué le robot du salon", noChat: "le client n'a pas démarré le robot", other: "Telegram l'a refusé" },
+      testChat: "Votre clavardage test",
       emptyTitle: "Aucune conversation pour l'instant",
       emptyBody: "Quand un client écrit à Maya dans votre clavardage web ou sur Telegram, la conversation apparaît ici. Pour voir à quoi ça ressemble, ouvrez votre clavardage test.",
       emptyNeed: "Personne ne vous attend pour l'instant.",
@@ -262,6 +273,7 @@
       today: "Aujourd'hui", yesterday: "Hier"
     },
     ru: {
+      colon: ": ",
       inbox: "Входящие", conversations: "Переписки", all: "Все", need: "Ждут вас", setup: "Настройка", signOut: "Выйти",
       telegram: "Клиент из Telegram", web: "Клиент с сайта", other: "Клиент",
       viaTelegram: "Telegram", viaWeb: "Чат на сайте", noChannel: "Нет канала связи",
@@ -274,7 +286,8 @@
       noteOther: "У этой переписки нет канала связи. Заметка сохранится только здесь.",
       maya: "Майя", you: "Вы", client: "Клиент",
       delivered: "Доставлено в Telegram", failed: "Не доставлено", waiting: "Клиент ещё не открыл чат", seen: "Прочитано в чате на сайте", sending: "Отправляем…",
-      failedWhy: { telegram_not_connected: "Telegram-бот не подключён" },
+      failedWhy: { telegram_not_connected: "Telegram-бот не подключён", blocked: "клиент заблокировал бота салона", noChat: "клиент не запускал бота", other: "Telegram его не принял" },
+      testChat: "Ваш тестовый чат",
       emptyTitle: "Переписок пока нет",
       emptyBody: "Когда клиент напишет Майе в чат на сайте или в Telegram, переписка появится здесь. Посмотреть, как это выглядит, можно в тестовом чате.",
       emptyNeed: "Сейчас вас никто не ждёт.",
@@ -323,6 +336,7 @@
   }
 
   function displayName(conv) {
+    if (conv.test && conv.generic) return T.testChat;
     if (!conv.generic) return conv.name;
     var tail = String(conv.name).replace(GENERIC, "").trim();
     var label = conv.kind === "telegram" ? T.telegram : conv.kind === "web" ? T.web : T.other;
@@ -361,8 +375,10 @@
     document.title = data.salon.name + " — " + T.inbox;
     $("where").textContent = T.inbox;
     $("listTitle").textContent = T.conversations;
-    $("setupLink").textContent = T.setup;
-    $("logout").textContent = T.signOut;
+    $("setupLink").querySelector(".lbl").textContent = T.setup;
+    $("setupLink").setAttribute("aria-label", T.setup);
+    $("logout").querySelector(".lbl").textContent = T.signOut;
+    $("logout").setAttribute("aria-label", T.signOut);
     var owner = data.owner || {};
     $("who").textContent = owner.displayName && owner.displayName !== owner.email ? owner.displayName + " · " + owner.email : (owner.email || "");
     var buttons = $("filter").querySelectorAll("button");
@@ -387,7 +403,7 @@
       var flag = conv.state === "needs_human" ? '<span class="flag need">' + esc(T.flagNeed) + "</span>"
         : conv.state === "takeover" ? '<span class="flag you">' + esc(T.flagYou) + "</span>" : "";
       if (conv.test) flag += ' <span class="flag test">' + esc(T.flagTest) + "</span>";
-      var who = conv.lastAuthor === "staff" ? T.you + ": " : conv.lastAuthor === "maya" ? T.maya + ": " : "";
+      var who = conv.lastAuthor === "staff" ? T.you + T.colon : conv.lastAuthor === "maya" ? T.maya + T.colon : "";
       var ava = initials(conv) || '<span class="material-symbols-outlined" aria-hidden="true">' + (conv.kind === "telegram" ? "send" : "chat") + "</span>";
       return '<button class="row" type="button" data-id="' + esc(conv.id) + '"' + (conv.id === selectedId ? ' aria-current="true"' : "") + ">" +
         '<span class="ava" aria-hidden="true">' + ava + "</span>" +
@@ -401,11 +417,12 @@
     var icon = { delivered: "done_all", seen: "done_all", waiting: "schedule", failed: "error", sending: "schedule" }[message.delivery] || "";
     var text = T[message.delivery] || "";
     if (message.delivery === "failed") {
-      var why = T.failedWhy[message.deliveryNote] || message.deliveryNote;
-      if (why) text += ": " + why;
+      var note = String(message.deliveryNote || "");
+      var why = T.failedWhy[note] || (/blocked/i.test(note) ? T.failedWhy.blocked : /chat not found|deactivated/i.test(note) ? T.failedWhy.noChat : T.failedWhy.other);
+      text += T.colon + why;
     }
-    var cls = message.delivery === "failed" ? " failed" : (message.delivery === "delivered" || message.delivery === "seen") ? " ok" : "";
-    return { cls: cls, html: (icon ? '<span class="material-symbols-outlined" aria-hidden="true">' + icon + "</span>" : "") + esc(text) };
+    var cls = message.delivery === "failed" ? "failed" : (message.delivery === "delivered" || message.delivery === "seen") ? "ok" : "";
+    return '<span class="status ' + cls + '">' + (icon ? '<span class="material-symbols-outlined" aria-hidden="true">' + icon + "</span>" : "") + esc(text) + "</span>";
   }
 
   function renderThread() {
@@ -433,7 +450,7 @@
       var by = message.type === "incoming" ? displayName(conv) : message.author === "staff" ? T.you : T.maya;
       var line = deliveryLine(message);
       feedHtml += '<div class="msg ' + kind + fresh + '"><div class="bubble">' + esc(message.text) + "</div>" +
-        '<div class="by' + (line ? line.cls : "") + '">' + esc(by) + (message.createdAt ? " · " + esc(timeOf(message.createdAt)) : "") + (line ? " · " + line.html : "") + "</div></div>";
+        '<div class="by">' + esc(by) + (message.createdAt ? " · " + esc(timeOf(message.createdAt)) : "") + "</div>" + (line ? '<div class="by">' + line + "</div>" : "") + "</div>";
     });
     var seen = {};
     conv.messages.forEach(function (message) { seen[message.id] = true; });
@@ -523,7 +540,7 @@
       if (selectedId && data.conversations.some(function (conv) { return conv.id === selectedId; })) {
         if (document.body.getAttribute("data-view") !== "thread" && !load.done) document.body.setAttribute("data-view", "thread");
       } else if (!load.done && !selectedId && data.conversations.length && window.matchMedia("(min-width: 761px)").matches) {
-        selectedId = data.conversations[0].id;
+        selectedId = (data.conversations.filter(function (conv) { return !conv.test; })[0] || data.conversations[0]).id;
       }
       load.done = true;
       render();
