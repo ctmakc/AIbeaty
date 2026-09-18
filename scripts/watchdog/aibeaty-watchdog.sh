@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # aibeaty-watchdog — local uptime guard for the Maya demo (runs ON the box).
 # Driven by aibeaty-watchdog.timer every 5 minutes. Pure bash + curl, no deps.
-# Logic: health probe -> on the 2nd consecutive failure restart aibeaty.service
-# and send ONE alert email through the formsubmit relay (max 1 alert/hour).
+# The zero-LLM chat ping is authoritative. The health endpoint is diagnostic only,
+# because deploy drift can temporarily leave it auth-gated while chat is healthy.
+# Two consecutive chat-ping failures restart aibeaty.service and send ONE alert
+# email through the formsubmit relay (max 1 alert/hour).
 # State lives in /run (tmpfs, resets on reboot): consecutive failure counter
 # and the last-alert timestamp.
 set -u
 
-# Liveness probe must be a PUBLIC path: /api/platform/health sits behind the owner
-# login since 2026-08-20, and a probe that gets 401 would restart a healthy service.
 HEALTH_URL="http://127.0.0.1:4174/api/assistant/health"
+CHAT_URL="http://127.0.0.1:4174/api/assistant/chat"
 STATE_DIR="/run/aibeaty-watchdog"
 FAIL_FILE="$STATE_DIR/consecutive_failures"
 ALERT_FILE="$STATE_DIR/last_alert_epoch"
@@ -17,20 +18,31 @@ ENV_FILE="/opt/aibeaty/.env"
 
 mkdir -p "$STATE_DIR"
 
-if curl -sm 8 "$HEALTH_URL" | grep -Eq '"ok": ?true'; then
+health=$(curl -sm 8 "$HEALTH_URL" 2>/dev/null || true)
+health_problem=""
+if ! grep -Eq '"ok": ?true' <<<"$health"; then
+  health_problem="health diagnostic has no ok:true (got: $(head -c 120 <<<"$health"))"
+  echo "warning: $health_problem"
+fi
+
+pong=$(curl -sm 8 -X POST "$CHAT_URL" \
+  -H "Content-Type: application/json" \
+  --data '{"sessionId":"watchdog-local","message":"ping"}' 2>/dev/null || true)
+if grep -Eq '"reply": ?"pong"' <<<"$pong"; then
   rm -f "$FAIL_FILE"
   exit 0
 fi
 
 fails=$(( $(cat "$FAIL_FILE" 2>/dev/null || echo 0) + 1 ))
 printf '%s\n' "$fails" > "$FAIL_FILE"
-echo "health check failed ($fails consecutive)"
+echo "assistant ping failed ($fails consecutive): $(head -c 120 <<<"$pong")"
+[ -n "$health_problem" ] && echo "$health_problem"
 
 if [ "$fails" -lt 2 ]; then
   exit 0
 fi
 
-echo "two consecutive failures -> restarting aibeaty.service"
+echo "two consecutive assistant ping failures -> restarting aibeaty.service"
 systemctl restart aibeaty
 printf '0\n' > "$FAIL_FILE"
 
@@ -59,7 +71,8 @@ if curl -sm 10 -X POST "https://formsubmit.co/ajax/${alert_email}" \
     --data-urlencode "_subject=⚠️ AIbeaty demo: сервис перезапущен сторожком" \
     --data-urlencode "host=$(hostname)" \
     --data-urlencode "time=$(date -Is)" \
-    --data-urlencode "message=Локальный health-check упал дважды подряд; aibeaty.service перезапущен сторожком." \
+    --data-urlencode "message=Локальный chat ping упал дважды подряд; aibeaty.service перезапущен сторожком." \
+    --data-urlencode "health=${health_problem:-ok}" \
     --data-urlencode "journal_tail=${log_tail:-"(журнал пуст)"}" \
     | grep -Eqi '"success"[: ]*"?true'; then
   printf '%s\n' "$now" > "$ALERT_FILE"
