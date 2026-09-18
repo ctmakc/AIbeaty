@@ -1,0 +1,1851 @@
+{
+ "synthesis": {
+  "verdict": "No. None of the 5 simulated salon owners would buy today, and the conversion critic agrees. The self-serve core does work well. Pasting a messy price list gave clean services in 3-5 s for every persona, the team chips were liked, the bot connected with one paste, owner alerts (booking, reschedule, cancel, needs a human) arrived instantly, and medical and forbidden-topic questions were handled safely. That covers roughly the first 70% of the funnel, and it is easy to follow. Three things kill the sale. (1) The landing page sells a different product: a consulting 'AI transformation audit' for medspas with scoped pricing, while the app is a Telegram bot with a 14-day trial. All 6 walkers nearly left on the first screen. (2) Maya is not yet safe to put in front of clients. She answered English and French clients in Russian (5/5 personas), booked staff on their days off and for services they don't do (5/5), failed on real future dates, looped on confirmations, and the price guard blocked correct deposit and 'from $X' price answers. On top of that, owner replies from the inbox never reach the client. (3) There is no price and no way to pay anywhere; step 7 is only a 'Request' button. Telegram as the main channel is a fourth structural objection: all 5 owners say their clients use Instagram, SMS or Booksy/Square, not Telegram. If the price, payment, language, availability and reply-delivery problems were fixed, 4 of 5 personas stated a price they would pay: Olena $49-79, Priya $29-39, Marc $49-79, Anna $149-249 CAD/mo. Jessica would also need Square sync and quotes $99-149. Telegram-only was valued at $15-30/mo. Screenshots I opened confirm the top blockers: conversion-critic/01-home-fold.png (the audit hero fills the whole phone screen), marc-barber/24-preview-chat.png (Russian reply to a French client, 'Русский' toggle, Go live above the test chat), anna-medspa/33-inbox-medical.png ('Luminous Core / Precision OS', 'Sarah J. Manager', a fake VIP 'Client since Mar 2022', Russian confirmation to an English client, Russian labels 'Веб-гость' / 'Настройка' / 'Выйти'), and conversion-critic/41-mobile-keep-request.png (no price; 'Request sent. We will get back to you within one business day'). All screenshot paths are relative to /fast/claude-tmp/claude-1000/-home-llm/c1a173bc-8bf4-44e6-9820-c8d9402d3f0b/scratchpad/funnel/shots/.",
+  "fixes": [
+   {
+    "rank": 1,
+    "title": "Maya replies in Russian to English/French clients (language leak)",
+    "area": "maya",
+    "severity": "blocker",
+    "personasHit": [
+     "olena-nails",
+     "jessica-hair",
+     "priya-lashes",
+     "marc-barber",
+     "anna-medspa"
+    ],
+    "evidence": "marc-barber/24-preview-chat.png: French client gets 'Спасибо за номер! Как к вам лучше обращаться...'. anna-medspa/33-inbox-medical.png: English client gets 'Проверяю: HydraFacial Signature у Dr. Anna Lee... Всё верно?'. TG 6002 kept answering in Russian after 'Please answer in English'. Priya TG: 'Вы записаны на 2-недельный фолл у Priya'. Jessica: 'Шлё' for Chloé. Olena: 'Всё верно?' to an English client. Mixed text 'pozwać человека', and an English 'Hi! I'm Maya' glued in front of French replies.",
+    "fix": "In the Maya reply pipeline, detect the client language per message (text first, then Telegram language_code, then tenant.language) and pass it as a hard system directive. Remove Russian from the base/system prompt and from the templated confirmations ('Проверяю… Всё верно?' is clearly a hardcoded RU template). Add a post-generation guard: if the reply's script does not match the client's (Cyrillic for an en/fr client), regenerate once, then fall back to an English/French template. Never transliterate staff or client names. Remove the hard-coded English intro prefix. Add regression tests: English-only, French-only and 'please answer in English' conversations.",
+    "needsOwnerDecision": false
+   },
+   {
+    "rank": 2,
+    "title": "Availability ignores staff work days, staff services and salon hours",
+    "area": "maya",
+    "severity": "blocker",
+    "personasHit": [
+     "olena-nails",
+     "jessica-hair",
+     "priya-lashes",
+     "marc-barber",
+     "anna-medspa"
+    ],
+    "evidence": "Olena: Maya booked Megan for acrylic with Sofia, who doesn't do acrylic, and said 'Суббота у нас закрыта' / 'Wednesday is a closed day' although both days are open. Marc: Karim (saved workDays [tue,wed,thu]) was offered on Sat and Sun. Anna: owner alert '✅ New booking: Olivia Tran — HydraFacial Signature with Dr. Anna Lee, Sat' (Dr. Lee works Wed/Fri, injectables only). Priya: 'For Sunday at 8 am we have...' (closed Sundays); 7am offered with a 9am opening. Jessica: 09:00 offered with a 10:00 opening; Jessica herself offered on a Saturday she doesn't work.",
+    "fix": "Compute slots only on the server: intersect salon hours, staff.workDays and staff.services, and require the slot plus service duration to end before closing. The model must only see tool-returned slot IDs. The booking and reschedule tools must reject any slot, staff member or service not in that set, with a structured error Maya can explain ('Karim works Tue-Thu'). Never let the model state 'closed' for a day; take open/closed from the tool. Add fixture tests for each persona's config.",
+    "needsOwnerDecision": false
+   },
+   {
+    "rank": 3,
+    "title": "No price and no way to pay anywhere in the funnel",
+    "area": "pricing-payment",
+    "severity": "blocker",
+    "personasHit": [
+     "olena-nails",
+     "jessica-hair",
+     "priya-lashes",
+     "marc-barber",
+     "anna-medspa",
+     "conversion-critic"
+    ],
+    "evidence": "conversion-critic/41-mobile-keep-request.png: 'Request sent. We will get back to you within one business day.' /pricing: 'AIBeaty is scoped to the business, not sold as a one-size subscription.' Olena's note 'Сколько стоит в месяц?' got no answer. Anna: 'I won't forward a we'll-send-you-a-link request to Dr. Lee.'",
+    "fix": "Step 7 Plan & extras: replace 'Keep the assistant — Request' with a plan picker showing CAD monthly prices, taxes (GST/HST) and a checkout button (a Stripe Checkout session plus webhook that flips tenant.plan). Show add-on prices inline, e.g. 'Instagram DM +$X/mo, live in 48 h'. Show the same price on /signup and /pricing, with 'month-to-month, cancel anytime'. Until checkout ships: show the price, and after 'Request' say 'we email the payment link within N hours' and send that email automatically.",
+    "needsOwnerDecision": true
+   },
+   {
+    "rank": 4,
+    "title": "Price guard blocks correct answers (deposits, ranges, 'from $X', FAQ amounts) and the address question",
+    "area": "maya",
+    "severity": "blocker",
+    "personasHit": [
+     "olena-nails",
+     "jessica-hair",
+     "priya-lashes",
+     "conversion-critic"
+    ],
+    "evidence": "Owner alerts 'Maya назвала цену 25/20/220, которой нет в данных инструментов. Ответ заменён.' The wizard's own suggested test question 'How much does Women's cut & style cost?' is answered with 'Let me check that with the owner'. conversion-critic/30-maya.png: balayage takes ~100 s and escalates. After two blocks the conversation is escalated as 'repeated_misunderstanding' and the booking is lost. Priya: 'whats the address first?' triggers 'Maya попыталась подтвердить запись без записи в системе'.",
+    "fix": "Build the guard's allow-list from every amount in services (parse ranges '$220–$320', 'from $75', '+$15', '$5/nail') and from all FAQ, deposit and cancellation text. Let Maya quote range and 'from' prices verbatim. Store the deposit amount on the service, not only as a boolean. Scope the fake-confirmation guard to booking-confirmation claims only, not location questions. A blocked answer must not send the conversation to human-only mode, and the same canned line should never be sent twice in a row. Also, in the preview, answer price questions from the services table with a hard ~20 s timeout.",
+    "needsOwnerDecision": false
+   },
+   {
+    "rank": 5,
+    "title": "Owner replies never reach the client (inbox reply not delivered; owner's Telegram treated as a client)",
+    "area": "telegram",
+    "severity": "blocker",
+    "personasHit": [
+     "olena-nails",
+     "priya-lashes",
+     "anna-medspa"
+    ],
+    "evidence": "POST /api/platform/inbox/conversations/conv-0003.../messages returns 201, but sent.jsonl has no outbound message to chat 610003; the same happened for chat 55000202 (the pregnant patient). Olena replied to the handoff in the bot chat, and Maya answered her as a client: 'Чи хочете записати вашу доньку...'. Meanwhile Maya promises 'within the hour'.",
+    "fix": "(a) When an inbox message is posted to a Telegram conversation, send it through the tenant bot (sendMessage to the stored chat_id) and show delivered/failed status. (b) In the bot, recognise the linked owner chat_id and never route it to Maya. Support reply-to-alert: the owner replies to a '🔔 needs a human' alert and the text is forwarded to that client. Add inline buttons 'Take over' / 'Hand back to Maya'. (c) Make the 'within the hour' promise configurable, or drop it.",
+    "needsOwnerDecision": false
+   },
+   {
+    "rank": 6,
+    "title": "Landing sells a consulting audit; the product is a self-serve bot",
+    "area": "landing",
+    "severity": "blocker",
+    "personasHit": [
+     "olena-nails",
+     "jessica-hair",
+     "priya-lashes",
+     "marc-barber",
+     "anna-medspa",
+     "conversion-critic"
+    ],
+    "evidence": "conversion-critic/01-home-fold.png: the first phone screen is 'AI transformation for salons, medspas, and clinics where new leads wait...' in jargon. The only self-serve hint is one all-caps line. The CTAs mostly lead to the audit ('Request scope' ×3, 'Book AI transformation audit'). The FAQ never mentions Telegram, the trial or a price. All personas said they nearly left.",
+    "fix": "Rewrite the aibeaty.pages.dev hero using the signup page's message: 'Maya answers your clients and books them tonight. Paste your price list, 14 days free, no card.' One primary CTA, 'Try Maya free'. Add a phone-mockup demo with chips ('How much is a gel manicure?', 'Book me Saturday') and a clip of the price-list import, which is the proven wow moment. Move the audit, Pilot and Scale formats to a secondary 'For groups & medspas' page. Add FAQ entries for price, channels, 'Why Telegram?', Square/Booksy, languages and liability for a wrong price.",
+    "needsOwnerDecision": true
+   },
+   {
+    "rank": 7,
+    "title": "Booking confirmation loops; 'yes' does not commit; French bookings never complete",
+    "area": "maya",
+    "severity": "blocker",
+    "personasHit": [
+     "olena-nails",
+     "jessica-hair",
+     "priya-lashes",
+     "marc-barber",
+     "anna-medspa"
+    ],
+    "evidence": "Marc TG 6001: 'Oui c'est bon' is followed by 'coupe simple ou coupe + barbe?' repeated for 4 messages, and no booking was made. Olena needed 4 confirmations for 'русский маникюр'. Jessica: 'Yes, perfect' re-asked the service. Priya: 6 messages for one fill, and the name was asked twice. Anna: 'yes' was followed by 'that date has already passed'.",
+    "fix": "Keep a server-side booking draft per conversation (service_id, staff_id, slot_id, client name/phone). Treat any affirmative (yes/да/так/oui/ok, including one with an extra question attached) after a summary as commit, and call the booking tool with the stored slot_id. Resolve service names across languages (Russian manicure = 'русский маникюр', Coupe = haircut) to service_id once, and do not re-ask. Store the client's name and phone on the chat and reuse them for reschedule and cancel.",
+    "needsOwnerDecision": false
+   },
+   {
+    "rank": 8,
+    "title": "Date and year resolution breaks future bookings",
+    "area": "maya",
+    "severity": "blocker",
+    "personasHit": [
+     "anna-medspa",
+     "priya-lashes",
+     "olena-nails"
+    ],
+    "evidence": "anna-medspa/28-book-3.png: 'Sep 24 2024 is outside our scheduling window'. TG 55000101: 'that date has already passed'. Tomorrow was treated as past ('19 сентября уже прошёл'). Priya: 'next Tuesdays are Sept 20 or Sept 27' (both are Sundays). Friday 19:11 was called 'closed tonight' although the salon is open until 21:00.",
+    "fix": "Inject today's date, weekday, year and the tenant's timezone, plus a 14-day date/weekday table, into every turn. The booking tools take slot IDs or server-computed ISO datetimes, never a model-guessed year. Relative dates ('tomorrow', 'next Thursday') are resolved on the server in the tenant's timezone.",
+    "needsOwnerDecision": false
+   },
+   {
+    "rank": 9,
+    "title": "Telegram-first channel does not match North American clients (Instagram/SMS/booking apps)",
+    "area": "telegram",
+    "severity": "major",
+    "personasHit": [
+     "olena-nails",
+     "jessica-hair",
+     "priya-lashes",
+     "marc-barber",
+     "anna-medspa",
+     "conversion-critic"
+    ],
+    "evidence": "All personas said their clients are not on Telegram. The landing /services promises 'Instagram and WhatsApp DMs', but the wizard shows Instagram/WhatsApp/SMS as 'Request, we send the price first' (conversion-critic/41-mobile-keep-request.png). The BotFather steps are 3 lines of text (16-wiz-Channels.png).",
+    "fix": "Engineering, now: make the shareable web-chat link plus a QR code the hero of step 6 ('Put this in your Instagram bio and Google Business profile', with a copy button). Keep Telegram as an optional advanced channel, add screenshots or a short video of the BotFather steps, and a free 'we set it up for you' button during the trial. Stop advertising channels the trial cannot turn on. Business: decide whether Instagram DM ships as an included default.",
+    "needsOwnerDecision": true
+   },
+   {
+    "rank": 10,
+    "title": "Owner inbox looks like a demo template: fake data, wrong brand, Russian labels, broken on mobile, wrong deep link",
+    "area": "trust",
+    "severity": "major",
+    "personasHit": [
+     "olena-nails",
+     "jessica-hair",
+     "priya-lashes",
+     "marc-barber",
+     "anna-medspa"
+    ],
+    "evidence": "anna-medspa/33-inbox-medical.png shows 'Luminous Core / Precision OS', 'Sarah J. Manager', VIP 'Client since Mar 2022', 'with Sarah J.', 'Drink Preference', pending@client.local, 'Веб-гость 0202' for Telegram clients, and the labels 'Настройка · Setup' / 'Выйти' / 'Позвать человека'. The URL conversationId=conv-0202 opened Olivia Tran's thread. On a 390 px phone the thread pane is cut off (olena-nails/60-inbox.png, marc-barber/40-owner-inbox.png).",
+    "fix": "In unified-inbox-luminous-core.html: show the tenant's name and logo and the logged-in owner, and remove all fixture data (VIP, client-since, drink preference, trends, Apr 17 date, stock avatars). Show 'Telegram client' plus a name. Select the thread from the conversationId query parameter on load. Build a single-pane mobile layout (list, then full-screen thread with a sticky reply box). Localise the labels to the owner's UI language. Tag or hide the owner's own preview-test chats.",
+    "needsOwnerDecision": false
+   },
+   {
+    "rank": 11,
+    "title": "Services step rejects consult-only/Free prices silently, truncates prices, shows 'Saved' on a 422",
+    "area": "wizard",
+    "severity": "major",
+    "personasHit": [
+     "jessica-hair",
+     "anna-medspa",
+     "olena-nails",
+     "priya-lashes",
+     "conversion-critic"
+    ],
+    "evidence": "422 'The price of \"Colour correction consultation\" is unclear: \"Free\"'. The UI only shows a red border while the header says 'Saved' (anna-medspa/15-step2-edited.png, jessica 19-step2-colourcorr.png). Prices are truncated to 30 characters ('$45 (add-on with any colour se', 'from $5/na'). The AI draft itself produces 'complimentary', which the validator then rejects. Background 422s appear while staff is still empty. conversion-critic: drafted rows were lost on reload.",
+    "fix": "Accept Free/Complimentary/By consultation. Add a per-service toggle 'Consultation only: don't quote a price, hand to a human'. Remove the 30-character limit, or move qualifiers into a note field, and widen or wrap the price column. Render server validation messages inline, and show 'Not saved' on errors. Save partial drafts without requiring services or staff; validate only at Go live. Persist the AI draft immediately (not debounced), and flush pending saves on add/remove and beforeunload (Anna lost her Answers text this way).",
+    "needsOwnerDecision": false
+   },
+   {
+    "rank": 12,
+    "title": "Double booking: Maya's calendar is separate, and she pretends to look up Square",
+    "area": "maya",
+    "severity": "major",
+    "personasHit": [
+     "olena-nails",
+     "jessica-hair",
+     "marc-barber",
+     "conversion-critic"
+    ],
+    "evidence": "Jessica TG 5550404: 'share the phone number you used for the Square booking... let me pull up the details' followed by 'I'm not seeing a booking under that number... set up a new appointment?'. Olena and Marc use Google Calendar, paper or Booksy, and sync is only a 'Request' button. The chat footer claims 'Bookings are confirmed in the salon's system'.",
+    "fix": "Engineering, now: Maya must never claim access to an external calendar. If a client mentions Square/Booksy/Fresha, she says she can't see it and hands off. Add owner blocking of busy times in the dashboard and via Telegram ('/busy Sat 10-12'). Change the footer text. Business: decide whether Google Calendar sync is included in the trial and which of Square/Booksy/Fresha comes next.",
+    "needsOwnerDecision": true
+   },
+   {
+    "rank": 13,
+    "title": "No trust or legal layer: privacy, terms, company identity, gmail contact, agency footer, no social proof",
+    "area": "trust",
+    "severity": "major",
+    "personasHit": [
+     "anna-medspa",
+     "conversion-critic",
+     "jessica-hair"
+    ],
+    "evidence": "/privacy/, /terms/ and /about/ fall back to the home page. The contact is 'Prefer email? ctmakc@gmail.com'. The footer says 'Development & promotion — mmix.ua'. /results says 'representative operating patterns ... not named-client metrics'. There is no terms checkbox on signup. Health details (pregnancy, sertraline) are forwarded into Telegram alerts.",
+    "fix": "Add privacy, terms and DPA pages covering PIPEDA/PIPA and data location. Use a business email on the domain, show the legal entity and a Canadian contact, and add a terms checkbox at signup. Remove the agency credit. Add a guarantee/cancellation block. Add a tenant option to redact health details from Telegram alerts (send 'medical question, open inbox' instead of the text). Add social proof once pilots exist.",
+    "needsOwnerDecision": true
+   },
+   {
+    "rank": 14,
+    "title": "Localization: no French, Russian toggle for Canadian users, owner alerts partly in Russian",
+    "area": "signup",
+    "severity": "major",
+    "personasHit": [
+     "jessica-hair",
+     "marc-barber",
+     "anna-medspa",
+     "priya-lashes",
+     "conversion-critic"
+    ],
+    "evidence": "marc-barber/24-preview-chat.png shows the 'Русский' header button. Owner alerts contain Russian ('Резюме Майи', 'Maya назвала цену ...'). The bot's /start reply is English even when language_code is fr. The French handoff phrase 'poser un humain' is wrong. The preview chat UI stays English under a Russian wizard.",
+    "fix": "Add an fr-CA UI locale. Language options: EN/FR by default, with Russian/Ukrainian shown only when the browser locale asks for it. Localise the bot /start message by language_code. Send owner alerts in the owner's UI language, with no internal codes such as 'repeated_misunderstanding'. Localise the preview chat widget.",
+    "needsOwnerDecision": true
+   },
+   {
+    "rank": 15,
+    "title": "Client names mistaken for staff; Cyrillic staff names not matched",
+    "area": "maya",
+    "severity": "major",
+    "personasHit": [
+     "olena-nails",
+     "priya-lashes",
+     "marc-barber",
+     "anna-medspa"
+    ],
+    "evidence": "'Nadia 289-555-0123' got 'we don't have a stylist by that name'. The same happened with 'Name: Jason Lee' and 'Tanya Morales'. Olena: 'к Ирине' got 'такого мастера у нас нет' although Iryna is on staff.",
+    "fix": "Parse the client's name and phone out of the message before matching staff. Only treat a name as staff after 'with/к/avec'. Match staff with transliteration and aliases (Ирина=Iryna), and add an optional alias field in step 3. With one staff member, never ask which staff member.",
+    "needsOwnerDecision": false
+   },
+   {
+    "rank": 16,
+    "title": "Deposit, cancellation and post-booking rules not applied (late cancel, e-Transfer, address after deposit)",
+    "area": "maya",
+    "severity": "major",
+    "personasHit": [
+     "olena-nails",
+     "priya-lashes"
+    ],
+    "evidence": "Megan's late cancel: she was never told the booking was cancelled, never told about the 24h rule, and her last message got no reply; the owner got 3 separate alerts. Priya's booking confirmation had no deposit instructions and no address.",
+    "fix": "Always confirm the cancel or reschedule to the client first, then quote the matching policy text from step 4. Add a 'message after booking' template in step 4 (deposit, e-Transfer email, address) that is sent automatically. Merge a conversation's alerts into one readable owner message.",
+    "needsOwnerDecision": false
+   },
+   {
+    "rank": 17,
+    "title": "Preview/test mode is slow and locks after one handoff",
+    "area": "wizard",
+    "severity": "major",
+    "personasHit": [
+     "jessica-hair",
+     "priya-lashes",
+     "conversion-critic",
+     "marc-barber"
+    ],
+    "evidence": "The first reply took 91-121 s (Jessica, critic). After one escalation the preview shows 'The salon team has this conversation' and Maya stops answering. Reloading the page wipes the preview or returns to step 1.",
+    "fix": "In preview, simulate the handoff but keep Maya answering, with a clear 'Reset test chat' button. Warm the model or tools and stream a typing indicator; target a first reply under 10 s. Keep the preview session and the last wizard step across reloads. Greet with the salon's top 3 services and prices so the owner sees her own data at once.",
+    "needsOwnerDecision": false
+   },
+   {
+    "rank": 18,
+    "title": "Go live placement and confirmation",
+    "area": "wizard",
+    "severity": "minor",
+    "personasHit": [
+     "jessica-hair",
+     "priya-lashes",
+     "marc-barber",
+     "anna-medspa",
+     "conversion-critic"
+    ],
+    "evidence": "marc-barber/24-preview-chat.png: Go live sits above the test chat. The launch has no confirmation or checklist. 'Chat on your website — Active' is shown while the header says 'Not live yet'.",
+    "fix": "Move Go live below the chat and enable it after at least one test exchange. Add a checklist and a confirmation dialog, then a success screen saying where clients now see Maya. Show 'Ready, activates at Go live' instead of 'Active'.",
+    "needsOwnerDecision": false
+   },
+   {
+    "rank": 19,
+    "title": "Wizard defaults and first impression (red icons, staff days, owner as staff, timezone, medspa type)",
+    "area": "wizard",
+    "severity": "minor",
+    "personasHit": [
+     "olena-nails",
+     "jessica-hair",
+     "priya-lashes",
+     "marc-barber",
+     "anna-medspa",
+     "conversion-critic"
+    ],
+    "evidence": "Red (!) icons on unvisited steps (conversion-critic/11-wizard-step1.png). Staff default Tue-Sat ignores the salon hours (Marc had to toggle Sunday for each barber; Priya's Monday was dropped). A solo owner must add herself. Timezone defaults to Eastern for Vancouver; 613 placeholders. No Medspa type. The website field is not reused in step 2. Labels are not linked to inputs.",
+    "fix": "Show neutral to-do dots plus progress ('2 of 5, about 6 min left'). Default staff days to the salon's open days. Pre-fill the owner as the first staff member. Detect the timezone from the browser. Add a Medspa/Clinic type with prefilled forbidden topics and consult-only injectables. Reuse the website URL. Use '<label for>' and 'e.g.' placeholders. Flag guessed durations as 'please check'.",
+    "needsOwnerDecision": false
+   },
+   {
+    "rank": 20,
+    "title": "Add-on and per-unit price math",
+    "area": "maya",
+    "severity": "minor",
+    "personasHit": [
+     "olena-nails"
+    ],
+    "evidence": "'Гель-манікюр + дизайн на 10 нігтях у нас $50' when the real price is from $100 ($50 + $5/nail × 10).",
+    "fix": "Model add-ons and per-unit prices in services, and have the tool compute combos; otherwise answer 'from $X, the design is priced by the tech'.",
+    "needsOwnerDecision": false
+   },
+   {
+    "rank": 21,
+    "title": "Tone/brand-voice control and double self-introduction",
+    "area": "maya",
+    "severity": "minor",
+    "personasHit": [
+     "jessica-hair",
+     "olena-nails",
+     "priya-lashes",
+     "marc-barber"
+    ],
+    "evidence": "'I'm the AI, but I know the schedule by heart 🙂'. Maya introduces herself twice (on /start and again in the first reply). She says 'Привет' to a client who wrote 'Здравствуйте'. Medspa staff are called 'stylist'.",
+    "fix": "Add a tone section to step 4 (formal/warm, emoji on/off, vous/tu, a sample greeting with preview). Introduce Maya once per conversation. Take the staff noun from the business type (provider, barber, tech).",
+    "needsOwnerDecision": false
+   },
+   {
+    "rank": 22,
+    "title": "Owner alert content and desktop owner link",
+    "area": "telegram",
+    "severity": "minor",
+    "personasHit": [
+     "olena-nails",
+     "jessica-hair",
+     "anna-medspa"
+    ],
+    "evidence": "The new-booking alert has no phone number. The reschedule alert does not show the old time. Owner-language and English dates are mixed. Step 6 says 'Tap from your phone' with no QR code on desktop (jessica 43-bot-connected.png, anna 31-bot-connected.png).",
+    "fix": "Include the client's phone, old→new time and localised dates in alerts. Show a QR code for the owner deep link on desktop.",
+    "needsOwnerDecision": false
+   },
+   {
+    "rank": 23,
+    "title": "Two brands between landing and app",
+    "area": "landing",
+    "severity": "minor",
+    "personasHit": [
+     "olena-nails",
+     "jessica-hair",
+     "priya-lashes",
+     "marc-barber",
+     "anna-medspa",
+     "conversion-critic"
+    ],
+    "evidence": "Landing: serif 'AIBeaty/26' on cream (conversion-critic/01-home-fold.png). App: purple 'M AIbeaty'. Dashboard: 'Luminous Core'.",
+    "fix": "Use one wordmark spelling, logo and palette across landing, signup, wizard and dashboard, and introduce Maya on the landing.",
+    "needsOwnerDecision": true
+   },
+   {
+    "rank": 24,
+    "title": "Walk-in and closing-time logic",
+    "area": "maya",
+    "severity": "minor",
+    "personasHit": [
+     "marc-barber"
+    ],
+    "evidence": "TG 6003: 'sans rendez-vous dimanche 15h45' was answered with morning slots; a 45-min fade at 15:45 would run past the 16:00 close.",
+    "fix": "Match walk-in and 'sans rendez-vous' questions to the custom FAQ first, and check that the service duration fits before closing.",
+    "needsOwnerDecision": false
+   }
+  ],
+  "mayaErrors": [
+   "olena-nails / preview RU: offered Iryna Sat 19 Sep 10:00-16:00 (Iryna works Tue-Fri), then said 'Суббота у нас закрыта' (the salon is open Sat 10-17)",
+   "olena-nails / preview EN: 'Wednesday is a closed day for us. How about Tuesday, Sep 22 with Sofia' (Wednesday is open; Sofia doesn't do acrylic and doesn't work Tuesdays)",
+   "olena-nails / Telegram: BOOKED 'Acrylic full set, мастер Sofia, Sat Sep 19' for Megan Clarke; Sofia doesn't do acrylic",
+   "olena-nails / preview: 'Хочу быть честной: такого мастера у нас нет. В нашей команде Olena, Iryna и Sofia' in reply to 'к Ирине'",
+   "olena-nails / deposit: 'Let me check that with the owner — within the hour' although the $20 deposit is in the FAQ (the guard blocked it)",
+   "olena-nails / late cancel: the client was never told the booking was cancelled or about the 24h rule; 'so do I lose my deposit?' got no reply",
+   "olena-nails / TG client 3: 'Гель-манікюр + дизайн на 10 нігтях у нас $50' (real price from $100), plus a double self-introduction",
+   "olena-nails / owner chat: the owner's reply to a handoff was answered as if she were a client ('Чи хочете записати вашу доньку...')",
+   "olena-nails / TG client 2 (EN): 'price from $85. Всё верно?' (Russian to an English client); a 4-step confirmation loop for 'русский маникюр'",
+   "jessica-hair / preview + TG: 'How much is balayage?', 'How much does Women's cut & style cost?' and the French 'coupe femme senior' all got 'Let me check that with the owner' although the ranges and 'from' prices are in the data",
+   "jessica-hair / preview: colour correction answered in RUSSIAN with 'colour-директором Шлё'",
+   "jessica-hair / preview: 'Root touch-up стоит $95.00, около 60 минут' (Russian to an English client)",
+   "jessica-hair / TG kids cut: answered in Russian; slots '09:00, 10:30, 12:00' before the 10:00 opening; then '10:00 с Джессикой' (Jessica doesn't work Saturdays)",
+   "jessica-hair / TG Square client: 'share the phone number you used for the Square booking... let me pull up the details', then 'I'm not seeing a booking under that number... set up a new appointment?' (pretends to have Square access and invites a double booking)",
+   "jessica-hair / TG FR: English 'Hi! I'm Maya' glued onto French text, and the broken phrase 'dites « poser un humain »'",
+   "priya-lashes / preview: 'I can check tomorrow's 7 am slots' (opens at 9)",
+   "priya-lashes / preview + TG: 'what is the address?' got 'the booking isn't confirmed in our system yet. I've passed this to the owner'; another answer invented 'just a short walk from the main road'",
+   "priya-lashes / preview: 'Volume full set стоит $160.00' (Russian); 'Сегодня вечером уже закрыто' on Friday at 19:11 with Friday hours until 21:00; booked Monday by mistake",
+   "priya-lashes / TG: 'For Sunday at 8 am we have a few lash set options' (closed Sundays)",
+   "priya-lashes / TG: 'the next Tuesdays are Sept 20 or Sept 27' (both are Sundays); final booking confirmation in Russian; asked for the name and phone twice",
+   "priya-lashes / TG: 'Hi! How much is a volume set and do you need a deposit?' got 'Let me check that with the owner' (the $25 deposit was blocked); in the preview Maya then went silent ('salon team has this conversation')",
+   "priya-lashes / TG: 'Nadia 289-555-0123' got 'we don't have a stylist by that name. Our team is Priya'",
+   "priya-lashes / owner reply from the inbox never delivered to Telegram client 610003 after 'Priya will reply here shortly'",
+   "marc-barber / preview: 'Voici trois créneaux disponibles avec Karim ce samedi' and Sunday slots with Karim (he works Tue-Thu); TG 6003: 'Karim a un créneau dimanche à 15 h'",
+   "marc-barber / preview: 'Спасибо за номер! Как к вам лучше обращаться...' to a French client; 'Проверяю: Fade у Карима... на имя Александр' (client name transliterated to Cyrillic)",
+   "marc-barber / TG 6001: 'Vous pouvez dire « pozwać человека »' (Polish plus Russian inside French); endless 'coupe simple ou coupe + barbe?' loop after 'Oui c'est bon', no booking made",
+   "marc-barber / TG 6002: full Russian greeting to an English client with language_code=en; still Russian after 'Please answer in English'; 'Name: Jason Lee' read as a staff name",
+   "marc-barber / preview EN: 'Beard Trim only or Haircut + Beard combo?' asked twice, never booked",
+   "marc-barber / TG 6003: ignored the walk-in FAQ and the 16:00 close for 'sans rendez-vous dimanche 15h45'",
+   "anna-medspa / TG: booked 'HydraFacial Signature with Dr. Anna Lee, Sat Sep 19' (the doctor works Wed/Fri, injectables only); confirmation fully in Russian: 'Вы записаны! Ждём вас 19 сентября...'",
+   "anna-medspa / TG: rescheduled an injectable consult to Sat with Dr. Lee (her day off) and ignored 'does Dr Lee even work Saturdays?'",
+   "anna-medspa / preview: 'Sep 24 2024 is outside our scheduling window'; tomorrow treated as past ('Извините, 19 сентября уже прошёл'); TG: 'that date has already passed'",
+   "anna-medspa / TG: '2 PM with Jenna is open', then 'no openings at 2 PM'; Monday Sep 21 turned into 'September 23'",
+   "anna-medspa / preview + TG: units and per-unit price answers were compliant but in Russian",
+   "anna-medspa / owner reply to the pregnant patient's medical handoff saved (201) but never delivered to Telegram",
+   "conversion-critic / preview: 'How much is balayage and do I need a deposit?' took about 100 s and got 'Let me check that with the owner' (from $220 plus the deposit flag were in the table)",
+   "all personas: Maya promises 'the owner will reply within the hour' on the owner's behalf, with no working channel to keep that promise"
+  ],
+  "ownerDecisions": [
+   "Monthly price(s) in CAD. Persona anchors: solo $29-39, 3-4 chair salon or barbershop $49-79, 7-stylist salon $99-149, medspa $149-249; Telegram-only was valued at $15-30. One plan or a Solo/Salon/Pro tier set? Add-on prices for Instagram DM, SMS, WhatsApp and calendar sync?",
+   "Payment method: Stripe Checkout (card, Apple Pay, Google Pay) inside step 7, or invoice/e-Transfer? Monthly only or also annual? Refund or money-back guarantee after the trial?",
+   "Positioning: make the self-serve Maya trial the main landing message and move the 'AI transformation audit' to a secondary page for groups/medspas, or split into two sites?",
+   "Channel priority for North America: ship Instagram DM (Meta app review) as the included default, or lead with the web-chat link/QR for the Instagram bio and keep Telegram as advanced? WhatsApp and SMS order?",
+   "Calendar integration: include Google Calendar sync in the trial? Which booking app comes first (Square, Booksy, Fresha, Vagaro)?",
+   "Languages: add French (fr-CA) now? Hide the Russian toggle for Canadian visitors?",
+   "Brand: one name, spelling and visual identity across landing, app and dashboard (AIBeaty/26 serif vs purple 'M AIbeaty' vs 'Luminous Core')?",
+   "Legal and trust: which legal entity and Canadian contact to show, a business email on the domain instead of ctmakc@gmail.com, whether to remove the 'Development & promotion — mmix.ua' footer credit, a privacy/DPA/data-location statement (PIPEDA/PIPA), and a liability line for wrong prices.",
+   "Offer 'we set up your Telegram bot / Instagram for you' free during the trial?",
+   "Should Maya promise a response window ('within the hour') on the owner's behalf, and should the owner configure it?",
+   "Medspa segment: add a Medspa/Clinic business type with consult-only injectables, and redact health details from Telegram alerts by default?"
+  ]
+ },
+ "reports": [
+  {
+   "persona": "olena-nails: Olena Kovalenko, 41, owner of Olena Nail Studio (Barrhaven, Ottawa), 3 nail techs, Tue–Sat. Not technical, on her phone (390x844) between clients, more at ease in Russian/Ukrainian. Arrived from a Facebook ad.",
+   "reachedSteps": [
+    "Landing home on phone (aibeaty.pages.dev), plus Pricing, FAQ, How it works",
+    "Local signup, switched to Russian, account created",
+    "Wizard 1 Salon: address, phone, Instagram (Tue–Sat hours were already the default)",
+    "Wizard 2 Services: pasted my Instagram price list, 7 services pulled out correctly in a few seconds",
+    "Wizard 3 Staff: Olena (all), Iryna (Tue–Fri), Sofia (Wed–Sat, no acrylic)",
+    "Wizard 4 Answers: parking and cancellation were already filled in from my paste; I added payment, deposit, late policy and forbidden topics",
+    "Wizard 5 Preview chat with Maya in Russian (booking, reschedule, ask for a human) and in English (acrylic booking, deposit, move, fungus)",
+    "Launch Maya (status changed to Работает)",
+    "Wizard 6 Channels: pasted a fake BotFather token 7771001:AA..., bot connected as @bot7771001_bot",
+    "Linked my own Telegram as owner with /start owner-<code>, got a confirmation",
+    "Telegram client 1 (RU): booking, then reschedule. Owner got the new-booking and reschedule alerts",
+    "Telegram client 2 (EN): acrylic with Sofia, deposit question, late cancel. Owner got alerts plus a 'price blocked' notice and a 'needs human' notice",
+    "Telegram client 3 (UA/RU): gel + design on 10 nails + 9-year-old daughter, then 'позовите человека'. Owner got the handoff alert",
+    "Opened the owner inbox from the alert link on my phone",
+    "Tried to answer the client from my own Telegram chat (it does not work)",
+    "Wizard 7 Plan: requested Instagram Direct with a note and requested to keep Maya after the trial. No price and no payment anywhere"
+   ],
+   "minutesToLiveEstimate": 45,
+   "understoodOfferAfterLanding": "After the landing page I thought I was being sold an agency consulting project: an 'AI transformation audit', a 3-week rollout, 'medspas, injector clinics, multi-location groups', and custom pricing after a scoping call. The Pricing page says outright 'not sold as a one-size subscription' and shows no numbers. The only hint of a self-serve product is one small all-caps line ('PASTE YOUR PRICE LIST, CONNECT YOUR SALON'S TELEGRAM BOT... NO CARD'). The signup page tells a different and much clearer story: 'Maya answers your clients tonight', a Telegram bot, 14 days free. That is what I actually got, so the product matches the signup page and not the landing page. The landing page nearly lost me. For a 3-chair nail studio it reads as expensive and not for me.",
+   "frictions": [
+    {
+     "step": "Landing page",
+     "severity": "major",
+     "what": "The whole page is about an 'AI transformation audit' and a 3-week consulting rollout for medspas and clinics. It uses English business jargon ('thin operating visibility', 'commercial leakage'), has no Russian/Ukrainian toggle, and on a phone the hero headline alone takes more than a full screen. Telegram, Maya and the free trial are one tiny all-caps line. The FAQ never mentions Telegram, the trial or a price.",
+     "evidence": "shots/olena-nails/01-landing-top.png; landing.txt: 'AI transformation for salons, medspas, and clinics where new leads wait...'; the self-serve line is only 'SELF-SERVE: PASTE YOUR PRICE LIST, CONNECT YOUR SALON'S TELEGRAM BOT, MAYA ANSWERS CLIENTS THE SAME EVENING. NO CARD.'",
+     "suggestedFix": "Put the signup page's message on the landing hero for small salons: 'Maya answers your Instagram/Telegram clients tonight, 14 days free'. Add the RU/UA toggle there too, and move the audit/consulting offer below it."
+    },
+    {
+     "step": "Pricing page",
+     "severity": "major",
+     "what": "The Pricing page says the product is not a subscription and shows no price at all ('scoped to the business, not sold as a one-size subscription'). That contradicts the 'Start free trial' button in the header. I don't start trials I can't price.",
+     "evidence": "shots/olena-nails/15-pricing.png; pricing.txt: 'AIBeaty is scoped to the business, not sold as a one-size subscription.'",
+     "suggestedFix": "Show the self-serve monthly price in CAD (for example 'Maya for 1 location: $X/mo after 14 days'), separate from the audit/pilot formats."
+    },
+    {
+     "step": "Brand switch landing -> signup",
+     "severity": "minor",
+     "what": "The landing page is beige and editorial ('AIBeaty/26'). Signup is a purple app ('AIbeaty', 'M' logo). For a second I thought I had left the site.",
+     "evidence": "01-landing-top.png vs 20-signup.png",
+     "suggestedFix": "Use one visual identity, or at least the same logo and name spelling."
+    },
+    {
+     "step": "Wizard 5 preview + Telegram: wrong schedule",
+     "severity": "blocker",
+     "what": "Maya invents availability and contradicts herself. She offered Iryna on Saturday (Iryna is set Tue–Fri), then said 'Суббота у нас закрыта' (we are open Sat 10–17). In English she offered Wednesday slots, then said 'Wednesday is a closed day for us', then offered Sofia on Tuesday (Sofia is Wed–Sat). She also offered Sofia for acrylic three times, and on Telegram she BOOKED Megan for an acrylic full set with Sofia, who does not do acrylic. The saved config was correct: GET /api/setup shows Iryna workDays tue–fri and Sofia's services without Acrylic.",
+     "evidence": "Preview RU: 'в субботу 19 сентября есть свободные окна — 10:00...' then 'Суббота у нас закрыта'. Preview EN: 'Wednesday is a closed day for us. How about Tuesday, Sep 22 with Sofia...'. Telegram owner alert: '✅ Новая запись: Megan Clarke — Acrylic full set, мастер Sofia, Sat, Sep 19'. Screens 40-prev-ru-*.png, 41-prev-en-*.png",
+     "suggestedFix": "Check staff workDays and staff services when offering slots and before creating a booking. Never state 'closed' for a day that has hours set."
+    },
+    {
+     "step": "Preview: master name in Cyrillic",
+     "severity": "major",
+     "what": "A client wrote 'к Ирине' and Maya said we have no such master, then listed 'Olena, Iryna and Sofia'. Half my clients write names in Cyrillic.",
+     "evidence": "'Хочу быть честной: такого мастера у нас нет. В нашей команде Olena, Iryna и Sofia'",
+     "suggestedFix": "Match staff names across Cyrillic and Latin spelling (Ирина/Iryna, Олена/Olena/Елена), or let the owner add name aliases in step 3."
+    },
+    {
+     "step": "Deposit answer blocked",
+     "severity": "major",
+     "what": "In step 4 I wrote '$20 deposit only for acrylic full set, by e-Transfer'. When a client asks about the deposit, a guard blocks Maya's '$20' answer because '20 isn't in the tool data'. The client gets 'Let me check that with the owner — within the hour', and I get a technical message in my Telegram. This happens on every deposit question, including the late-cancel one.",
+     "evidence": "Owner TG: '✉️ Для вас: Maya назвала цену 20, которой нет в данных инструментов. Ответ заменён. Вопрос клиента: how much is the deposit and how do i pay it?'",
+     "suggestedFix": "Let the price guard accept amounts written in the FAQ/deposit fields, and store the deposit amount on the service (the importer already sets deposit:true)."
+    },
+    {
+     "step": "Telegram booking confirmation loop",
+     "severity": "major",
+     "what": "Client 1 had to confirm 4 times. She had already said 'русский маникюр'. Maya asked which manicure, then 'именно русский?', then 'Всё верно?', then 'Подтвердите, что именно эту услугу?'. The booking only went through on 'Да, Russian manicure. Записывайте уже'. The late cancel also looped: 'yes cancel. and the deposit?' got the same question again.",
+     "evidence": "Messages 'Да, подтверждаю' -> 'Проверяю... Всё верно?' -> 'Да, всё верно' -> 'У нас есть «Russian manicure»... Подтвердите' ; 'yes cancel. and the deposit?' -> 'Cancel the acrylic full set...?' repeated",
+     "suggestedFix": "Treat any yes (да/так/yes) as confirmation, including one with an extra question attached. Resolve the Russian service name to the English service name without re-asking."
+    },
+    {
+     "step": "Late cancellation handling",
+     "severity": "major",
+     "what": "Megan cancelled a Saturday 10:00 acrylic on Friday evening (<24h). She was never told the booking was cancelled and never told her deposit is lost, even though both rules are in step 4. The reply was 'Let me check that with the owner'. Her next message 'so do I lose my deposit?' got no reply at all. I got 3 separate alerts, one of them the code 'repeated_misunderstanding'.",
+     "evidence": "Owner TG: '❌ Отмена: Megan Clarke', '✉️ Для вас: Maya назвала цену 20...', '🔔 Клиенту нужен человек (repeated_misunderstanding). yes'; client got '(no reply within 120s)'",
+     "suggestedFix": "Confirm the cancellation to the client first, then apply the 24h policy text. Merge the owner alerts into one readable message without internal codes."
+    },
+    {
+     "step": "Wrong price quote",
+     "severity": "major",
+     "what": "A client asked for gel manicure plus design on all 10 nails. Maya quoted $50 total. The real price is $50 + from $5/nail x 10 = from $100. She under-quoted by half, and I would have to argue with the client at the table.",
+     "evidence": "'Гель‑манікюр + дизайн на 10 нігтях у нас $50, тривалість ≈ 60 хв.'",
+     "suggestedFix": "Handle add-on and per-unit pricing ('from $5/nail'). Combos should add up, or say 'from $100, the design is priced by the tech'."
+    },
+    {
+     "step": "Greeting / language mixing",
+     "severity": "minor",
+     "what": "Maya introduces herself twice in the same message ('Вітаю! Я Майя, ШІ-асистентка салону. Привіт, я Майя — асистентка...'), and again after /start. She greets 'Привет' when the client wrote 'Здравствуйте'. An English client got 'Всё верно?' in Russian. The preview chat UI stays English while my whole setup is in Russian.",
+     "evidence": "Telegram client 3 reply; client 2: '...price from $85. Всё верно?'; screen 33-step5.png shows 'Maya is here / Book a visit' under a Russian wizard",
+     "suggestedFix": "Introduce Maya once per conversation, reply in the client's language only, and use a polite register."
+    },
+    {
+     "step": "Owner cannot answer handoffs from Telegram",
+     "severity": "blocker",
+     "what": "When I get '🔔 Клиенту нужен человек', my Telegram chat with the bot is treated as a client. I wrote the answer for the client about the child manicure and Maya answered ME as if I were a client ('Чи хочете записати вашу доньку...'). The only other way is the inbox link, and on a phone the conversation pane is cut off on the right. There is no reply box I can reach, and the client card shows demo junk ('VIP', 'Client since Mar 2022', 'with Sarah J.', '(555) 000-0000', 'Drink Preference'). Maya promises the client 'в течение часа', and I have no way to keep that promise from my phone.",
+     "evidence": "Owner TG reply echo; shots/olena-nails/60-inbox.png; inbox text 'Веб-гость 0403' (it was a Telegram client), 'Client since Mar 2022', 'with Sarah J.'",
+     "suggestedFix": "Let the owner reply to the alert in Telegram (a reply-to message is forwarded to the client) and give the alert a 'Взять разговор' button. Make the inbox a single-pane mobile view and remove the placeholder CRM data."
+    },
+    {
+     "step": "Owner alerts content",
+     "severity": "minor",
+     "what": "The new-booking alert has no client phone. The reschedule alert does not show the old time. The alerts mix Russian and English ('Tue, Sep 22 10:00 AM', 'мастер Olena').",
+     "evidence": "'✅ Новая запись: Наталья Петренко — Russian manicure, мастер Olena, Tue, Sep 22 10:00 AM - 11:30 AM.' / '🔁 Перенос: Наталья Петренко — Russian manicure → Wed, Sep 23 5:30 PM - 7:00 PM.'",
+     "suggestedFix": "Include phone, old→new time, and dates in the owner's language."
+    },
+    {
+     "step": "Bookings live only in Maya",
+     "severity": "major",
+     "what": "My real calendar is paper plus Google Calendar. Maya books into her own schedule, which knows nothing about my Instagram and phone bookings. So she will double-book me. Google Calendar sync is a paid 'Заказать' extra with no price, and the chat footer says 'Bookings are confirmed in the salon's system' without explaining which system.",
+     "evidence": "Step 7 'Синхронизация с Square / Fresha / Vagaro / Google Calendar — Заказать'; chat footer text",
+     "suggestedFix": "Include Google Calendar in the trial, or at least let the owner block times in the dashboard or from Telegram ('/busy Sat 10-12')."
+    },
+    {
+     "step": "Plan & extras / pay",
+     "severity": "blocker",
+     "what": "There is no price and no way to pay. 'Оставить ассистента после пробного периода — Заказать' just flips to 'Заказано'. It doesn't say who contacts me, when, or how much it costs. My note 'Сколько стоит в месяц?' went into a void. I asked for Instagram Direct, where all my clients actually are, and got no price or timeline either.",
+     "evidence": "shots/olena-nails/71-plan-requested.png; text 'Сообщите, что хотите продолжить, и мы пришлём тариф и ссылку на оплату.' then button state 'Заказано'",
+     "suggestedFix": "Show the monthly CAD price and a card checkout right on step 7. Show Instagram's add-on price and setup time. After 'Заказать', confirm with a message like 'we will email you within X hours'."
+    },
+    {
+     "step": "Telegram as the main channel",
+     "severity": "major",
+     "what": "My clients in Barrhaven are on Instagram and phone. Only my family uses Telegram. A Telegram bot link in my bio won't get most Canadian clients to write. The BotFather steps are just 3 lines of text with no screenshots. For me, installing and using BotFather on the same phone and copying the token back into the browser is the scariest part, and I would probably ask my daughter to help.",
+     "evidence": "Step 6 text: 'Откройте @BotFather в Telegram и нажмите Start. Отправьте /newbot...'",
+     "suggestedFix": "Add screenshots or a 30-second video for BotFather, plus a 'we'll do it for you' button that is free during the trial. Prioritize Instagram DM."
+    },
+    {
+     "step": "Answers step input",
+     "severity": "minor",
+     "what": "Saving shows 422 errors in the console on step 1 (because services and staff were still empty). I saw no error, so it was harmless. Nail art got an invented 30 min duration, and the price field cuts off 'from $5/na'.",
+     "evidence": "HTTP 422 /api/setup: 'Добавьте хотя бы одну услугу'; screen 27-import-result.png",
+     "suggestedFix": "Validate partial drafts only at launch, and widen the price field or wrap its text."
+    }
+   ],
+   "mayaQuality": [
+    {
+     "channel": "web preview (step 5)",
+     "asked": "Здравствуйте, сколько стоит маникюр с покрытием гель?",
+     "answered": "Привет, я Майя... Гель‑маникюр у нас стоит $50.00 и занимает около 60 минут. Хотите подобрать удобное время?",
+     "verdict": "correct",
+     "note": "Right price and time. The informal 'Привет' and the long intro are slightly off."
+    },
+    {
+     "channel": "web preview (step 5)",
+     "asked": "А можно записаться на пятницу после обеда к Ирине?",
+     "answered": "Хочу быть честной: такого мастера у нас нет. В нашей команде Olena, Iryna и Sofia",
+     "verdict": "wrong",
+     "note": "She didn't recognize the Cyrillic spelling of Iryna, my own employee."
+    },
+    {
+     "channel": "web preview (step 5)",
+     "asked": "Наталья, 613-555-2211. Давайте в 14:00 / перенести на субботу утро",
+     "answered": "Offered Iryna Sat 19 Sep 10/12/14/16, then 'Суббота у нас закрыта', offered Tue 22",
+     "verdict": "harmful",
+     "note": "Iryna doesn't work Saturdays, and the salon IS open Saturday. She contradicted herself within two messages."
+    },
+    {
+     "channel": "web preview (step 5)",
+     "asked": "Позовите человека пожалуйста",
+     "answered": "Конечно, передаю разговор человеку. Владелец или администратор напишут вам здесь в течение часа",
+     "verdict": "acceptable",
+     "note": "The handoff works, but she promises 'within the hour' on my behalf."
+    },
+    {
+     "channel": "web preview (step 5)",
+     "asked": "acrylic full set next Wednesday / Sofia please, 11am",
+     "answered": "Listed Olena/Iryna/Sofia slots on Wed, then 'Wednesday is a closed day for us. How about Tuesday, Sep 22 with Sofia'",
+     "verdict": "harmful",
+     "note": "Wednesday is open. Sofia doesn't do acrylic and doesn't work Tuesday."
+    },
+    {
+     "channel": "web preview (step 5)",
+     "asked": "Do I need to pay a deposit? how?",
+     "answered": "Let me check that with the owner — you'll hear back within the hour.",
+     "verdict": "wrong",
+     "note": "The deposit rule is written in step 4, and she still escalates it."
+    },
+    {
+     "channel": "web preview (step 5)",
+     "asked": "I have a small fungus on one nail, is it ok to do acrylic?",
+     "answered": "I'm not able to give medical advice about nail fungus. It's best to check with a doctor or a dermatologist first.",
+     "verdict": "correct",
+     "note": "She followed my 'no medical advice' rule."
+    },
+    {
+     "channel": "Telegram client 1 (RU)",
+     "asked": "Русский маникюр во вторник к Олене, самое раннее, Наталья Петренко 613-555-2211",
+     "answered": "Offered Tue 10:00/12:30/15:00 with Olena. Booked after 4 confirmations: 'Готово, запись подтверждена: русский маникюр у Олены, вторник 22 сентября, 10:00 – 11:30'",
+     "verdict": "acceptable",
+     "note": "The final result is correct and the owner got the alert, but the confirmation loop is annoying."
+    },
+    {
+     "channel": "Telegram client 1 (RU)",
+     "asked": "Во вторник не получится, можно на среду вечером? -> 17:30 -> да",
+     "answered": "Готово, запись перенесена: ... среда 23 сентября, 17:30 – 19:00. Owner got '🔁 Перенос'",
+     "verdict": "correct",
+     "note": "Clean reschedule."
+    },
+    {
+     "channel": "Telegram client 2 (EN)",
+     "asked": "acrylic full set with Sofia this saturday -> 10am Megan Clarke -> yes",
+     "answered": "You're booked for an acrylic full set with Sofia on Saturday, Sep 19, 10:00 AM",
+     "verdict": "harmful",
+     "note": "Sofia doesn't do acrylic, so this is a real booking I'd have to fix. She also asked 'Всё верно?' in Russian to an English client and never mentioned the $20 deposit."
+    },
+    {
+     "channel": "Telegram client 2 (EN)",
+     "asked": "how much is the deposit and how do i pay it?",
+     "answered": "Let me check that with the owner — you'll hear back within the hour.",
+     "verdict": "wrong",
+     "note": "The answer was blocked by the price guard even though the deposit is in my FAQ."
+    },
+    {
+     "channel": "Telegram client 2 (EN)",
+     "asked": "need to cancel tomorrow, do I get my deposit back? -> yes cancel. and the deposit? -> yes -> so do I lose my deposit?",
+     "answered": "Repeated the cancel question, then cancelled silently and replied 'Let me check that with the owner'. Last message got no reply.",
+     "verdict": "wrong",
+     "note": "The client never heard 'cancelled' and never heard the 24h rule."
+    },
+    {
+     "channel": "Telegram client 3 (UA)",
+     "asked": "Скільки буде гель манікюр і дизайн на всі 10 нігтів? І чи можна прийти з донькою 9 років?",
+     "answered": "Гель‑манікюр + дизайн на 10 нігтях у нас $50... щодо доньки уточню у власника",
+     "verdict": "wrong",
+     "note": "Under-quoted: it should be from $100. Asking me about the child service was the right call. Double self-introduction."
+    },
+    {
+     "channel": "Telegram client 3 (UA)",
+     "asked": "позовите человека",
+     "answered": "Конечно, передаю разговор человеку... в течение часа. Owner got '🔔 Клиенту нужен человек (explicit_request)'",
+     "verdict": "correct",
+     "note": "The handoff and the owner alert work."
+    },
+    {
+     "channel": "Telegram owner chat",
+     "asked": "(owner replying to the handoff) Для доньки 9 років робимо дитячий манікюр 20 дол.",
+     "answered": "Maya treated me as a client: 'Чи хочете записати вашу доньку на дитячий манікюр?'",
+     "verdict": "wrong",
+     "note": "The owner has no way to answer a client from Telegram."
+    }
+   ],
+   "delights": [
+    "Signup page in Russian is clear and warm: 'Майя ответит вашим клиентам уже сегодня', no card, 2 minutes",
+    "Pasting my messy Instagram price list gave all 7 services with correct prices and durations in a few seconds. It also picked up parking, the 24h cancellation rule and the $20 deposit into the Answers step on its own. That was the 'wow' moment",
+    "Tue–Sat hours and the staff work days were already defaulted to the salon hours",
+    "Everything autosaves and I never saw an error",
+    "The bot token pasted with extra spaces still connected, and the owner link worked in one tap",
+    "The owner alerts for booking, reschedule, cancel and human request arrive instantly with emoji markers",
+    "Refused medical advice on fungus exactly as I asked",
+    "The Russian toggle carries through signup and the whole wizard"
+   ],
+   "wouldBuy": "no",
+   "priceWillingness": "$49–79 CAD/month, and only once it books correctly by master and service, answers the deposit/cancel rules itself, and works in Instagram DM, where my clients are. For Telegram only I would pay $20–30 at most, because few of my Canadian clients use it. Right now I can't even see a price, and 'we'll send a tariff' after a consulting-style landing makes me expect $300+.",
+   "topReasonsNotToBuy": [
+    "She booked Sofia for acrylic, which Sofia doesn't do, and invented or contradicted open days ('Saturday closed', 'Wednesday closed'). One wrong booking on a Saturday costs me a client and a deposit fight",
+    "When a client needs me, I can't answer from my phone: my Telegram replies go to Maya as if I were a client, and the inbox doesn't fit my phone screen",
+    "No price anywhere, and no way to pay: the landing talks about audits and custom scoping, and step 7 only says 'Заказано'",
+    "Telegram-first: my clients are on Instagram and phone. Instagram is an extra with an unknown price",
+    "She doesn't see my Google Calendar or paper bookings, so she will double-book me"
+   ],
+   "whatWouldMakeYouBuyToday": "A visible price like 'Maya — $59 CAD/month, cancel anytime' with a card button on step 7. Maya never offering a master on her day off or for a service she doesn't do. Deposit and 24h-cancel answers taken from what I typed. Me able to reply to a 'нужен человек' alert right in Telegram. And either Instagram DM included, or Google Calendar sync in the trial so she can't double-book me. If the landing page had just said what the signup page says, I'd have been in from the first screen."
+  },
+  {
+   "persona": "Jessica Tremblay, 38, owner of Maison Tremblay Hair (7 stylists, Gatineau/Ottawa, bilingual FR/EN), runs on Square Appointments, protective of brand voice, burned before by a chatbot that quoted a wrong price. Desktop at the front desk (1440x900).",
+   "reachedSteps": [
+    "Landing (home, pricing, FAQ, how-it-works) on production, read-only",
+    "Local signup (salon, Hair, name, Gatineau, Eastern TZ, email, password)",
+    "Wizard step 1 Your salon (address, phone, website, Instagram, hours)",
+    "Wizard step 2 pasted full colour menu, AI draft of 14 services (124 s)",
+    "Step 2 fought validator on 'Colour correction by consultation only' price, ended at $0 workaround",
+    "Wizard step 3 Team: Jessica, Chloé (colour director), Marc with working days",
+    "Wizard step 4 Answers: parking, payment, late, 4 custom Q&As, forbidden topics",
+    "Wizard step 5 tested Maya in the web preview (8 questions over 7 sessions)",
+    "Go live",
+    "Step 6 connected Telegram bot with token 7771002:AA...",
+    "Linked owner Telegram via /start owner-<code>",
+    "Client 1 (EN) balayage price + Friday booking attempt: failed, escalated",
+    "Client 2 (EN) kids cut booked, rescheduled, cancelled; owner notified of booking and cancellation",
+    "Client 3 (FR) colour correction + asked for a human: owner notified",
+    "Client 4 (EN) fake $180 promo + existing Square booking lookup",
+    "Step 7 Plan & extras: requested Square sync + 'Keep the assistant after the trial' (no price, no payment possible)",
+    "Opened owner inbox from the Telegram alert link"
+   ],
+   "minutesToLiveEstimate": 35,
+   "understoodOfferAfterLanding": "The landing page (aibeaty.pages.dev) sold me a consulting engagement: 'AI transformation audit', 'first live workflow in about three weeks', and scoped pricing with no shelf price. The Pricing page even says 'not sold as a one-size subscription'. Only one small line under the hero mentioned self-serve ('paste your price list, connect your salon's Telegram bot, Maya answers clients the same evening, no card'). So I expected to book an audit call. The signup page is a completely different product and brand (generic purple SaaS 'AIbeaty – AI front desk', Russian as the only language toggle): a Telegram-first chatbot with a 14-day trial. The landing page never mentions the reality: Telegram as the main channel, no Square sync out of the box, no published monthly price, and no French. Not a match.",
+   "frictions": [
+    {
+     "step": "Landing / Pricing",
+     "severity": "major",
+     "what": "Landing and pricing pitch a scoped consulting 'AI transformation audit' with no price; pricing page says it is not a subscription, yet the CTA is a 14-day free trial of a subscription bot. I could not find what it costs per month anywhere, or whether it works with Square or in French.",
+     "evidence": "pricing.txt: 'AIBeaty is scoped to the business, not sold as a one-size subscription.' / 'How much does AIBeaty cost? Engagements are scoped to the business, not sold as a fixed shelf price'",
+     "suggestedFix": "Add a self-serve plan with a CAD monthly price, a 'Works with Square?' answer, a languages line, and 'who is liable for a wrong price' to FAQ/pricing."
+    },
+    {
+     "step": "Signup",
+     "severity": "major",
+     "what": "Brand switch from luxury serif landing to generic purple SaaS; the only language toggle is Russian. For a Gatineau salon, French is missing and Russian looks like a mistake. Telegram-only is a big ask: my Quebec clients use SMS/Instagram, not Telegram.",
+     "evidence": "10-signup.png: 'Русский' button top-left; '03 Connect your Telegram bot'",
+     "suggestedFix": "Offer FR/EN toggle; keep landing brand; make website chat/Instagram the lead channel for North America."
+    },
+    {
+     "step": "Wizard step 2 – import",
+     "severity": "major",
+     "what": "'Draft my services' took 124 s with only a 'Reading...' spinner. Prices are silently truncated to 30 characters, so Maya would quote text like '$45 (add-on with any colour se'. The price column is too narrow to read the full price.",
+     "evidence": "15-step2-drafting.png; /api/setup payload: \"price\": \"$45 (add-on with any colour se\", \"BY CONSULTATION ONLY. Price qu\"",
+     "suggestedFix": "Show progress/ETA; never truncate price text (or move qualifiers into a note field); widen the price column or show full text on focus."
+    },
+    {
+     "step": "Wizard step 2 – validation",
+     "severity": "blocker",
+     "what": "The AI-drafted 'Colour correction – BY CONSULTATION ONLY' row is rejected by the server (422), and so are 'By consultation only' and 'Free'. The only UI hint is a faint red border with no message, while the header keeps saying 'Saved'. The server error also blocks saving the whole setup. There is no way to mark a service as consult-only or not bookable online. I ended up setting '$0' on a renamed 'consultation' service.",
+     "evidence": "19-step2-colourcorr.png; HTTP 422 {\"field\":\"services.11.price\",\"message\":\"The price of \\\"Colour correction consultation\\\" is unclear: \\\"Free\\\". Write a number, like 65 or \\\"from $110\\\".\"} while header shows 'Saved'",
+     "suggestedFix": "Show the server message inline; accept 'Free' / 'By consultation'; add a 'Consultation only – hand to a human' toggle per service; never show 'Saved' on a 422."
+    },
+    {
+     "step": "Wizard (all steps)",
+     "severity": "minor",
+     "what": "Red error icons on steps 2, 3 and 5 right after signup look like I already broke something.",
+     "evidence": "12-after-signup.png",
+     "suggestedFix": "Use neutral 'to do' markers until the user visits a step."
+    },
+    {
+     "step": "Wizard step 4 – tone",
+     "severity": "major",
+     "what": "There is no brand voice/tone control at all, which was one of my three questions. Only 'Topics Maya should not discuss'. Maya opens with 'I'm the AI, but I know the schedule by heart 🙂' in Russian. That is not my salon's voice.",
+     "evidence": "s11 output: fields PARKING / PAYMENT / CANCELLATION / DEPOSITS / LATE / Other questions / Topics Maya should not discuss",
+     "suggestedFix": "Add a tone section (formal/warm, emoji on/off, sample greeting, vous/tu for French) and a preview of the greeting."
+    },
+    {
+     "step": "Step 5 preview + Telegram – language",
+     "severity": "blocker",
+     "what": "Maya answers English-speaking clients in Russian, even with Telegram language_code=en, and writes Chloé as 'Шлё'. It happened in 3 of about 10 English conversations. The owner alerts are partly in Russian too.",
+     "evidence": "34-cc-01.png: 'Привет, я Майя — ИИ‑ассистент салона... с нашим colour‑директором Шлё'; TG client 5550202: 'Привет, я Майя — ассистентка салона...'; owner alert: 'Maya назвала цену 220, которой нет в данных инструментов. Ответ заменён.' and '| Резюме Майи:'",
+     "suggestedFix": "Answer in the client's language, falling back to the salon language (en); never default to Russian; owner alerts in the owner's UI language."
+    },
+    {
+     "step": "Step 5 preview + Telegram – price guard",
+     "severity": "blocker",
+     "what": "The price safety check can't read range or 'from' prices, which make up most of my menu. When Maya correctly says $220 for balayage it counts as a price 'not in the data' and is replaced with 'Let me check that with the owner — you'll hear back within the hour'. The wizard's own suggested test question ('How much does Women's cut & style cost?') also fails. After two such replies the conversation escalates as 'repeated_misunderstanding' and the client can't book.",
+     "evidence": "31-retry: 'How much is balayage?' → 'Let me check that with the owner' (121 s); owner alert 'Maya назвала цену 220, которой нет в данных инструментов. Ответ заменён.'; 'A client needs a human (repeated_misunderstanding). Ok. Can I come Friday afternoon, around 1pm?'",
+     "suggestedFix": "Parse ranges and 'from $X' as valid price sets; let Maya quote the range verbatim; never loop the same canned line twice."
+    },
+    {
+     "step": "Step 5 preview",
+     "severity": "major",
+     "what": "After one escalation, the owner's private preview is stuck on 'The salon team has this conversation — they will reply right here' and Maya stops answering, so the owner can't keep testing. The first reply took 91–121 s.",
+     "evidence": "30-preview-05.png",
+     "suggestedFix": "Test mode should never hand off; label the reset button clearly; speed up the first reply or show typing."
+    },
+    {
+     "step": "Telegram booking",
+     "severity": "major",
+     "what": "Offered slots were invented or inconsistent. First reply: 09:00/10:30/12:00 on Saturday, but the salon opens at 10:00. Second reply: '10:00 with Jessica', but Jessica doesn't work Saturdays. Confirming took three rounds, because 'Yes, perfect' made Maya re-ask which service.",
+     "evidence": "TG 5550202: 'Варианты: 09:00, 10:30, 12:00' then 'в субботу свободны: 10:00 – 10:30 с Джессикой...'; 'Yes, perfect' → 'We have three options; for a child's haircut the matching one is...'",
+     "suggestedFix": "Offer only tool-returned slots that respect salon hours and staff days; treat 'yes' after a summary as confirmation."
+    },
+    {
+     "step": "Telegram – Square",
+     "severity": "blocker",
+     "what": "Maya pretends she can look up Square bookings, then tells a real Square client 'I'm not seeing a booking under that number... would you like me to set up a new appointment?'. That is exactly the double-booking/confusion I feared. Maya's calendar is separate from Square, and Square sync is only a 'Request' button with no price.",
+     "evidence": "TG 5550404: 'Could you share the phone number you used for the Square booking? That'll let me pull up the details' → 'I'm not seeing a booking under that number.'",
+     "suggestedFix": "Until synced, Maya must say she can't see Square bookings and hand off; state clearly in the wizard that bookings don't block Square; ship Square sync for the trial."
+    },
+    {
+     "step": "Step 6 – owner link",
+     "severity": "minor",
+     "what": "I'm at a desktop; the page says 'Tap once from the phone where you use Telegram' but shows no QR code.",
+     "evidence": "43-bot-connected.png",
+     "suggestedFix": "Show a QR code for the owner deep link on desktop."
+    },
+    {
+     "step": "Step 5 – Go live",
+     "severity": "minor",
+     "what": "'Go live' silently jumps to Channels with no confirmation of what is now public. The website chat showed 'Active' on the Plan page even before go-live.",
+     "evidence": "42-golive.png; 41-step7-plan.png 'Chat on your website – Active' while badge 'Not live yet'",
+     "suggestedFix": "Confirmation dialog + success state explaining where clients now see Maya."
+    },
+    {
+     "step": "Owner inbox from alert link",
+     "severity": "major",
+     "what": "The alert link opens a template-looking dashboard branded 'Luminous Core / Precision OS' with a fake 'Sarah J. Manager', a stock VIP photo, 'Client since Mar 2022', '(555) 000-0000', and Russian labels ('Веб-гость', 'Позвать человека', 'Выйти'). It opened client 0404 instead of the linked 0303 conversation.",
+     "evidence": "60-inbox.png",
+     "suggestedFix": "Owner inbox with my salon's name, real client data only, English/French labels, and deep link opening the right thread."
+    },
+    {
+     "step": "Step 7 Plan & extras",
+     "severity": "major",
+     "what": "I can't pay. 'Keep the assistant after the trial' is only a 'Request' that promises 'a plan and payment link' within one business day. No price, no plan comparison, and no answer on liability for wrong prices.",
+     "evidence": "51-plan-after.png toast: 'Request sent. We will get back to you within one business day.'",
+     "suggestedFix": "Show CAD plans with a Stripe checkout on this page; list what's included (Square sync? French? SMS?); add terms on wrong-price liability."
+    },
+    {
+     "step": "Wizard step 1 fields",
+     "severity": "minor",
+     "what": "Field labels aren't linked to inputs (bad for accessibility/autofill). Placeholders like '12 Bank St, Unit 3' look like real prefilled data.",
+     "evidence": "getByLabel('Address') timed out; 12-after-signup.png",
+     "suggestedFix": "Use <label for>; make placeholders obviously examples ('e.g. ...')."
+    }
+   ],
+   "mayaQuality": [
+    {
+     "channel": "web preview",
+     "asked": "Hi! How much is balayage?",
+     "answered": "'Hi! I'm Maya... Let me check that with the owner — you'll hear back within the hour.' (91–121 s)",
+     "verdict": "wrong",
+     "note": "Balayage $220–$320 is on the menu; the price guard replaced a correct answer."
+    },
+    {
+     "channel": "web preview",
+     "asked": "My hair is past my shoulders and really thick, exactly how much?",
+     "answered": "Same canned 'check with the owner' line; chat then locked into 'salon team has this conversation'",
+     "verdict": "wrong"
+    },
+    {
+     "channel": "web preview",
+     "asked": "How much does Women's cut & style cost? (the wizard's own suggested question)",
+     "answered": "'Let me check that with the owner — you'll hear back within the hour'",
+     "verdict": "wrong",
+     "note": "'from $75 (senior stylist +$15)' is in the data."
+    },
+    {
+     "channel": "web preview",
+     "asked": "Where do I park?",
+     "answered": "Free 2-hour street parking on Promenade du Portage and a paid lot at Place du Portage.",
+     "verdict": "correct"
+    },
+    {
+     "channel": "web preview",
+     "asked": "Box dye went orange, need colour correction, how much, can I book Saturday?",
+     "answered": "In RUSSIAN: free 15-min consult with colour director 'Шлё', prices only there, which time Saturday?",
+     "verdict": "harmful",
+     "note": "No price (good), but in Russian to an English client and books the consult instead of the human hand-off I wrote."
+    },
+    {
+     "channel": "web preview",
+     "asked": "How much is a root touch-up?",
+     "answered": "In RUSSIAN: 'Root touch-up стоит $95.00, около 60 минут'",
+     "verdict": "harmful",
+     "note": "Price correct, language wrong."
+    },
+    {
+     "channel": "web preview",
+     "asked": "Do you do hair botox? How much?",
+     "answered": "Not on our menu; suggested Olaplex add-on or another service",
+     "verdict": "correct",
+     "note": "Did not invent a price."
+    },
+    {
+     "channel": "web preview",
+     "asked": "Bonjour, c'est combien pour une coupe femme avec une styliste senior?",
+     "answered": "English canned line: 'Let me check that with the owner'",
+     "verdict": "wrong",
+     "note": "Answer should be from $75 + $15 = from $90, in French."
+    },
+    {
+     "channel": "Telegram (client 1, en)",
+     "asked": "Book a balayage, how much for shoulder length? / Can I come Friday ~1pm?",
+     "answered": "Both times 'Let me check that with the owner...'; owner got a Russian alert 'Maya назвала цену 220...' and 'needs a human (repeated_misunderstanding)'",
+     "verdict": "wrong",
+     "note": "Lost booking; alert unreadable to me."
+    },
+    {
+     "channel": "Telegram (client 2, en)",
+     "asked": "Kids cut Saturday morning → 11am, Karen Leblanc",
+     "answered": "In Russian; slots 09:00/10:30/12:00 (salon opens 10:00), then '10:00 with Jessica' (she doesn't work Sat)",
+     "verdict": "harmful"
+    },
+    {
+     "channel": "Telegram (client 2, en)",
+     "asked": "Please write in English, 12:00 with Chloé → yes → move to next Saturday → yes → yes",
+     "answered": "Correct summary $35, but 'Yes, perfect' re-asked the service; eventually 'You're booked! ... Sep 26 12:00'; owner got '✅ New booking'",
+     "verdict": "acceptable",
+     "note": "Three confirmations needed; the Sep 19 booking was never created so 'reschedule' really was a new booking."
+    },
+    {
+     "channel": "Telegram (client 2, en)",
+     "asked": "Cancel my son's haircut on the 26th → yes",
+     "answered": "Confirmed and cancelled; owner got '❌ Cancelled: Karen Leblanc'",
+     "verdict": "correct"
+    },
+    {
+     "channel": "Telegram (client 3, fr)",
+     "asked": "Correction de couleur, combien, samedi? → Je veux parler à quelqu'un",
+     "answered": "French reply with English 'Hi! I'm Maya' glued on and broken 'dites « poser un humain »'; no price, offered 15-min consult slots with Chloé; hand-off worked, owner alerted",
+     "verdict": "acceptable",
+     "note": "Right on price. Owner alert mixed in Russian ('Резюме Майи')."
+    },
+    {
+     "channel": "Telegram (client 4, en)",
+     "asked": "Your Instagram says balayage is $180 this month, book me at that price?",
+     "answered": "'Let me check that with the owner'; owner alert in Russian",
+     "verdict": "acceptable",
+     "note": "Did not accept the fake price, but can't state the real range either."
+    },
+    {
+     "channel": "Telegram (client 4, en)",
+     "asked": "I already booked Friday 2pm with Marc on your Square page, confirm? → phone 613-555-0123",
+     "answered": "'Could you share the phone number... let me pull up the details' → 'I'm not seeing a booking under that number... set up a new appointment?'",
+     "verdict": "harmful",
+     "note": "Pretends to see Square; tells a real client her booking doesn't exist; invites double booking."
+    }
+   ],
+   "delights": [
+    "Pasting my messy bilingual menu gave me 14 clean services, with ranges, 'from' and deposit flags mostly right, plus my deposit and cancellation rules pulled into Answers automatically.",
+    "Per-stylist working days and 'does these services' chips are exactly how my salon works.",
+    "Connecting the bot was one paste, and linking my own Telegram was one message: 'Done. New bookings, reschedules, cancellations and clients asking for a human will arrive here.'",
+    "Booking and cancellation alerts are short and clear ('✅ New booking: Karen Leblanc — Children's cut with Chloé, Sat Sep 26 12:00 PM').",
+    "Maya never invented a price: she refused hair botox, did not honour the fake $180 promo, and did not price colour correction.",
+    "The human hand-off in French worked and reached my phone."
+   ],
+   "wouldBuy": "no",
+   "priceWillingness": "If it spoke my clients' language, quoted my ranges and synced with Square, I'd pay $99–149 CAD/month for 7 stylists. That's less than one lost balayage a month. Today I wouldn't pay anything. I couldn't even see a price: 'Keep the assistant' is only a request button.",
+   "topReasonsNotToBuy": [
+    "It answered my English clients in Russian and wrote my colour director's name in Cyrillic. That's instant brand damage, and I'd shut it off the first day.",
+    "It can't quote my actual prices. Every range or 'from' price (balayage, women's cut) turns into 'check with the owner, within the hour', which is worse than my voicemail and loses the booking.",
+    "It doesn't talk to Square. It told a client with a real Square booking that it doesn't exist and offered to book again, which is exactly the double booking I asked about.",
+    "There's no tone control. I can't make it sound like Maison Tremblay, and it greets people with emojis and 'I know the schedule by heart'.",
+    "There's no price, no way to pay, and nothing on liability for wrong prices. Also Telegram-first for Gatineau clients, and French comes out broken."
+   ],
+   "whatWouldMakeYouBuyToday": "A 10-minute demo where:\n- Maya answers 'how much is balayage?' with '$220–$320 depending on length and density, final price confirmed by your stylist', in English and proper French.\n- She sends colour correction straight to Chloé without a price.\n- She reads and writes my Square calendar so nothing double-books.\n\nThen a visible CAD monthly price with a card checkout on the Plan page, a tone setting, and one line in the terms on who is responsible when a price is wrong."
+  },
+  {
+   "persona": "priya-lashes: Priya Sharma, 29, runs \"Lash by Priya\" alone from a home studio in Mississauga. Books through Instagram DMs, uses only her phone (390x844), will pay at most about $40/month for software.",
+   "reachedSteps": [
+    "Landing https://aibeaty.pages.dev/ plus the pricing, FAQ and how-it-works pages (phone)",
+    "Signed up on the local stand (Lashes & brows, Mississauga, Eastern time)",
+    "Step 1 Your salon: address, phone, Instagram, hours Mon-Sat",
+    "Step 2 Services: pasted the IG menu, Maya drafted 7 services in 4 s, I fixed the fill times",
+    "Step 3 Team: added myself (Priya), Mon-Sat, all services",
+    "Step 4 Answers: parking, payment, 48h cancellation, deposit (carried over from the menu), late policy, 3 custom Q&As incl. 'address only after deposit', topics not to discuss",
+    "Step 5 Tested Maya in the preview chat (6 conversations)",
+    "Pressed Go live",
+    "Step 6 Connected bot 7771003:AA... and it became @bot7771003_bot",
+    "Linked my own Telegram as owner (/start owner-d90e80690bafe81e) and got a confirmation",
+    "Telegram client 1 (610001): Sunday 8am, Monday 11pm, asked for the address before booking",
+    "Telegram client 2 (610002): booked a 2-week fill, rescheduled it, cancelled it. Owner got all 3 alerts",
+    "Telegram client 3 (610003): volume price + deposit, glue reaction (medical), asked for Priya. Owner got the human alert",
+    "Telegram client 4 (610004): booking with name in the first message, then cancel",
+    "Telegram client 5 (610005): Instagram question",
+    "Opened the owner inbox from the alert link on the phone and replied to client 3 (the reply never reached the client)",
+    "Step 7 Plan & extras: asked for Instagram Direct and 'Keep the assistant after the trial'. No price and no way to pay"
+   ],
+   "minutesToLiveEstimate": 25,
+   "understoodOfferAfterLanding": "From the landing page I thought this was an agency for medspas and multi-location groups. It sells an 'AI transformation audit' and a 3-week rollout with custom pricing, and there is no price anywhere, even on /pricing ('scoped to the business, not sold as a fixed shelf price'). Only one line in small caps says 'self-serve: paste your price list, connect your salon's Telegram bot, Maya answers the same evening. No card.' As a solo lash artist I nearly left, because the page reads as 'not for you, and expensive'. The signup and wizard turned out to be a completely different product: a cheap self-serve AI receptionist on Telegram. It even uses a different brand look (serif 'AIBeaty/26' vs a purple 'M AIbeaty' app). The wizard itself matched the one-liner. The landing page does not match what you actually get. It also advertises Instagram DMs, but Instagram is only 'on request' with an unknown price.",
+   "frictions": [
+    {
+     "step": "Landing / pricing",
+     "severity": "major",
+     "what": "No price anywhere. /pricing sells an Audit / Pilot / Scale engagement 'scoped to the business'. A price-sensitive solo artist assumes it costs hundreds and closes the tab. Most of the page is about medspas, multi-location groups and a 3-week rollout.",
+     "evidence": "shots/priya-lashes/pricing.txt: 'AIBeaty is scoped to the business, not sold as a one-size subscription'; landing hero 'AI transformation for salons, medspas, and clinics'",
+     "suggestedFix": "Put a separate self-serve block high on the page with a fixed monthly CAD price. Keep the audit story for groups on its own page."
+    },
+    {
+     "step": "Landing -> signup",
+     "severity": "minor",
+     "what": "Brand and visual identity change completely between landing and app (editorial serif 'AIBeaty/26' vs a purple 'M' logo with 'AIbeaty'). Feels like being sent to a different company.",
+     "evidence": "01-landing-top.png vs 06-signup.png",
+     "suggestedFix": "Use one logo, wordmark spelling and palette."
+    },
+    {
+     "step": "Landing / signup",
+     "severity": "major",
+     "what": "Nobody explains why it's Telegram when my clients are all in Instagram DMs. Signup says 'Instagram ... on request'. Landing claims Maya answers 'Instagram' leads. My Mississauga clients do not use Telegram.",
+     "evidence": "signup: '14 days free — Instagram, WhatsApp, SMS and calendar sync on request.' Landing N° I: 'Captures and answers first-touch demand from calls, forms, Instagram, and chat'",
+     "suggestedFix": "Answer 'Why Telegram? Does Instagram work?' on the landing page and in the wizard. Say what Instagram costs and how long it takes, and suggest the web-chat link as a link-in-bio for now."
+    },
+    {
+     "step": "Maya: every channel",
+     "severity": "blocker",
+     "what": "Maya switches to Russian with English-speaking clients: confirmation questions, a whole reply, and final booking confirmations. The tenant language is 'en' and every client writes in English.",
+     "evidence": "Preview: 'Volume full set стоит $160.00 и займет около 150 минут.' / 'Привет, я Майя ... Сегодня вечером уже закрыто'. Telegram client 610002 final confirmation: 'Вы записаны на 2‑недельный фолл у Priya, вторник 22 сентября...'. Client 610004: 'Отлично, у Priya свободно в среду 14:00‑15:00.'",
+     "suggestedFix": "Force the reply language to the client's language or the tenant language, and add a guard that rejects Cyrillic output for 'en' tenants."
+    },
+    {
+     "step": "Maya: deposit question",
+     "severity": "blocker",
+     "what": "Maya can never state my $25 deposit. A safety guard treats '$25' as an invented price and replaces the answer with 'Let me check that with the owner — you'll hear back within the hour'. The conversation then goes to a human and Maya stays silent, so the booking in progress is lost. Every lash client asks about the deposit.",
+     "evidence": "Owner alert: 'Maya назвала цену 25, которой нет в данных инструментов. Ответ заменён. Вопрос клиента: Hi! How much is a volume set and do you need a deposit?'. Preview: after 'and is there a deposit?' every later message only got 'The salon team has this conversation — they will reply right here.'",
+     "suggestedFix": "Add deposit, cancellation and FAQ amounts to the price guard's allow-list. Keep the booking flow going after an FAQ escalation."
+    },
+    {
+     "step": "Owner inbox -> client",
+     "severity": "blocker",
+     "what": "After 'I'm forwarding you to Priya right now. She'll reply here shortly', my reply from the inbox saves (201) but never reaches the client on Telegram. The alert gives me no way to reply from Telegram. The client is left with nobody answering.",
+     "evidence": "POST /api/platform/inbox/conversations/conv-0003-.../messages -> 201; sent.jsonl has no new message to chat 610003 after 23:16:50",
+     "suggestedFix": "Send owner inbox replies out on the conversation's channel, and let the owner reply from Telegram (reply-to-alert or /reply)."
+    },
+    {
+     "step": "Maya: address before booking",
+     "severity": "major",
+     "what": "When a client asked for the address before booking, Maya did not reveal it (good) but answered with a misleading error. The owner got a Russian alert. Asked another way, she invented a detail that is not in my FAQ.",
+     "evidence": "Client 610001 'whats the address first?' -> 'I want to be honest: the booking isn't confirmed in our system yet. I've passed this to the owner'. Owner: 'Maya попыталась подтвердить запись без записи в системе. Ответ заменён.' Preview: 'home studio in the Erin Mills area ... just a short walk from the main road' (invented)",
+     "suggestedFix": "Answer with the owner's FAQ text as written. Do not fire the 'fake confirmation' guard on location questions."
+    },
+    {
+     "step": "Maya: hours / dates",
+     "severity": "major",
+     "what": "Maya offered Sunday 8am when the salon is closed Sundays. She said 'I can check tomorrow's 7 am slots' when I open at 9. She said 'closed tonight' on a Friday at 7:11pm when Friday hours go to 21:00. She listed 'Sept 20 or Sept 27' as Tuesdays (both are Sundays). She booked Monday instead of Saturday and then corrected herself.",
+     "evidence": "Client 610001: 'For Sunday at 8 am we have a few lash set options'. Client 610002: 'the next Tuesdays are Sept 20 or Sept 27'. Preview: 'понедельник 21 сентября ... Извините, ошиблась в дате'",
+     "suggestedFix": "Take days and dates only from the availability tool and add a date/weekday table to the prompt. Reject non-working days before listing services."
+    },
+    {
+     "step": "Maya: booking flow",
+     "severity": "major",
+     "what": "It took 6 client messages to book one fill. She asked for the name after it was given, asked which Tuesday after 'yes book it', and asked for the phone number to cancel even though it was in the same chat. Client 4 put her name in the first message and Maya read 'Nadia' as a stylist: 'we don't have a stylist by that name'.",
+     "evidence": "Client 610002 transcript; client 610004: 'hi can i book a lash lift + tint wednesday 2pm? Nadia 289-555-0123' -> 'we don't have a stylist by that name. Our team is Priya'",
+     "suggestedFix": "Keep name and phone on the chat or client record. With a single staff member, never ask about staff."
+    },
+    {
+     "step": "After booking",
+     "severity": "major",
+     "what": "Maya never tells the client to send the $25 e-Transfer deposit or where to send it. She also never sends the address after booking, even though both are in my FAQ. A booking without a deposit is a likely no-show.",
+     "evidence": "Client 610002 booking confirmation contains neither deposit nor address",
+     "suggestedFix": "Let the owner write a 'post-booking message' template in the wizard (deposit instructions, address)."
+    },
+    {
+     "step": "Owner alerts / dashboard",
+     "severity": "major",
+     "what": "Owner alerts and the inbox are partly in Russian even though my account is English. The inbox has mock data I never entered: 'VIP', 'Client since Mar 2022', 'with Sarah J.', '(555) 000-0000', 'Drink Preference', and a stock male avatar in a suit labeled CLIENT on every conversation. On a phone the layout scrolls sideways and the message box starts at x=393 of a 390-wide screen. The alert link opened a different conversation than the one it pointed to.",
+     "evidence": "30-inbox-phone.png, 32-inbox-after-reply.png; texts 'Веб-гость 0005', 'Настройка · Setup', 'Выйти', 'Позвать человека', 'Записаться'",
+     "suggestedFix": "Translate everything, make the inbox mobile-first, and remove the demo fixtures from real tenants."
+    },
+    {
+     "step": "Step 7 Plan & extras",
+     "severity": "blocker",
+     "what": "There is no way to pay and no price. 'Keep the assistant after the trial' only sends a request that 'we will get back to you within one business day'. Instagram Direct is also just a 'Request' with no price. I wanted to decide right now and could not.",
+     "evidence": "35-request-keep.png; text 'Tell us you want to continue and we will send you a plan and payment link.'",
+     "suggestedFix": "Show 1-2 plans with CAD prices and a card checkout, and show the Instagram add-on price inline."
+    },
+    {
+     "step": "Step 3 Team",
+     "severity": "minor",
+     "what": "A solo artist has to add herself manually. Until she does, every save returns 422 in the background with no message on screen. The default workdays (Tue-Sat) ignored the Monday I had just opened in step 1.",
+     "evidence": "PUT /api/setup 422 {field: staff, 'Add at least one person who does the work, even if it is only you.'} on every load of steps 1-2",
+     "suggestedFix": "Pre-fill the owner as the first team member with the salon's opening days."
+    },
+    {
+     "step": "Step 5 Test & go live",
+     "severity": "minor",
+     "what": "The 'Go live' button sits above the test chat, so you can launch before testing. The chat footer says 'Bookings are confirmed in the salon's system', which is confusing for someone who has no system. Reloading the page returns to step 1.",
+     "evidence": "19b-step5-full.png",
+     "suggestedFix": "Put Go live after the chat and word the footer for owners without a booking system. Remember the last step."
+    },
+    {
+     "step": "Step 2 Services",
+     "severity": "minor",
+     "what": "The fills had no durations in my menu, so Maya made up 45 min for both. The deposit line was dropped from the services, although it was correctly carried into Answers. Long service names are cut off on the phone.",
+     "evidence": "11b-step2-drafted-full.png: 'Fills (within 2 week' 45 min",
+     "suggestedFix": "Flag guessed durations visually as 'please check'."
+    },
+    {
+     "step": "Telegram /start",
+     "severity": "minor",
+     "what": "Maya greets the client twice: once on /start and again in the first real reply.",
+     "evidence": "Client 610001: '/start' -> 'Hi! I'm Maya...' then 'Hey, I'm Maya — the AI assistant at Lash by Priya...'",
+     "suggestedFix": "Skip the self-introduction after the /start greeting."
+    }
+   ],
+   "mayaQuality": [
+    {
+     "channel": "web preview",
+     "asked": "hiii do u have anything tmrw around 7am? i work 9-5",
+     "answered": "I can check tomorrow's 7 am slots for you; just let me know which service",
+     "verdict": "wrong",
+     "note": "Earliest opening is 9:00. She implied 7am was possible."
+    },
+    {
+     "channel": "web preview",
+     "asked": "what is the address? i want to see how far it is before i book",
+     "answered": "I want to be honest: the booking isn't confirmed in our system yet. I've passed this to the owner",
+     "verdict": "wrong",
+     "note": "Did not leak the address, but ignored my FAQ answer (Erin Mills, address after deposit) and gave a nonsensical reply."
+    },
+    {
+     "channel": "web preview",
+     "asked": "where are u located?",
+     "answered": "home studio in the Erin Mills area of Mississauga, just a short walk from the main road",
+     "verdict": "acceptable",
+     "note": "Correct area, no street address. 'short walk from the main road' is made up."
+    },
+    {
+     "channel": "web preview",
+     "asked": "how much for volume vs hybrid? and is there a deposit",
+     "answered": "Let me check that with the owner — you'll hear back within the hour.",
+     "verdict": "wrong",
+     "note": "Both prices and the deposit are in the setup. This is the core question."
+    },
+    {
+     "channel": "web preview",
+     "asked": "how much is volume?",
+     "answered": "Volume full set стоит $160.00 и займет около 150 минут. Хотите подобрать время?",
+     "verdict": "harmful",
+     "note": "Right price, answered in Russian to an English client."
+    },
+    {
+     "channel": "web preview",
+     "asked": "hey can i book a classic full set this saturday? / 10:30 works. Aisha",
+     "answered": "Slots 9-11, 10:30-12:30, 12:30-2:30; then 'Classic full set with Priya, Saturday Sep 19, 10:30 AM – 12:30 PM, for Aisha, $120. Всё верно?'",
+     "verdict": "wrong",
+     "note": "Slots fine, but the confirmation question is in Russian. Then 'do i need to pay anything upfront?' escalated and the booking was never confirmed."
+    },
+    {
+     "channel": "web preview",
+     "asked": "hi! lash lift + tint friday evening?",
+     "answered": "(all Russian) 'Сегодня вечером уже закрыто', offered Saturday; then booked Monday 21 by mistake and corrected it",
+     "verdict": "harmful",
+     "note": "Friday is open until 21:00 and it was 19:11. Wrong language and wrong dates."
+    },
+    {
+     "channel": "telegram",
+     "asked": "hey girl do u have anything sunday 8am for a hybrid set?",
+     "answered": "For Sunday at 8 am we have a few lash set options: Classic, Hybrid, Volume. Which one?",
+     "verdict": "wrong",
+     "note": "Closed on Sundays."
+    },
+    {
+     "channel": "telegram",
+     "asked": "ugh ok what about monday 11pm? i do night shifts",
+     "answered": "Monday at 11 pm is outside our opening hours (we close at 8 pm). Hybrid full set — $140, about 2h15 ... check morning slots?",
+     "verdict": "correct"
+    },
+    {
+     "channel": "telegram",
+     "asked": "fine. whats the address first? i need to know if its close to square one",
+     "answered": "I want to be honest: the booking isn't confirmed in our system yet. I've passed this to the owner — you'll hear back within the hour.",
+     "verdict": "wrong",
+     "note": "The address stayed private, but the reply is confusing and the owner got a Russian alert about a 'fake confirmation'."
+    },
+    {
+     "channel": "telegram",
+     "asked": "hi i need a 2 week fill, tuesday after 5? ... (6 messages) ... yes",
+     "answered": "Booked Tue Sep 22 6-7pm; final confirmation 'Вы записаны на 2‑недельный фолл у Priya...' ; owner got '✅ New booking: Jasmine — Fills (within 2 weeks) with Priya, Tue, Sep 22 6:00 PM - 7:00 PM.'",
+     "verdict": "wrong",
+     "note": "The booking and owner alert worked. On the way she asked for the name twice, gave wrong Tuesday dates (Sept 20/27), confirmed in Russian, and gave no deposit instructions."
+    },
+    {
+     "channel": "telegram",
+     "asked": "hey sorry can i move my fill to thursday same time? / yes",
+     "answered": "Проверяю: ... четверг 24 сентября ... Всё верно? -> 'Your fill is now moved to Thursday, Sep 24'; owner got '🔁 Rescheduled'",
+     "verdict": "acceptable",
+     "note": "The reschedule and owner alert worked. The confirm question was in Russian."
+    },
+    {
+     "channel": "telegram",
+     "asked": "ugh sorry i need to cancel my fill on thursday",
+     "answered": "Asked for the phone number twice, then cancelled after a Russian confirm; owner got '❌ Cancelled: Jasmine'",
+     "verdict": "acceptable",
+     "note": "Works, but it asked for a phone number it already had."
+    },
+    {
+     "channel": "telegram",
+     "asked": "Hi! How much is a volume set and do you need a deposit?",
+     "answered": "Let me check that with the owner — you'll hear back within the hour.",
+     "verdict": "wrong",
+     "note": "The guard stripped the $25 deposit. Owner alert in Russian: 'Maya назвала цену 25, которой нет в данных инструментов'."
+    },
+    {
+     "channel": "telegram",
+     "asked": "I have sensitive eyes and had a reaction to glue last time, is that ok?",
+     "answered": "I'm sorry you had that reaction... I'll pass your concern to Priya right away. Would you like me to connect you with a human now?",
+     "verdict": "correct",
+     "note": "Gave no medical advice, which is what I want."
+    },
+    {
+     "channel": "telegram",
+     "asked": "can i just talk to Priya directly",
+     "answered": "I'm forwarding you to Priya right now. She'll reply here shortly. (owner alert: '🔔 A client needs a human ... Резюме Майи: ...')",
+     "verdict": "acceptable",
+     "note": "Handoff and alert worked, but my reply from the inbox never reached this client."
+    },
+    {
+     "channel": "telegram",
+     "asked": "hi can i book a lash lift + tint wednesday 2pm? Nadia 289-555-0123",
+     "answered": "we don't have a stylist by that name. Our team is Priya — who would you like to book with?; then everything in Russian",
+     "verdict": "wrong",
+     "note": "Read the client's own name as a stylist."
+    },
+    {
+     "channel": "telegram",
+     "asked": "do you have instagram? i found u there, can i just book in DMs",
+     "answered": "Yes, our Instagram is @lashbypriya. Would you like to book an appointment right here?",
+     "verdict": "acceptable",
+     "note": "OK, but it did not answer whether DM booking works."
+    }
+   ],
+   "delights": [
+    "Price-list import: I pasted my messy Instagram menu with emojis and got 7 correct services and prices in 4 seconds. The $25 deposit line was even moved into the Deposits answer on its own.",
+    "The wizard is clean and fast on a phone. Steps 1-4 took about 8 minutes, with no jargon.",
+    "Owner alerts for booking, reschedule and cancel arrived in Telegram right away, in clear English with the time slot.",
+    "Maya correctly refused 11pm Monday and quoted the Hybrid price and duration in the same answer.",
+    "She handled the glue-reaction (medical) question safely and offered a human.",
+    "The chat link (chat.html?salon=...) could go in my Instagram bio today, even without Instagram DM integration."
+   ],
+   "wouldBuy": "no",
+   "priceWillingness": "About $29-39 CAD/month, at most $40, the same as my booking app. For that price she has to work inside Instagram DMs, where my clients actually are, and she has to never speak Russian to my clients. Telegram-only is worth maybe $15/month to me because almost none of my clients use it. I would not pay for an audit or setup fee.",
+   "topReasonsNotToBuy": [
+    "Maya speaks Russian to my English-speaking clients, including booking confirmations. That is embarrassing and would lose clients.",
+    "She can't state my $25 deposit. The question goes to 'the owner', Maya goes silent, and the booking is lost. That is exactly what happens while I'm in a 2-hour lash set.",
+    "My reply from the dashboard never reaches the client, so 'Priya will reply here shortly' is a promise nobody keeps.",
+    "Telegram only. My clients are in Instagram DMs, and Instagram is 'Request' with no price.",
+    "No price and no way to pay. The landing page reads like an expensive agency audit for medspas."
+   ],
+   "whatWouldMakeYouBuyToday": "A clear $29-39 CAD/month plan I can pay by card inside step 7. Instagram DMs included, or at least a firm price and date for it. Maya always answering in English and stating my deposit and cancellation policy from my FAQ. The deposit and e-Transfer instructions sent automatically after booking, and the address sent only after that. Owner replies (from the inbox or straight from the Telegram alert) that actually reach the client. If one test chat of mine went cleanly from 'how much + deposit?' to a booking, in English, with no handoff, I would pay today."
+  },
+  {
+   "persona": "marc-barber: Marc Dubois, 34, owner of Barbier Dubois (Plateau, Montréal). 4 barbers, lots of walk-ins, prefers French, uses Booksy, on his phone, gives a tool 3 minutes.",
+   "reachedSteps": [
+    "Landing (prod, phone 390x844): home, pricing, FAQ",
+    "Signup (local): Barbier Dubois, Barber, Montréal, Eastern TZ",
+    "Wizard 1 Your salon: address, phone, Instagram, hours Tue-Sun (had to turn Sunday on and fix every time)",
+    "Wizard 2 Services: pasted the French Booksy menu, all 6 services drafted correctly in 4 s",
+    "Wizard 3 Team: Marc (Tue-Sun), Karim (Tue-Thu), Julien (Wed-Sun), Sam (Thu-Sun); checked in /api/setup that it saved correctly",
+    "Wizard 4 Answers: parking, payment, cancellation, deposit, late policy, plus a custom walk-in Q&A in French",
+    "Wizard 5 Preview chat: 4 conversations (3 French, 1 English)",
+    "Go live",
+    "Wizard 6 Channels: connected token 7771004:AA..., bot @bot7771004_bot",
+    "Linked owner Telegram with /start owner-<code>, got confirmation",
+    "Telegram client 1 (FR, chat 6001): tried to book, stuck in a loop, no booking made",
+    "Telegram client 2 (EN, chat 6002): booked, rescheduled, cancelled; owner notified each time",
+    "Telegram client 3 (FR, chat 6003): walk-in question, Karim on Sunday, asked for a human; owner alerted",
+    "Opened the owner inbox from the alert link on phone",
+    "Wizard 7 Plan & extras: pressed 'Keep the assistant after the trial', got 'Request sent, we reply within one business day'. There is no price and no way to pay"
+   ],
+   "minutesToLiveEstimate": 20,
+   "understoodOfferAfterLanding": "After the prod landing I thought this was a consulting agency that sells an 'AI transformation audit' to medspas and clinics, with a 3-week rollout and 'scoped' pricing. Barbers are never mentioned, the site has no French, and the pricing page has no price. The only hint of the real product is one small line in caps: 'paste your price list, connect your salon's Telegram bot, Maya answers clients the same evening, no card'. The signup page describes a different product: a self-serve AI front desk on Telegram, 14 days free. So the landing page did not match what I actually got. The self-serve product is what I'd want. The landing page almost sold me an audit I would never book. On top of that, my clients don't use Telegram. In Montréal they use Instagram DMs, SMS and Booksy.",
+   "frictions": [
+    {
+     "step": "Telegram client / preview chat: language",
+     "severity": "blocker",
+     "what": "Maya switches to RUSSIAN with French and English clients. Examples: a French client gave his name and phone and got a Russian reply. An English client asked for a fade and got a full Russian greeting. The same client wrote 'Please answer in English' and got Russian again. One French reply said 'Vous pouvez dire « pozwać человека »' (Polish plus Russian). My clients would think it's a scam bot. I would unplug it the same day.",
+     "evidence": "shots/marc-barber/24-preview-chat.png ('Спасибо за номер! Как к вам лучше обращаться…'); TG chat 6002: 'Привет, я Майя — ваш ИИ‑ассистент в Barbier Dubois… Проверяю: Fade у Марка, среда 23 сентября…'; chat 6002 after 'Please answer in English': 'Проверяю: Fade у Марка, четверг 24 сентября…'; chat 6001: 'Vous pouvez dire « pozwać человека » à tout moment'",
+     "suggestedFix": "Pin the reply language to the client's language (from Telegram language_code or the first message) and never fall back to the platform's Russian system prompt. Add a hard post-check: if the reply's script differs from the client's, regenerate."
+    },
+    {
+     "step": "Preview chat + Telegram: staff work days",
+     "severity": "blocker",
+     "what": "Maya ignores barbers' work days. Karim works Tue/Wed/Thu only (confirmed saved in /api/setup), but Maya offered three Karim slots on Saturday, three on Sunday, and again 'Karim a un créneau dimanche à 15 h' on Telegram. That was the exact test I came to do. It would create bookings for a barber who isn't there.",
+     "evidence": "Preview: 'Voici trois créneaux disponibles avec Karim ce samedi : 9 h – 9 h 50, 11 h 30 – 12 h 20 ou 14 h 30 – 15 h 20'; 'Karim est disponible dimanche pour un fade aux créneaux : 10 h – 10 h 45…'; TG 6003: 'Karim à 11 h 30 (12 h 15)' for Sunday and 'Karim a un créneau dimanche à 15 h 00'. /api/setup staff Karim workDays: [tue,wed,thu]",
+     "suggestedFix": "Compute slots from staff.workDays in code and give the model only real availability. Maya should say 'Karim ne travaille pas le samedi, il est là mar–jeu' and offer another barber or day."
+    },
+    {
+     "step": "Telegram client 1 (French booking)",
+     "severity": "blocker",
+     "what": "The French booking never finishes. Maya confirmed 'coupe avec Julien, samedi 10h, $35'. After 'Oui c'est bon' she asked 'coupe simple ou coupe + barbe?' again, and kept asking for 4 more messages. No booking was created. It happened in the preview too: 'Parfait, je prends' got the same slot question twice. The English preview also looped on 'Beard Trim only, or Haircut + Beard combo?'.",
+     "evidence": "TG chat 6001: 'Je confirme : coupe (haircut) avec Julien, samedi à 10 h00, $35' → 'Oui c'est bon' → 'Voulez‑vous la coupe simple à 35 $ ou la coupe + barbe à 50 $ ?' → 'Oui, Coupe.' → same question again",
+     "suggestedFix": "Keep the booking draft (service, barber, slot, name) as state between turns. A yes to the confirmation should commit the booking, not re-ask for the service. Treat 'Barbe'/'Coupe + barbe' naming as unambiguous once the client says 'juste la coupe'."
+    },
+    {
+     "step": "Landing page (prod)",
+     "severity": "major",
+     "what": "On my phone the hero says 'AI transformation for salons, medspas, and clinics…' in huge serif type, with an agency pitch (audit, 3 weeks, request scope). No barber, no French, no price, no screenshot of the bot. The pricing page literally says it's 'not sold as a one-size subscription'. That contradicts the '14-day free trial' button. From a Facebook ad I'd have closed it after the first screen.",
+     "evidence": "shots/marc-barber/01-landing-top.png; pricing page: 'AIBeaty is scoped to the business, not sold as a one-size subscription'",
+     "suggestedFix": "Make a separate self-serve landing page: 'Maya books your clients in French and English, tonight', a real chat screenshot, the monthly price, and one button. Keep the audit for multi-location clinics on another page."
+    },
+    {
+     "step": "Plan & extras / paying",
+     "severity": "major",
+     "what": "I can't pay and never saw a price anywhere in the funnel. 'Keep the assistant after the trial' → Request → toast 'We will get back to you within one business day'. I was ready to decide now and have to wait for an email with an unknown price.",
+     "evidence": "shots/marc-barber/44-plan-after-keep.png",
+     "suggestedFix": "Show the plan price (e.g. $X CAD/month per location) on signup and Plan, with a Stripe checkout button. Keep 'Request' only for add-ons."
+    },
+    {
+     "step": "Language support (signup, wizard, bot, owner alerts)",
+     "severity": "major",
+     "what": "The only language switch is 'Русский'. There's no French in a product sold in Canada/Québec. The bot's /start welcome is English even with language_code=fr. Every preview/Telegram reply starts with an English 'Hi! I'm Maya, the salon's AI assistant.' before the French text. Owner alerts are English with a Russian label 'Резюме Майи'. Maya's French handoff phrase 'poser un humain' is wrong French.",
+     "evidence": "signup/setup header button 'Русский'; TG /start reply in English; owner alert: '🔔 A client needs a human … | Резюме Майи: Client requests to speak…'",
+     "suggestedFix": "Add FR (fr-CA) to UI, bot welcome and owner alerts. Pick language from Telegram language_code. Remove the hard-coded English intro prefix. Translate every owner-alert label."
+    },
+    {
+     "step": "Owner inbox (link from Telegram alert), phone",
+     "severity": "major",
+     "what": "The 'Conversation' link in the owner alert opens a desktop two-pane inbox squeezed into 390 px. The conversation pane is cut off on the right, the timestamp wraps into 4 lines, and the labels are Russian ('Веб-гость 6003', 'Настройка · Setup', 'Выйти'). Telegram clients show as 'web guest'. My preview tests appear in the inbox mixed with real clients.",
+     "evidence": "shots/marc-barber/40-owner-inbox.png",
+     "suggestedFix": "Make the inbox mobile-first: list, then open the thread full-screen. Localize the labels, show 'Telegram client' plus a name, and hide or tag the owner's preview test chats."
+    },
+    {
+     "step": "Channels / integrations",
+     "severity": "major",
+     "what": "Booksy isn't mentioned anywhere. The sync list has Square/Fresha/Vagaro/Google Calendar. Maya books into her own calendar, so my Booksy agenda and hers will double-book, especially with walk-ins. The chat footer promises 'Bookings are confirmed in the salon's system', which isn't true for me. The Channels step also relies on Telegram, which almost none of my clients use.",
+     "evidence": "Plan & extras: 'Sync with Square / Fresha / Vagaro / Google Calendar — Request'; chat footer text",
+     "suggestedFix": "List Booksy (at least a Google Calendar bridge), say plainly where bookings live, and put Instagram DM/SMS first in the offer for North American barbers."
+    },
+    {
+     "step": "Walk-in question on Telegram",
+     "severity": "minor",
+     "what": "In the preview Maya used my walk-in answer well. On Telegram, 'je peux arriver sans rendez-vous dimanche vers 15h45 pour un fade?' was ignored: she listed morning slots instead of explaining walk-ins or saying a 45-min fade at 15:45 runs past my 16:00 close.",
+     "evidence": "TG chat 6003 reply: 'Le dimanche, nos créneaux disponibles pour un fade sont : Marc à 10 h 00…'",
+     "suggestedFix": "Match walk-in / 'sans rendez-vous' to the custom FAQ first and check closing time against the service duration."
+    },
+    {
+     "step": "Preview chat: identity parsing",
+     "severity": "minor",
+     "what": "An English client wrote '6pm with whoever is free. Name: Jason Lee, 438-555-0199' and Maya answered 'we don't have a stylist by that name'.",
+     "evidence": "TG chat 6002",
+     "suggestedFix": "Parse 'Name:' as the client's name. Check the client's words against the staff list before calling it a barber name."
+    },
+    {
+     "step": "Wizard 5 layout",
+     "severity": "minor",
+     "what": "'Go live' sits above the test chat, so you're pushed to launch before testing. Reloading the page wipes the preview conversation, so an owner re-testing starts from zero and sees Maya lose context.",
+     "evidence": "shots/marc-barber/19-wizard5-full.png",
+     "suggestedFix": "Put Go live below the chat, enabled after at least one test exchange. Keep the preview session across reloads."
+    },
+    {
+     "step": "Wizard 1 & 3 defaults",
+     "severity": "minor",
+     "what": "Default hours are Mon-Sat 10-19 and the staff default is Tue-Sat. Neither follows the salon hours I entered (Tue-Sun), so I had to toggle Sunday for each barber. The team fields have placeholders only ('e.g. Olena', 'e.g. Nail tech') and no labels.",
+     "evidence": "shots/marc-barber/14-wizard3-addperson.png",
+     "suggestedFix": "Default staff days to the salon's open days. Use barber-flavoured placeholders when business type is Barber, and add labels."
+    }
+   ],
+   "mayaQuality": [
+    {
+     "channel": "web preview",
+     "asked": "Salut, c'est combien un fade?",
+     "answered": "Hi! I'm Maya, the salon's AI assistant. Salut, je suis Maya… Un fade coûte 40 $, dure 45 minutes. Vous voulez que je vous trouve un créneau ?",
+     "verdict": "acceptable",
+     "note": "Price and duration correct; English prefix glued onto French text"
+    },
+    {
+     "channel": "web preview",
+     "asked": "Vous prenez les walk-ins samedi?",
+     "answered": "Oui, les walk‑ins sont les bienvenus le samedi ; l'attente peut varier de 15 à 60 minutes. Un rendez‑vous vous assure un créneau précis.",
+     "verdict": "correct",
+     "note": "Used my custom FAQ well"
+    },
+    {
+     "channel": "web preview",
+     "asked": "Je veux un rendez-vous avec Karim samedi pour un coupe + barbe",
+     "answered": "Voici trois créneaux disponibles avec Karim ce samedi : 9 h – 9 h 50, 11 h 30 – 12 h 20 ou 14 h 30 – 15 h 20.",
+     "verdict": "harmful",
+     "note": "Karim works only Tue-Thu (saved correctly). She invents availability."
+    },
+    {
+     "channel": "web preview",
+     "asked": "Marc Dubois-test, 514-555-0101 (French conversation)",
+     "answered": "Спасибо за номер! Как к вам лучше обращаться, и какой сервис хотите забронировать на субботу в 11 h 30 с Каримом?",
+     "verdict": "harmful",
+     "note": "Russian to a French client"
+    },
+    {
+     "channel": "web preview",
+     "asked": "Bonjour! Est-ce que Karim est là dimanche? J'aimerais un fade avec lui.",
+     "answered": "Karim est disponible dimanche pour un fade aux créneaux : 10 h – 10 h 45, 11 h 30 – 12 h 15 ou 13 h 30 – 14 h 15.",
+     "verdict": "harmful",
+     "note": "Karim doesn't work Sunday"
+    },
+    {
+     "channel": "web preview",
+     "asked": "Oui 15h. Alexandre, 514-555-0177",
+     "answered": "Проверяю: Fade у Карима, вторник 22 сентября, с 15:00 до 15:45, на имя Александр, цена 40 $. Всё верно?",
+     "verdict": "harmful",
+     "note": "Russian again, even transliterated the client's name into Cyrillic; the next turn lost context and asked which Tuesday"
+    },
+    {
+     "channel": "web preview",
+     "asked": "Je veux parler à quelqu'un du salon svp",
+     "answered": "Je vous mets en relation avec un(e) collègue du salon — vous recevrez un message d'un humain d'ici une heure.",
+     "verdict": "correct"
+    },
+    {
+     "channel": "web preview",
+     "asked": "Hi, can I get a beard trim with Julien on Friday around 2pm? → 2pm works. Name is Kevin → Yes, correct",
+     "answered": "Offered Julien Fri 2pm, then asked 'Beard Trim only or Haircut + Beard combo?' twice and never booked",
+     "verdict": "wrong",
+     "note": "Loop; also renamed my 'Barbe' service to 'Beard Trim'"
+    },
+    {
+     "channel": "telegram (client 6001, fr)",
+     "asked": "Salut! Une coupe avec Julien samedi matin, c'est possible?",
+     "answered": "…Vous pouvez dire « pozwać человека » à tout moment pour parler à un humain. Vous souhaitez une coupe avec Julien samedi matin : préférez‑vous juste la coupe ou coupe + barbe ?",
+     "verdict": "wrong",
+     "note": "Polish-Russian gibberish inside French. Julien on Saturday is correct."
+    },
+    {
+     "channel": "telegram (client 6001, fr)",
+     "asked": "Oui c'est bon / La coupe simple à 35$. Samedi 10h avec Julien. Je confirme. / Oui, Coupe.",
+     "answered": "'Voulez‑vous la Coupe simple à 35 $ ou la Coupe + barbe à 50 $ ?' repeated",
+     "verdict": "wrong",
+     "note": "Infinite loop, no booking after 6 messages"
+    },
+    {
+     "channel": "telegram (client 6002, en)",
+     "asked": "Hey, I need a fade Wednesday after work, like 6pm? any barber",
+     "answered": "Привет, я Майя — ваш ИИ‑ассистент в Barbier Dubois… На среду в 18:00 у нас свободны все барберы: Марк, Карим, Жюльен и Сэм.",
+     "verdict": "harmful",
+     "note": "Full Russian reply to an English client with language_code=en"
+    },
+    {
+     "channel": "telegram (client 6002, en)",
+     "asked": "6pm with whoever is free. Name: Jason Lee, 438-555-0199",
+     "answered": "we don't have a stylist by that name. Our team is Marc, Karim, Julien and Sam",
+     "verdict": "wrong"
+    },
+    {
+     "channel": "telegram (client 6002, en)",
+     "asked": "Book me with Marc, Wednesday 6pm, fade. → yes",
+     "answered": "Russian confirmation, then booking created; owner got '✅ New booking: Jason Lee — Fade with Marc, Wed, Sep 23 6:00 PM - 6:45 PM.'",
+     "verdict": "acceptable",
+     "note": "Booking and owner alert work; the client-facing language is wrong"
+    },
+    {
+     "channel": "telegram (client 6002, en)",
+     "asked": "Please answer in English. Can you move my fade to Thursday same time? → yes please",
+     "answered": "Russian check, then 'Your fade with Marc is now set for Thursday, September 24, at 6:00 PM.'; owner got '🔁 Rescheduled'",
+     "verdict": "wrong",
+     "note": "Reschedule itself correct, but ignored an explicit language request"
+    },
+    {
+     "channel": "telegram (client 6002, en)",
+     "asked": "Actually I need to cancel my Thursday fade, sorry → yes cancel it",
+     "answered": "Confirmed details in English, cancelled; owner got '❌ Cancelled: Jason Lee — Fade.'",
+     "verdict": "correct"
+    },
+    {
+     "channel": "telegram (client 6003, fr)",
+     "asked": "Allo, je peux arriver sans rendez-vous dimanche vers 15h45 pour un fade?",
+     "answered": "Listed Sunday morning slots incl. 'Karim à 11 h 30'",
+     "verdict": "wrong",
+     "note": "Ignored the walk-in policy and the 16:00 close; offered Karim on a day he's off"
+    },
+    {
+     "channel": "telegram (client 6003, fr)",
+     "asked": "Laissez faire, je veux parler à Marc directement",
+     "answered": "Je vais transmettre votre demande à Marc. Un membre de l'équipe vous répondra d'ici une heure. Owner got '🔔 A client needs a human… | Резюме Майи: Client requests to speak directly with staff member Marc' + inbox link",
+     "verdict": "acceptable",
+     "note": "Handoff works; Russian label in the owner alert"
+    }
+   ],
+   "delights": [
+    "Pasting my raw Booksy-style menu in French ('Coupe 35$ 30 min…') drafted all 6 services with correct minutes and prices in about 4 seconds. That's the one moment I thought 'ok, this is fast'.",
+    "Signup to wizard took under a minute. No card, no email verification wall.",
+    "Step 1 autosaves and the step tabs let me jump around freely.",
+    "Owner alerts on Telegram arrive right away and are short: '✅ New booking: Jason Lee — Fade with Marc, Wed, Sep 23 6:00 PM', '🔁 Rescheduled', '❌ Cancelled', '🔔 A client needs a human' with a link. That's the part I'd actually pay for.",
+    "Replies take about 5 s, not the feared minute.",
+    "Cancel flow in English was clean: confirm the details, then cancel."
+   ],
+   "wouldBuy": "no",
+   "priceWillingness": "$0 today. If Maya reliably answered in French, respected each barber's days and synced with Booksy (or at least Google Calendar), I'd pay $49–79 CAD/month for the shop. That's less than one lost fade a week. I'd go higher (~$99) only with Instagram DM and SMS included, because that's where my clients actually are. I won't pay for a price I can't see.",
+   "topReasonsNotToBuy": [
+    "She speaks Russian to my French and English clients, even after being asked for English. That's reputation damage on day one.",
+    "She books Karim on Saturday and Sunday when he doesn't work. That means angry clients in my chair and a barber who isn't there.",
+    "French bookings loop and never complete, so clients give up.",
+    "No Booksy sync, so double bookings with my real agenda and my walk-ins.",
+    "My clients don't use Telegram. Instagram/SMS are 'request and we'll quote you'.",
+    "No visible price and no pay button, only 'we'll get back within one business day'.",
+    "The landing page sells a consulting audit for medspas, not a French-speaking booking bot for a barbershop."
+   ],
+   "whatWouldMakeYouBuyToday": "Maya answers only in the client's language (French first for me), offers a barber only on the days he works, and completes a French booking in 3 messages. Show a clear monthly CAD price with a pay button on the Plan step. Add a Booksy or Google Calendar sync so her bookings don't collide with my walk-ins, and ideally Instagram DM included. If a French landing page for barbers showed that in one screenshot, I'd subscribe the same evening."
+  },
+  {
+   "persona": "anna-medspa — Grace Park, 45, clinic manager of Lumiere Aesthetics (Dr. Anna Lee's medspa, Vancouver). She is careful about compliance, used a desktop at 1440x900, and runs a team of 2 RN injectors, 2 estheticians and the medical director.",
+   "reachedSteps": [
+    "Landing (home, pricing, FAQ incl. medspa answer) on aibeaty.pages.dev",
+    "Checked for privacy/terms/about pages: none exist (URLs fall back to the home page)",
+    "Local signup (Spa & massage, Pacific TZ)",
+    "Wizard 1 Your salon: address, phone, website, IG, hours",
+    "Wizard 2 Services: website import tried first (failed with 404 on the fake domain), then pasted the menu. AI draft took 5s and got 6 services",
+    "Wizard 2: fought the price validator (Free / complimentary / by consultation all rejected; used $0 and left Botox at $14/unit)",
+    "Wizard 3 Team: 5 people with days and services",
+    "Wizard 4 Answers: parking, payment, cancellation, deposit, late, a custom Q, and a forbidden-topics list",
+    "Wizard 5 Preview chat: pregnancy, units, per-unit price, 4 HydraFacial booking attempts (all failed)",
+    "Go live (no confirmation)",
+    "Wizard 6 Connected bot 7771005:AAH... -> @bot7771005_bot",
+    "Linked owner Telegram via /start owner-<code>",
+    "Telegram client 1: HydraFacial booking failed repeatedly, then asked for a human (owner notified)",
+    "Telegram client 2: pregnant + sertraline Botox question -> handoff (owner notified, tagged medical)",
+    "Telegram client 3: units/price question, booked a consultation, rescheduled, then cancelled (owner notified each time)",
+    "Telegram client 4: HydraFacial booked, but with the wrong provider",
+    "Dashboard + inbox: tried to answer the medical handoff from the inbox. It was saved but never delivered to the client",
+    "Plan & extras: pressed 'Keep the assistant after the trial' -> 'Requested', no price, no payment"
+   ],
+   "minutesToLiveEstimate": 35,
+   "understoodOfferAfterLanding": "The landing page sells a consulting engagement: an 'AI transformation audit', then a 3-week pilot, with scoped pricing and no shelf price. Only one small line under the hero mentions self-serve ('paste your price list, connect your Telegram bot, Maya answers the same evening, no card'). The Pricing page says outright 'not sold as a one-size subscription' and lists no monthly price. I thought I was requesting an audit from an agency. Instead I landed in a self-serve SaaS wizard with a different brand (purple 'AIbeaty' M logo, not the serif luxury site), and later in a dashboard branded 'Luminous Core / Precision OS'. So what I signed up for did not match the landing page. And after 14 days I still don't know what I would pay.",
+   "frictions": [
+    {
+     "step": "Maya live on Telegram and in the preview: language",
+     "severity": "blocker",
+     "what": "Maya answers English-speaking clients in Russian, both in the preview and on Telegram, and even when the Telegram language_code is 'en'. Booking confirmations end with 'Всё верно?' and the final confirmations are fully in Russian. A Vancouver medspa client gets a Russian booking confirmation.",
+     "evidence": "TG chat 55000404: 'Вы записаны! Ждём вас 19 сентября в 10:00 – 11:00 AM на HydraFacial Signature к Dr. Anna Lee.' Preview: 'Привет, я Майя — ассистентка салона... я не могу давать медицинские рекомендации по количеству единиц'. Screenshots 26/27/29 preview; inbox shot 33-inbox-medical.png",
+     "suggestedFix": "Reply in the client's message language, falling back to tenant.language='en'. Never let the system-prompt language leak. Add a regression test with English-only input."
+    },
+    {
+     "step": "Booking: staff rules ignored",
+     "severity": "blocker",
+     "what": "In the Team step I set Dr. Anna Lee to Wed/Fri and injectables only. Maya booked a HydraFacial with Dr. Anna Lee on a Saturday. She also offered facials with the nurse injectors ('any stylist'), and moved an injectable consult to Saturday with Dr. Lee. This makes a mess of a doctor's calendar.",
+     "evidence": "Owner alert: '✅ New booking: Olivia Tran — HydraFacial Signature with Dr. Anna Lee, Sat, Sep 19 10:00 AM - 11:00 AM.' and '🔁 Rescheduled: Tanya Morales — Injectable Consultation → Sat, Sep 19 11:00 AM'. Team config shot 18-team-filled.png",
+     "suggestedFix": "Filter availability by staff.workDays and staff.services on the server before the model sees any slots. Reject any booking tool call that breaks those rules."
+    },
+    {
+     "step": "Booking: date handling",
+     "severity": "blocker",
+     "what": "Most future-date bookings fail. Maya confirms a slot, the client says yes, then she replies 'Sep 24 2024 is outside our scheduling window' or '19 сентября уже прошёл' / 'that date has already passed'. She also contradicts herself ('2 PM with Jenna is open' followed by 'we don't have openings at 2 PM'), turns Monday Sep 21 into 'September 23', and turns next Thursday into 'Tuesday Sep 22'. Only same-day slots and slots Maya proposed herself ever got booked.",
+     "evidence": "Preview 28-book-3.png: 'I'm sorry, Sep 24 2024 is outside our scheduling window.' TG 55000101: 'I'm sorry, that date has already passed. Which future day would you like...'",
+     "suggestedFix": "Pass today's date/year and the tenant timezone explicitly. Have the booking tool take ISO dates computed server-side from the offered slot IDs, never a year the model guessed."
+    },
+    {
+     "step": "Owner replies to a handoff",
+     "severity": "blocker",
+     "what": "A pregnant client was handed off. I opened the inbox, wrote a reply and pressed send. The API returned 201, but the message never reached the client's Telegram. Maya has promised 'The owner or front desk will reply here within the hour', and the reply never arrives. For medical questions this is the worst possible dead end.",
+     "evidence": "POST /api/platform/inbox/conversations/conv-0202-.../messages 201. sent.jsonl has no new message to chat 55000202 afterwards. Shot 35-inbox-reply.png",
+     "suggestedFix": "Deliver inbox replies for Telegram conversations through the tenant bot and show delivery status. Also let the owner reply straight from the Telegram alert."
+    },
+    {
+     "step": "Dashboard trust",
+     "severity": "major",
+     "what": "The dashboard is branded 'Luminous Core / Precision OS'. It is logged in as 'Sarah J. Manager', shows the date 'Friday, Apr 17', and has fake trends ('+9.4% vs last month'). A brand-new client shows as 'VIP, Client since Mar 2022' with a stock photo, plus 'Drink Preference', a (555) 000-0000 phone and pending@client.local. Some labels are Russian: 'Веб-гость', 'Настройка', 'Выйти', 'Позвать человека'. On a medical business's patient inbox this looks like a demo template, which undermines trust.",
+     "evidence": "32-dashboard.png, 33-inbox-medical.png, 35-inbox-reply.png",
+     "suggestedFix": "Use the tenant's brand and owner name, real dates only, no fabricated history or trends, and English labels for English tenants."
+    },
+    {
+     "step": "Handoff notification deep link",
+     "severity": "major",
+     "what": "The medical handoff alert links to the inbox with conversationId=conv-0202..., but the inbox opens Olivia Tran's thread instead.",
+     "evidence": "Opened http://127.0.0.1:4199/screens/unified-inbox-luminous-core.html?conversationId=conv-0202-mu7kqj3j-3eipqj and the header showed 'Olivia Tran'",
+     "suggestedFix": "Select the conversation named by the conversationId query parameter when the inbox loads."
+    },
+    {
+     "step": "Wizard step 2 prices",
+     "severity": "major",
+     "what": "The validator rejects every realistic medspa price: 'Free', 'complimentary', 'by consultation', and a blank. The AI draft itself produced 'complimentary consultation', which the validator then rejected. In the UI the rejected fields just turn red with no message. The error text only exists in the API response. I had to type $0, and I had to leave Botox at '$14/unit', the exact figure my compliance rule forbids Maya to quote. There is no way to mark a service as 'consultation required, not directly bookable'.",
+     "evidence": "422: 'The price of \"Injectable Consultation\" is unclear: \"Free\". Write a number, like 65 or \"from $110\".' Shot 15-step2-edited.png shows red boxes with no text",
+     "suggestedFix": "Accept Free/Complimentary/By consultation. Show the validation message under the field. Add a per-service 'consultation first / don't quote price' toggle."
+    },
+    {
+     "step": "Landing -> product mismatch / pricing",
+     "severity": "major",
+     "what": "Nothing tells me what this costs. The landing page and Pricing page sell an audit with scoped pricing. The in-app Plan step only says 'Request' and 'we will send you a plan and payment link'. There is no price, no payment, and no plan names. I can't get budget approval from Dr. Lee without a number.",
+     "evidence": "Pricing page: 'AIBeaty is scoped to the business, not sold as a one-size subscription.' Plan step after Request: toast 'Request sent. We will get back to you within one business day.' (37-keep-request.png)",
+     "suggestedFix": "Publish a monthly price in CAD on the landing page and in Plan & extras, with a self-serve checkout. Make the self-serve trial the main CTA path, or a separate landing page."
+    },
+    {
+     "step": "Trust / privacy for a medical business",
+     "severity": "major",
+     "what": "No privacy policy, terms, company name or address, and no data-residency or PIPA/PIPEDA statement anywhere. /privacy/, /terms/ and /about/ just show the home page. The only contact is a personal gmail (ctmakc@gmail.com), and the footer credit says 'Development & promotion — mmix.ua'. Owner alerts forward patients' health details (pregnancy, sertraline) into Telegram. Signup has no terms checkbox. I can't put patient conversations on this.",
+     "evidence": "faq2.cjs output: privacy/ 200 'AIBeaty — AI Transformation for Beauty Businesses' (home page). Landing footer: 'Prefer email? ctmakc@gmail.com'",
+     "suggestedFix": "Add a privacy policy, a DPA, and a Canadian data-location statement. Name the legal entity, use a business email domain, and offer an option to redact health details from Telegram alerts."
+    },
+    {
+     "step": "Go live",
+     "severity": "major",
+     "what": "Go live makes Maya public with one click and no confirmation or checklist. The wizard lets me launch even though every preview booking attempt I made had failed.",
+     "evidence": "POST /api/setup/launch 200 right after the click; header changed to 'Live · Trial'",
+     "suggestedFix": "Show a pre-launch checklist (run 3 test scenarios, confirm the forbidden topics) and a confirm dialog."
+    },
+    {
+     "step": "Maya wording",
+     "severity": "minor",
+     "what": "Maya calls medspa staff 'stylist'/'мастер', and took the client's name 'Tanya Morales' for a staff member. The pregnancy handoff opens with 'Of course — I'm handing this over', although the client never asked for a person. She never answered the direct question 'does Dr Lee even work Saturdays?'. Times sometimes come in 24h format ('12:30 – 13:30').",
+     "evidence": "'Which stylist would you prefer?'; 'I want to be honest: we don't have a stylist by that name.'",
+     "suggestedFix": "Take the staff noun from the business type (provider / nurse / esthetician). Write a handoff message specific to medical questions. Use 12h time for North American tenants."
+    },
+    {
+     "step": "Signup",
+     "severity": "minor",
+     "what": "No 'Medspa / clinic' business type (I picked Spa & massage). A 'Русский' toggle is prominent for a Vancouver business. The timezone defaults to Eastern, and the phone placeholder uses the Ottawa 613 area code. The website field in step 2 isn't prefilled from step 1. Unvisited steps show red error icons right after signup, which feels like I've already done something wrong.",
+     "evidence": "05-signup.png, 07-after-signup.png",
+     "suggestedFix": "Add Medspa/Clinic with medical defaults (forbidden topics prefilled), detect timezone from the browser, reuse the website URL, and show neutral icons for steps not visited yet."
+    },
+    {
+     "step": "Owner Telegram link on desktop",
+     "severity": "minor",
+     "what": "'Tap once from the phone where you use Telegram', but I'm on desktop and there's no QR code.",
+     "evidence": "31-bot-connected.png",
+     "suggestedFix": "Show a QR code of the owner deep link next to the button."
+    },
+    {
+     "step": "Answers autosave",
+     "severity": "minor",
+     "what": "The first time I filled the Answers step, all FAQ answers and the forbidden-topics text were lost. I had typed them and then clicked '+ Add a question' within about a second. Only the custom question survived a reload. With slower typing it saved fine.",
+     "evidence": "GET /api/setup after the first attempt showed faq.parking='' and assistant.forbidden='' while custom[0] was saved",
+     "suggestedFix": "Flush the pending debounced save before re-rendering on add/remove actions and on beforeunload."
+    }
+   ],
+   "mayaQuality": [
+    {
+     "channel": "web preview",
+     "asked": "Hi! Is Botox safe if I am pregnant?",
+     "answered": "Hi! I'm Maya, the salon's AI assistant. Of course — I'm handing this over to a person. The owner or front desk will reply here within the hour",
+     "verdict": "acceptable",
+     "note": "Safe: no medical advice, routed to staff. 'Of course' is odd because the client never asked for a person."
+    },
+    {
+     "channel": "web preview",
+     "asked": "How many units do I need for my forehead lines?",
+     "answered": "(in Russian) I can't give medical recommendations on units for forehead lines. Want me to pass your question to our nurse specialist?",
+     "verdict": "wrong",
+     "note": "The content is compliant, but the reply is in Russian to an English client."
+    },
+    {
+     "channel": "web preview",
+     "asked": "ok and how much is Botox per unit?",
+     "answered": "(in Russian) I can't name a per-unit Botox price — it's discussed at the free consultation. Want to book?",
+     "verdict": "wrong",
+     "note": "It respected my forbidden rule even though $14/unit was in the price table, which is good. Russian again."
+    },
+    {
+     "channel": "web preview",
+     "asked": "Book HydraFacial next Thursday 3pm with Jenna, Karen Liu 604-555-0187, yes confirm",
+     "answered": "Offered Dr Anna Lee/nurse injectors for HydraFacial, then confirmed 'Tuesday Sep 22 ... Всё верно?', then 'Thursday Sep 24', then 'Sep 24 2024 is outside our scheduling window'",
+     "verdict": "harmful",
+     "note": "The booking never completed. Wrong date, wrong year, Russian, wrong providers."
+    },
+    {
+     "channel": "web preview",
+     "asked": "Can I get a HydraFacial tomorrow morning? / 11am with Priya / yes",
+     "answered": "(Russian) offered all 5 staff, including ones who don't work Saturday. After 'yes': 'Извините, 19 сентября уже прошёл'",
+     "verdict": "harmful",
+     "note": "Tomorrow was treated as a date in the past."
+    },
+    {
+     "channel": "telegram",
+     "asked": "/start",
+     "answered": "Hi! I'm Maya, the AI assistant at Lumiere Aesthetics. I can book, reschedule or cancel... just write \"human\".",
+     "verdict": "correct"
+    },
+    {
+     "channel": "telegram",
+     "asked": "Client 1: HydraFacial next Tuesday afternoon -> 2pm with Jenna -> Monday Sep 21 2pm -> yes",
+     "answered": "Russian slot list incl. Dr Anna Lee (off on Tue); '2 PM with Jenna is open' then 'no openings at 2 PM'; 'perhaps September 23'; 'that date has already passed'",
+     "verdict": "harmful",
+     "note": "In real life I lose a $199 booking and the client is annoyed."
+    },
+    {
+     "channel": "telegram",
+     "asked": "Client 1: I want to talk to a real person please.",
+     "answered": "Of course — I'm handing this over to a person... Owner got '🔔 A client needs a human (explicit_request)' with a link",
+     "verdict": "correct",
+     "note": "But my reply from the inbox never reaches the client, so the handoff dead-ends."
+    },
+    {
+     "channel": "telegram",
+     "asked": "Client 2: I'm 14 weeks pregnant, is Botox safe for me? And I take sertraline",
+     "answered": "Handed to a person. Owner got '🔔 A client needs a human (medical)' with the full text",
+     "verdict": "correct",
+     "note": "Exactly the routing I want. The health details are forwarded to Telegram, which is a privacy question."
+    },
+    {
+     "channel": "telegram",
+     "asked": "Client 3: how many units of botox for forehead lines and how much per unit?",
+     "answered": "(Russian) Can't advise on units or per-unit price; offered a free consultation with 'наш врач-инъектор'",
+     "verdict": "wrong",
+     "note": "Compliant content, wrong language."
+    },
+    {
+     "channel": "telegram",
+     "asked": "Client 3: book free injectable consultation today 5pm, any nurse; then move to tomorrow 11am; then cancel",
+     "answered": "First took the client's name for a stylist. Booked with Dr. Anna Lee Fri 5pm (owner ✅). Rescheduled to Sat 11am with Dr. Lee (owner 🔁), who doesn't work Saturdays. Cancelled on request (owner ❌). Ignored 'does Dr Lee even work Saturdays?'",
+     "verdict": "wrong",
+     "note": "The mechanics and notifications work. Provider/day rules were broken and the replies were mostly Russian."
+    },
+    {
+     "channel": "telegram",
+     "asked": "Client 4: HydraFacial openings today or tomorrow? -> tomorrow 10am, Olivia Tran -> yes",
+     "answered": "Booked 'HydraFacial Signature у Dr. Anna Lee, суббота 19 сентября' and confirmed in Russian. Owner notified",
+     "verdict": "harmful",
+     "note": "A facial booked into the medical director's calendar on her day off."
+    }
+   ],
+   "delights": [
+    "Pasting my menu gave me a correct draft of 6 services in 5 seconds, categories included, and it even picked up Dr. Anna Lee as a team member.",
+    "The Team step is really good: chips for days and services, clear, fast.",
+    "My forbidden-topics list worked. Maya refused to quote the $14/unit Botox price and refused to estimate units, even though the price was in the table.",
+    "The pregnancy + sertraline question went straight to a human, and the owner alert was tagged '(medical)'. That is exactly the behavior a medspa needs.",
+    "Connecting the bot and linking my owner Telegram took under a minute. The alerts are clear (✅ New booking / 🔁 Rescheduled / ❌ Cancelled / 🔔 needs a human).",
+    "The wizard is clean and calm, with autosave and plain-English copy."
+   ],
+   "wouldBuy": "no",
+   "priceWillingness": "If it worked (English, correct providers and days, reliable bookings, owner replies reaching the client, a privacy policy/DPA), I'd pay 149-249 CAD/month, since one booked filler or HydraFacial a week covers it. In its current state: 0 CAD. I can't even see a price, and I won't forward a 'we'll send you a link' request to Dr. Lee.",
+   "topReasonsNotToBuy": [
+    "Maya replies to my English-speaking patients in Russian, including booking confirmations.",
+    "She books facials into the medical director's calendar on days she doesn't work, ignoring the Team setup.",
+    "Most future-date bookings fail with 'that date has already passed' or 'Sep 24 2024 is outside our scheduling window'.",
+    "When I answer a handed-off medical question from the inbox, the patient never receives it.",
+    "No privacy policy, terms, company identity or data-location statement, and the contact is a gmail address. That's unacceptable for patient health data in BC.",
+    "There's no price anywhere and no way to pay. The landing page sells an 'audit' agency engagement, not the product I tried.",
+    "The dashboard looks like a demo template ('Luminous Core', 'Sarah J.', fake VIP-since-2022 clients, Apr 17 date)."
+   ],
+   "whatWouldMakeYouBuyToday": "Three conditions. First, one clean run in the preview: an English HydraFacial booking with Jenna next Thursday that lands on the right day and provider, plus inbox replies that actually reach the client. Second, a visible CAD monthly price with a card checkout in Plan & extras. Third, a one-page privacy/data statement (Canadian hosting, who AIBeaty is, a DPA, an option to keep health details out of Telegram alerts) and a 'Medspa' business type that marks injectables as consultation-only. With all of that, I'd put my card in today."
+  },
+  {
+   "persona": "conversion-critic",
+   "reachedSteps": [
+    "Landing home (mobile 390x844): fold + full page",
+    "Landing /pricing, /how-it-works, /faq, /results, /services, /contact",
+    "Local signup (mobile) and account created (desktop 1440x900), about 4 s to the wizard",
+    "Wizard 1 Your salon (prefilled from signup)",
+    "Wizard 2 Services & prices: pasted a 7-line price list, AI draft done in about 3 s",
+    "Wizard 3 Team: added one person",
+    "Wizard 4 Answers (viewed only)",
+    "Wizard 5 Test & go live: two questions to Maya in the preview",
+    "Wizard 6 Channels (viewed; did not connect a bot)",
+    "Wizard 7 Plan & extras: pressed 'Keep the assistant after the trial' Request on mobile"
+   ],
+   "minutesToLiveEstimate": 35,
+   "understoodOfferAfterLanding": "After the landing I thought I was being sold an agency engagement. It reads as a paid 'AI transformation audit' (diagnosis first), then a Pilot built in about 3 weeks, covering calls, Instagram, WhatsApp and forms, with the price quoted per client ('not sold as a one-size subscription'). The only hint of a self-serve product is one small grey line under the hero: 'paste your price list, connect your salon's Telegram bot, Maya answers the same evening. No card.' The product behind 'Start free trial' is something else: a self-serve SaaS called 'AIbeaty' with a purple 'M' logo, a different design, and a Russian language toggle. It is a Telegram bot plus a web chat, set up in 7 steps, and Instagram, WhatsApp, SMS, calls and calendar sync are 'on request'. No monthly price appears anywhere. So the offer does not match the product. The landing's channels, time to launch, price model, visual brand and name 'Maya' are all different in the app. Someone who clicked a Facebook ad for 'answers my Instagram DMs' finds out in the wizard that it runs on Telegram.",
+   "frictions": [
+    {
+     "step": "Landing home (hero)",
+     "severity": "blocker",
+     "what": "The hero sells 'AI transformation for salons, medspas and clinics' in consultant jargon: 'lead-to-revenue operating system', 'commercial leakage', 'operating truth'. The first real claim ('3 weeks typical first live workflow') contradicts the self-serve trial ('Maya answers clients the same evening'). A salon owner coming from a Facebook ad cannot tell in 5 seconds what she gets. On mobile the whole first screen is a serif headline that never says 'answers your clients' DMs'.",
+     "evidence": "shots/conversion-critic/01-home-fold.png; hero text: 'AI transformation for salons, medspas, and clinics where new leads wait, rebooking slips...'; stats '1 audit / 3 weeks / 1 view'",
+     "suggestedFix": "Rewrite the hero to match the product. Headline: 'Maya, your AI front desk, answers clients and books them 24/7, starting tonight.' Subline: 'Paste your price list, test her in 2 minutes, 14 days free, no card.' One CTA, 'Try Maya free'. Move the audit/agency offer to a secondary 'For groups & medspas' page."
+    },
+    {
+     "step": "Landing /pricing",
+     "severity": "blocker",
+     "what": "The pricing page has no prices. It says 'scoped to the business, not sold as a one-size subscription' and 'Why start with an audit instead of a monthly subscription?', which argues directly against the subscription the product needs to sell. A small-salon owner reads 'custom pricing' as 'expensive, call sales' and leaves.",
+     "evidence": "/pricing text: 'AIBeaty is scoped to the business, not sold as a one-size subscription'; formats Audit / Pilot / Scale with only 'REQUEST SCOPE' buttons",
+     "suggestedFix": "Publish 2 or 3 CAD plans. Example: Solo $49/mo (Telegram + web chat, 1 chair), Salon $99/mo (up to 8 staff, owner alerts), Pro $199/mo (+ Instagram/WhatsApp/SMS reminders). Mark 'first 14 days free, no card, cancel in one tap'. Keep 'Custom for groups' as the fourth column."
+    },
+    {
+     "step": "Landing (all pages) vs signup/wizard",
+     "severity": "major",
+     "what": "Two different brands. The landing is 'AIBeaty/26': cream background, serif, editorial style, 'Chapter II'. The signup is 'AIbeaty' with a purple 'M' square and generic SaaS styling. The name Maya never appears on the landing hero. The signup's top right has a 'Русский' button and the landing footer credits 'Development & promotion: mmix.ua'. To a Canadian owner this looks like a phishing handoff or an offshore reseller.",
+     "evidence": "shots/conversion-critic/01-home-fold.png vs 10-signup.png; the signup header shows 'Русский'; landing footer 'Development & promotion —' links to mmix.ua",
+     "suggestedFix": "Use one brand, logo and palette across landing and app, and introduce Maya on the landing. Offer language options for the Canadian market (English/Français) and hide Russian unless the browser locale asks for it. Remove the agency credit from the footer."
+    },
+    {
+     "step": "Landing: channels promise vs product",
+     "severity": "blocker",
+     "what": "The landing's modules promise to capture 'calls, website forms, Instagram and WhatsApp DMs'. The product includes only Telegram and web chat. Instagram, Messenger, WhatsApp, SMS, calls and booking-app sync are all 'Request' buttons with 'we send the price first'. Canadian salon clients book through Instagram DMs, SMS and Fresha/Vagaro/Square, not Telegram.",
+     "evidence": "/services: 'Captures and answers first-touch demand from phone calls, website forms, Instagram and WhatsApp DMs'; wizard 'Plan & extras': Instagram Direct / Facebook Messenger / WhatsApp / SMS / Sync with Square / Fresha / Vagaro, each 'Request'",
+     "suggestedFix": "Either ship Instagram DM + website chat as the default trial channels, or say plainly on the landing: 'Included: website chat + Telegram. Instagram/WhatsApp/SMS: add-on, setup in 48 h, $X/mo.' Do not advertise channels that the self-serve trial cannot turn on."
+    },
+    {
+     "step": "Wizard 7 Plan & extras (payment)",
+     "severity": "blocker",
+     "what": "There is no way to pay. 'Keep the assistant after the trial' is a Request button that answers 'We will get back to you within one business day.' No plan, price, card form, Stripe checkout or invoice option. Every add-on also says 'we send the price first'. A person who is ready to buy on day 3 has to wait for a human, and the momentum dies.",
+     "evidence": "shots/conversion-critic/41-mobile-keep-request.png: 'Request sent. We will get back to you within one business day.'; 17-wiz-Plan_extras.png shows no price on the page",
+     "suggestedFix": "Replace it with a real plan picker showing the CAD price, taxes (HST/GST) and a Stripe Checkout button, plus Apple Pay/Google Pay. Show add-on prices inline, e.g. 'Instagram DM +$29/mo'. Keep 'Talk to us' only for custom needs."
+    },
+    {
+     "step": "Wizard 6 Channels (Telegram bot via BotFather)",
+     "severity": "major",
+     "what": "The only live channel for real clients needs the owner to install Telegram, find @BotFather, send /newbot, invent a username ending in 'bot' and paste a token. Most Canadian salon owners (and their clients) do not use Telegram, and this is the step where a non-technical owner gives up. The website-chat option asks her to 'paste these two lines before </body>', which is also out of reach for her on Wix, Squarespace or Booksy.",
+     "evidence": "16-wiz-Channels.png: 'Open @BotFather in Telegram and press Start. Send /newbot... BotFather replies with a token like 1234567890:AAH…'",
+     "suggestedFix": "Make the shareable chat link the hero of this step: 'Put this link in your Instagram bio and Google Business profile' with a copy button and a QR code. Add one-click Wix/Squarespace/Shopify instructions. Keep Telegram as an optional 'advanced' channel, and give it a 60-second video if it stays."
+    },
+    {
+     "step": "Wizard 5 Test & go live (first Maya answer)",
+     "severity": "major",
+     "what": "The first test question was about a service in the price list ('How much is balayage and do I need a deposit?'). It took about 100 seconds and returned 'Let me check that with the owner, you'll hear back within the hour.' The price (from $220) and the deposit flag were in the services table. This is the 'wow' moment and it fails. The owner concludes Maya does not know her own prices. The next question (a Saturday booking) answered well in 5 s ('slot with Dana at 2:00-3:00 PM').",
+     "evidence": "shots/conversion-critic/30-maya.png, 31-maya.png",
+     "suggestedFix": "Make the first answer instant and grounded. Answer price/service questions straight from the services table without the model, or with a hard 20 s timeout that falls back to the price list. In preview, never answer 'check with the owner' for a service that exists. Make Maya's greeting a personalized one-liner with the salon's top 3 services and prices, so the owner sees her own data at once."
+    },
+    {
+     "step": "Wizard 2 Services & prices",
+     "severity": "minor",
+     "what": "The AI draft is excellent: 7 services parsed in about 3 s, with categories, minutes and 'from $' prices. But the deposit amount ('$50 deposit') becomes only a checkbox, so the amount is lost. It is also easy to lose the draft: the drafted rows were not persisted when the tab closed during 'Saving…'. After reload the services list was empty.",
+     "evidence": "21-draft-result.png; the reload showed 'svc values 0' and go-live still said 'Add at least one service'",
+     "suggestedFix": "Store the deposit amount and show it in the row. Save the drafted table immediately and synchronously after the draft (not debounced), and show 'Saved ✓ 7 services'."
+    },
+    {
+     "step": "Wizard sidebar (all steps)",
+     "severity": "minor",
+     "what": "Right after signup, three steps show red error icons (Services, Team, Test & go live) before the owner has touched them. The first impression is 'you already did something wrong'. 'Chat on your website: Active' is shown while nothing is live and no services exist.",
+     "evidence": "11-wizard-step1.png red (!) icons; 17-wiz-Plan_extras.png 'Chat on your website — Active' while the header says 'Not live yet'",
+     "suggestedFix": "Use neutral 'to do' dots with a progress bar ('2 of 5 done, about 6 minutes left'), and mark a step red only after the owner leaves it incomplete. Show 'Ready, activates at Go live' instead of 'Active'."
+    },
+    {
+     "step": "Landing /results + social proof",
+     "severity": "major",
+     "what": "There is zero social proof. The results page is explicitly 'representative operating patterns ... not named-client metrics'. No testimonials, logos, reviews, founder face, Canadian address or phone. The only contact is a personal gmail (ctmakc@gmail.com), which kills trust for a product that will talk to her clients.",
+     "evidence": "/results: 'Scenarios above describe representative operating patterns AIBeaty designs against, not named-client metrics.'; home CTA 'Prefer email? ctmakc@gmail.com'",
+     "suggestedFix": "Add a 30-second screen recording of Maya answering a real Instagram-style DM and booking, 2 or 3 pilot salons with names/photos (even free pilots), a founder photo and name, a business email on the domain, a Canadian contact and a 'Data stays in Canada / PIPEDA' note."
+    },
+    {
+     "step": "Landing: guarantee / cancellation",
+     "severity": "major",
+     "what": "There is no guarantee, no cancellation terms (only 'No long lock-in to start'), and nothing on what happens to her clients' data or who is liable if Maya quotes a wrong price. An owner who is protective of her clients needs to know she stays in control.",
+     "evidence": "/pricing: 'Pricing is confirmed in writing before any work begins. No long lock-in to start.' Nothing else on refunds or cancellation.",
+     "suggestedFix": "Add a block saying 'Month-to-month, cancel anytime from the dashboard. 30-day money-back after the trial. Maya never confirms a booking you did not allow, and you get every conversation on your phone.' Add a privacy page."
+    },
+    {
+     "step": "Landing home: CTA split",
+     "severity": "major",
+     "what": "The page competes with itself. The header says 'Start free trial', the hero has 'Start 14-day free trial' and 'Book AI transformation audit', the audit form sits at the bottom, and every pricing card says 'Request scope'. Most CTAs on the page lead to the audit rather than the trial.",
+     "evidence": "Home link list: 'Book AI transformation audit', 'Request scope' ×3, 'REQUEST AUDIT SCOPE', 'Start free trial' ×2",
+     "suggestedFix": "Make 'Try Maya free' the single primary CTA and repeat it after each section. Reduce the audit to a text link, 'Multi-location or medspa? Book a call'."
+    },
+    {
+     "step": "Landing home: no product demo",
+     "severity": "major",
+     "what": "There is a chat bubble at the bottom right of the landing, but the page itself never invites 'talk to Maya now as if you were a client'. That demo is the cheapest way to deliver a wow before signup.",
+     "evidence": "01-home-fold.png: purple chat bubble with no label",
+     "suggestedFix": "Add an inline demo in the hero: a phone mockup with a live Maya for a sample salon and chips like 'How much is a gel manicure?' and 'Book me Saturday'. Better: 'Paste your price list, see Maya answer as YOUR salon' before signup."
+    }
+   ],
+   "mayaQuality": [
+    {
+     "channel": "web preview (wizard step 5)",
+     "asked": "How much is balayage and do I need a deposit?",
+     "answered": "Hi! I'm Maya, the salon's AI assistant. Let me check that with the owner, you'll hear back within the hour. Meanwhile, want me to find you a good time to come in? (after about 100 s)",
+     "verdict": "wrong",
+     "note": "Balayage 'from $220' with deposit checked was in the services table. She should have quoted it. The long delay plus the escalation on the owner's first test ruins the wow moment. She also promised 'within the hour' on the owner's behalf."
+    },
+    {
+     "channel": "web preview (wizard step 5)",
+     "asked": "Can I book a women's haircut this Saturday around 2pm?",
+     "answered": "We have a slot with Dana at 2:00 PM-3:00 PM this Saturday. Does that work for you?",
+     "verdict": "correct",
+     "note": "About 5 s. Matches the 60-min haircut, Saturday hours 10-17 and the single team member Dana."
+    }
+   ],
+   "delights": [
+    "Pasting a messy price list gives a clean services table (names, categories, minutes, 'from $' prices) in about 3 seconds. This is a real wow and should be on the landing.",
+    "Signup to wizard takes about 4 s, and the salon name and city carry over, so there is no re-typing.",
+    "The wizard copy is plain and owner-friendly ('Maya only quotes what is written here, exactly as you write it') and very different from the landing's jargon.",
+    "Test & go live gives suggested client questions and a private preview chat before going live, which is the right trust mechanic.",
+    "The booking answer used the real team member, service length and hours in 5 s."
+   ],
+   "wouldBuy": "no",
+   "priceWillingness": "A typical 1 to 8 chair Canadian salon owner would pay CAD $49-99/mo for 'answers my Instagram DMs and website and books clients 24/7'. At most CAD $29-49/mo for Telegram + web chat only, because her clients are not on Telegram. She would pay $150-250/mo only when Instagram DM + SMS reminders + Fresha/Square/Vagaro sync work. Today she cannot pay any amount without waiting a business day for a human.",
+   "topReasonsNotToBuy": [
+    "The landing sells a consultant-led 'AI transformation audit' with custom pricing, while the product is a self-serve bot. The mismatch reads as expensive, slow and not for a small salon.",
+    "No price anywhere, and no way to pay: 'Keep Maya' is a request form with a reply within one business day.",
+    "The core channel is Telegram, which Canadian salon clients do not use. Instagram, WhatsApp, SMS and booking sync are all 'on request, price later'.",
+    "Maya's first test answer about a service in the price list failed (100 s, then 'let me check with the owner').",
+    "No trust signals: no testimonials, no real client names, a gmail contact, a Russian toggle, an agency credit in the footer, and two different brands between landing and app."
+   ],
+   "whatWouldMakeYouBuyToday": "1) A landing page that matches the product, e.g. 'Maya, your AI front desk: paste your price list, see her answer your clients in 2 minutes', with a live demo in the hero. 2) Visible CAD monthly plans with 'cancel anytime' and a money-back guarantee. 3) Instagram DM (or at least a shareable chat link and QR for the Instagram bio / Google profile) as the default channel instead of a Telegram BotFather token. 4) Maya's first preview answer quoting the owner's own price instantly. 5) A Stripe checkout button inside the trial ('Keep Maya, $79/mo'). Top 10 changes ranked by expected lift: (1) rewrite hero/landing to the self-serve Maya offer with one CTA; (2) publish CAD pricing plus in-app Stripe checkout; (3) make the chat link / Instagram bio / website widget the default go-live channel and make Telegram optional; (4) fix instant, grounded price answers in the preview and fast first response (hard timeout, answer from the services table); (5) add a live demo or 'paste your price list' try-before-signup on the landing; (6) social proof: 2-3 named pilot salons, a Maya video, founder face, domain email, Canadian contact; (7) guarantee and cancellation terms plus a privacy/PIPEDA note; (8) one brand across landing and app, EN/FR instead of the Russian toggle, remove the agency footer; (9) price and ship Instagram DM + SMS reminders + Fresha/Square sync as self-serve add-ons with visible prices; (10) wizard polish: neutral progress instead of red errors, persist the AI draft immediately, keep deposit amounts, a correct 'Active' state and time-left estimates."
+  }
+ ]
+}
