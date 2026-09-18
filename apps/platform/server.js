@@ -5,7 +5,8 @@ const { URL } = require("url");
 const { createPlatformStore } = require("./backend/store");
 const { createLlmClient } = require("./backend/llm-client");
 const { createAssistant } = require("./backend/assistant");
-const { createAuth } = require("./backend/auth");
+const { createAuth, resolveSessionSecret } = require("./backend/auth");
+const { createTenancy } = require("./backend/tenancy");
 const { resolveSalonScope } = require("./backend/salon-scope");
 
 const ROOT_DIR = __dirname;
@@ -13,8 +14,32 @@ const HOST = process.env.PLATFORM_HOST || "127.0.0.1";
 const PORT = Number(process.env.PORT || process.env.PLATFORM_PORT || 4174);
 const store = createPlatformStore();
 const llm = createLlmClient();
-const assistant = createAssistant({ store, llm });
 const auth = createAuth({ store });
+const tenancy = createTenancy({
+  store,
+  auth,
+  llm,
+  secret: resolveSessionSecret({ dbFile: store.dbFile }),
+  platformNotify
+});
+const assistant = createAssistant(Object.assign({ store, llm }, tenancy.hooks));
+tenancy.attachAssistant(assistant);
+
+// Tells us (the platform operator) about sign-ups and add-on requests. Same
+// formsubmit relay the assistant alerts use; off when ALERT_EMAIL is empty.
+function platformNotify({ subject, lines }) {
+  const to = String(process.env.PLATFORM_EMAIL || process.env.ALERT_EMAIL || "").trim();
+  if (!to) return;
+  const origin = String(process.env.ALERT_ORIGIN || "https://aibeaty.pages.dev").replace(/\/+$/, "");
+  fetch(`https://formsubmit.co/ajax/${to}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json", Origin: origin, Referer: `${origin}/` },
+    body: JSON.stringify({ _subject: subject, details: (lines || []).join("\n") }),
+    signal: AbortSignal.timeout(8000)
+  }).then((response) => {
+    if (!response.ok) console.error(`[platform] notify failed: HTTP ${response.status}`);
+  }).catch((error) => console.error(`[platform] notify failed: ${String(error.message).slice(0, 120)}`));
+}
 
 const LOGIN_PAGE = "/screens/login.html";
 
@@ -22,6 +47,7 @@ const LOGIN_PAGE = "/screens/login.html";
 // frames, the widget itself, and the login door.
 const PUBLIC_EXACT_PATHS = new Set([
   LOGIN_PAGE,
+  "/screens/signup.html",
   "/screens/chat.html",
   "/assistant-widget.js",
   "/favicon.ico",
@@ -46,6 +72,9 @@ const PUBLIC_ASSISTANT_PATHS = new Set([
 
 function isPublicPath(pathname) {
   if (PUBLIC_ASSISTANT_PATHS.has(pathname)) return true;
+  // Telegram calls this for every salon bot; each request is authenticated by
+  // the per-bot secret header inside tenancy.handleTelegramUpdate.
+  if (/^\/api\/telegram\/hook\/\d+$/.test(pathname)) return true;
   if (pathname.startsWith("/api/auth/")) return true;
   if (PUBLIC_EXACT_PATHS.has(pathname)) return true;
   // Stylesheets are the login page's only asset dependency and carry no salon data.
@@ -693,9 +722,10 @@ async function handleAssistantRoutes(request, requestUrl, response) {
     } catch (error) {
       return jsonCors(request, response, 400, { error: "bad_request", message: "Request body must be valid JSON." });
     }
-    const result = await assistant.chat({
-      // Optional: which salon this guest is talking to. Absent → default salon.
-      salon: body.salon || requestUrl.searchParams.get("salon") || "",
+    // Optional: which salon this guest is talking to. Absent → default salon.
+    // Goes through tenancy so a trial salon's plan and setup state gate the reply.
+    const salonSlug = String(body.salon || requestUrl.searchParams.get("salon") || store.DEFAULT_SALON_SLUG);
+    const result = await tenancy.chat(salonSlug, {
       sessionId: body.sessionId,
       message: body.message,
       channel: body.channel,
@@ -815,6 +845,24 @@ async function handleAuthRoutes(request, requestUrl, response) {
     return;
   }
 
+  if (pathname === "/api/auth/signup" && request.method === "POST") {
+    let body = {};
+    try {
+      body = await parseRequestBody(request);
+    } catch (error) {
+      return json(response, 400, { error: "bad_request", message: "Request body must be valid JSON." });
+    }
+    const result = tenancy.signup(body, request);
+    if (!result.ok) return json(response, result.status, { error: result.error, message: result.message, errors: result.errors || [] });
+    response.writeHead(201, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "Set-Cookie": result.setCookie
+    });
+    response.end(JSON.stringify({ ok: true, salonSlug: result.slug, trialEndsAt: result.trialEndsAt, next: "/screens/setup.html" }, null, 2));
+    return;
+  }
+
   if (pathname === "/api/auth/logout" && request.method === "POST") {
     const session = auth.readSession(request);
     if (session) auth.revokeSession(session.sessionId);
@@ -828,6 +876,84 @@ async function handleAuthRoutes(request, requestUrl, response) {
   }
 
   return json(response, 404, { error: "not_found", message: `Unknown auth endpoint: ${pathname}` });
+}
+
+// The owner's self-serve cockpit: setup wizard, channels, plan and add-ons.
+// enforceAuth already pinned request.salonSlug to the session's own salon.
+async function handleSetupRoutes(request, requestUrl, response) {
+  const pathname = requestUrl.pathname;
+  const slug = request.salonSlug;
+  if (!request.session || request.session.role !== "owner") {
+    return json(response, 403, { error: "forbidden", message: "Only the salon owner can change setup." });
+  }
+  const readBody = async () => {
+    try {
+      return await parseRequestBody(request);
+    } catch (error) {
+      return null;
+    }
+  };
+  const tenant = tenancy.getTenant(slug);
+  const language = (tenant && tenant.language) || "en";
+
+  if (pathname === "/api/setup" && request.method === "GET") {
+    const record = store.getSalonRecord(slug) || {};
+    return json(response, 200, {
+      salon: { slug, name: record.name },
+      tenant: tenant
+        ? { plan: tenant.plan, trialEndsAt: tenant.trialEndsAt, trialDaysLeft: tenant.trialDaysLeft, active: tenant.active, setupComplete: tenant.setupComplete, businessType: tenant.businessType, language }
+        : null,
+      setup: tenant ? tenant.setup : null,
+      telegram: tenancy.telegramStatus(slug),
+      addons: tenancy.listAddons(slug, language),
+      chatUrl: `/screens/chat.html?salon=${encodeURIComponent(slug)}`,
+      widgetSnippet: `<script>window.AIBEATY_SALON = "${slug}";</script>\n<script src="https://aibeaty.remolda.com/assistant-widget.js" defer></script>`
+    });
+  }
+
+  if (!tenant) {
+    return json(response, 409, { error: "not_self_serve", message: "This salon is managed by the AIbeaty team." });
+  }
+
+  if (pathname === "/api/setup" && request.method === "PUT") {
+    const body = await readBody();
+    if (!body) return json(response, 400, { error: "bad_request" });
+    const result = tenancy.saveSetup(slug, body.setup || body, { language });
+    return json(response, result.ok ? 200 : 422, result);
+  }
+
+  if (pathname === "/api/setup/extract" && request.method === "POST") {
+    const body = await readBody();
+    if (!body) return json(response, 400, { error: "bad_request" });
+    try {
+      const draft = await tenancy.extractSetup({ text: body.text, url: body.url });
+      return json(response, 200, { ok: true, draft });
+    } catch (error) {
+      const message = error.userFacing ? error.message : "Reading failed. Try again, or paste the price list as text.";
+      if (!error.userFacing) console.error(`[setup] extract failed: ${String(error.message).slice(0, 200)}`);
+      return json(response, 422, { ok: false, message });
+    }
+  }
+
+  if (pathname === "/api/setup/telegram" && request.method === "POST") {
+    const body = await readBody();
+    if (!body) return json(response, 400, { error: "bad_request" });
+    const result = await tenancy.connectTelegram(slug, body.token, { language });
+    return json(response, result.ok ? 200 : 422, result);
+  }
+
+  if (pathname === "/api/setup/telegram" && request.method === "DELETE") {
+    return json(response, 200, await tenancy.disconnectTelegram(slug));
+  }
+
+  if (pathname === "/api/setup/addons" && request.method === "POST") {
+    const body = await readBody();
+    if (!body) return json(response, 400, { error: "bad_request" });
+    const result = tenancy.requestAddon(slug, body.addon, body.note);
+    return json(response, result.ok ? 200 : 422, Object.assign(result, { addons: tenancy.listAddons(slug, language) }));
+  }
+
+  return json(response, 404, { error: "not_found", message: `Unknown setup endpoint: ${pathname}` });
 }
 
 // The gate. Everything that is not explicitly public needs a session, and a session
@@ -876,6 +1002,26 @@ async function requestHandler(request, response) {
 
   if (!enforceAuth(request, requestUrl, response)) return;
 
+  const hookMatch = requestUrl.pathname.match(/^\/api\/telegram\/hook\/(\d+)$/);
+  if (hookMatch) {
+    if (request.method !== "POST") return json(response, 405, { error: "method_not_allowed" });
+    let update = {};
+    try {
+      update = await parseRequestBody(request);
+    } catch (error) {
+      return json(response, 400, { error: "bad_request" });
+    }
+    const outcome = tenancy.handleTelegramUpdate(hookMatch[1], request.headers["x-telegram-bot-api-secret-token"], update);
+    response.writeHead(outcome.status, { "Content-Type": "application/json; charset=utf-8" });
+    response.end(outcome.status === 200 ? "{\"ok\":true}" : "{}");
+    return;
+  }
+
+  if (requestUrl.pathname.startsWith("/api/setup")) {
+    await handleSetupRoutes(request, requestUrl, response);
+    return;
+  }
+
   if (requestUrl.pathname.startsWith("/api/assistant")) {
     await handleAssistantRoutes(request, requestUrl, response);
     return;
@@ -907,7 +1053,9 @@ async function requestHandler(request, response) {
   // Redirect instead so the screen loads from its real /screens/ base.
   // (/index.html still serves the self-contained launcher page.)
   if (requestUrl.pathname === "/") {
-    response.writeHead(302, { Location: "/screens/salon-performance-luminous-core.html" });
+    const tenant = request.session ? tenancy.getTenant(request.session.salonSlug) : null;
+    const home = tenant && !tenant.setupComplete ? "/screens/setup.html" : "/screens/salon-performance-luminous-core.html";
+    response.writeHead(302, { Location: home });
     response.end();
     return;
   }

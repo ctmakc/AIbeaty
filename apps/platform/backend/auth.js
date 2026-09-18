@@ -379,6 +379,7 @@ function createAuth({ store, clock = () => new Date(), log = console.log } = {})
 
 module.exports = {
   createAuth,
+  resolveSessionSecret,
   hashPassword,
   verifyPassword,
   normalizeEmail,

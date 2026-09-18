@@ -336,7 +336,16 @@ const STYLIST_PRAISE_RE = /отличн|прекрасн|замечательн|
 // Markers of an honest correction ("no such stylist") in the reply.
 const STYLIST_CORRECTION_RE = /такого (мастера|майстра|стилиста|стиліста)|(мастера|майстра) (с именем|по имени|на ім'?я)? ?[«"']?[\wа-яёіїєґ'’-]* ?[»"']? ?(у нас )?(нет|немає)|в нашей команде нет|в нашій команді немає|не работает у нас|у нас не працює|у нас (нет|немає) (мастера|майстра)|don'?t have (a |any )?stylist|no stylist (named|called)|isn'?t (on|part of) (our|the) (team|staff)|not on (our|the) (team|staff)/i;
 
-function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, alertFetch, alertLinkBase, dailyTurnsCap } = {}) {
+// Self-serve hooks (all optional, see backend/tenancy.js):
+//   onEvent(salonId, type, payload)   every assistant event after it is stored —
+//                                     tenancy turns bookings/escalations into a
+//                                     Telegram message to the salon owner.
+//   alertEmailFor(salonId)            which inbox gets formsubmit alerts for this
+//                                     salon ("" = none). Default: ALERT_EMAIL for
+//                                     every salon, the pre-self-serve behaviour.
+//   dailyTurnsCapFor(salonId)         per-salon daily LLM turn cap (trial plans
+//                                     get a smaller one); falls back to the global cap.
+function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, alertFetch, alertLinkBase, dailyTurnsCap, onEvent, alertEmailFor, dailyTurnsCapFor } = {}) {
   const db = rootStore.db;
   const clockNow = typeof clock === "function" ? clock : () => new Date();
   // Alert emails: off unless ALERT_EMAIL is set (env or option). No secrets —
@@ -353,7 +362,8 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
   // Cloud quota protection). One "turn" = one chat() invocation that reached
   // the LLM; hard triggers, canned and silenced turns never count.
   const capCandidate = Number(dailyTurnsCap !== undefined ? dailyTurnsCap : process.env.ASSISTANT_DAILY_TURNS_CAP);
-  const DAILY_TURNS_CAP = Number.isFinite(capCandidate) && capCandidate > 0 ? Math.floor(capCandidate) : 400;
+  const GLOBAL_TURNS_CAP = Number.isFinite(capCandidate) && capCandidate > 0 ? Math.floor(capCandidate) : 400;
+  const ALERT_EMAIL_DEFAULT = ALERT_EMAIL;
 
   // ---------------------------------------------------------------------------
   // Everything below is per-salon. `store` inside this scope is the SALON-SCOPED
@@ -365,6 +375,9 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
   function createSalonAssistant(salonId) {
     const store = rootStore.forSalon(salonId);
     if (!store) throw new Error(`unknown salon: ${salonId}`);
+    const salonCap = typeof dailyTurnsCapFor === "function" ? Number(dailyTurnsCapFor(salonId)) : NaN;
+    const DAILY_TURNS_CAP = Number.isFinite(salonCap) && salonCap > 0 ? Math.floor(salonCap) : GLOBAL_TURNS_CAP;
+    const ALERT_EMAIL = typeof alertEmailFor === "function" ? String(alertEmailFor(salonId) || "") : ALERT_EMAIL_DEFAULT;
 
     // Tests may pin a FAQ file; production reads the salon's stored record,
     // which the intake importer wrote.
@@ -441,6 +454,13 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         type,
         JSON.stringify(payload),
         new Date().toISOString());
+      if (typeof onEvent === "function") {
+        try {
+          onEvent(salonId, type, Object.assign({ conversationId: session.conversation_id || "", channel: session.channel || "" }, payload));
+        } catch (error) {
+          console.error(`[assistant] onEvent hook failed: ${String((error && error.message) || error).slice(0, 140)}`);
+        }
+      }
     }
 
     // ---------- LLM spend metering ----------
@@ -2117,6 +2137,14 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
     return salonAssistants.get(id);
   }
 
+  // Hours, FAQ, services and staff are read once when a salon's assistant is
+  // built. The setup wizard calls this after saving so the next message sees the
+  // new catalogue without a server restart. Sessions live in the DB, so nothing
+  // a client said is lost.
+  function invalidate(slug) {
+    salonAssistants.delete(String(slug || "").trim());
+  }
+
   // A conversation id is globally unique, so staff-side actions (takeover,
   // manual reply) can find their salon from the row itself.
   //
@@ -2137,6 +2165,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
 
   return {
     forSalon,
+    invalidate,
     async chat(payload = {}) {
       const salon = forSalon(payload.salon);
       if (!salon) {
