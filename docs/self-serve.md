@@ -9,8 +9,21 @@ plan gate, Telegram webhooks, reminders, trial notices, add-on requests).
 Tests: `npm run selfserve:test`.
 
 ## Rules baked in
-- Clients see Maya only after Go live; before that only the owner (signed-in web
-  chat, or the owner's linked Telegram chat) can talk to her.
+- Clients see Maya only after Go live; before that only the signed-in owner's
+  web test chat can talk to her. The owner's linked Telegram chat never reaches
+  Maya: a reply to an alert is forwarded to that alert's client
+  (`tenant_alert_messages` maps alert message_id → conversation), any other
+  message gets a help text.
+- Owner answers (inbox or Telegram reply) are stored with `author = 'staff'` and
+  `delivery`: Telegram clients get them through the salon bot (`delivered` /
+  `failed` + reason); web chat clients fetch them from the public
+  `/api/assistant/updates` (own `web-<uuid>` session only) → `waiting` → `seen`.
+- Owner alerts: tenant language (en/fr/ru), client name + phone, old → new time,
+  no internal codes; events for one conversation within `OWNER_ALERT_DELAY_MS`
+  (1500) are one message, and a second "needs you" within 60 s is dropped.
+  Medspa/clinic salons get no client text in alerts.
+- Self-serve owners opening `/screens/unified-inbox-luminous-core.html` get
+  `screens/inbox.html` (their real threads only); the demo salon keeps the console.
 - Imported prices are a draft; the owner reviews before Go live.
 - Trial: `TRIAL_DAYS` (14), `TRIAL_DAILY_TURNS_CAP` (150 LLM turns/day).
 - Self-serve salons never email our inbox about their clients; the owner hears
