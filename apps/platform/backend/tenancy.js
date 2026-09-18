@@ -338,6 +338,12 @@ function setupToStore(doc) {
   push("payment", doc.faq.payment);
   push("cancellation_policy", doc.faq.cancellation);
   push("deposit_policy", doc.faq.deposit);
+  // The deposit checkbox on a service is the owner's own statement: say it even
+  // when the Answers step has no deposit text.
+  const depositServices = doc.services.filter((service) => service.deposit).map((service) => service.name);
+  if (depositServices.length && !doc.faq.deposit) {
+    push("deposit_required", `A deposit is required to book: ${depositServices.join(", ")}. The salon confirms the amount.`);
+  }
   push("late_policy", doc.faq.late);
   doc.faq.custom.forEach((entry, index) => push(`custom_${index + 1}`, entry.q ? `${entry.q} — ${entry.a}` : entry.a));
   if (doc.assistant.forbidden) push("forbidden_topics", `Topics we do not discuss: ${doc.assistant.forbidden}.`);
@@ -677,7 +683,8 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       "Rules: copy prices exactly as written (keep 'from', ranges and currency). Never invent a price, a person or an address:",
       "leave a field empty when the text does not say it. If duration is missing, estimate a typical duration for that service",
       "and it will be reviewed. Keep service names in the language of the text. Hours you cannot find: leave empty string.",
-      "deposit is true only for services the text says need a deposit."
+      "deposit is true only for services the text says need a deposit. Copy any deposit rule and amount into faq.deposit,",
+      "and cancellation / late rules into faq.cancellation / faq.late, in the text's own words."
     ].join("\n");
     const message = await llm.complete({
       messages: [
