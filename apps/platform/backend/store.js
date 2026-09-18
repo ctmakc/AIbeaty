@@ -505,6 +505,7 @@ function createPlatformStore() {
     ensureColumn("appointments", "client_id", "TEXT NOT NULL DEFAULT ''");
     ensureColumn("appointments", "service_id", "TEXT NOT NULL DEFAULT ''");
     ensureColumn("appointments", "day_offset", "INTEGER NOT NULL DEFAULT 0");
+    ensureColumn("appointments", "appt_date", "TEXT NOT NULL DEFAULT ''");
     ensureColumn("appointments", "checkout_at", "TEXT NOT NULL DEFAULT ''");
     ensureColumn("appointments", "payment_method", "TEXT NOT NULL DEFAULT ''");
     ensureColumn("appointments", "tip_value", "REAL NOT NULL DEFAULT 0");
@@ -793,6 +794,29 @@ function createPlatformStore() {
         SELECT value FROM metadata WHERE salon_id = ? AND key = 'last_updated'
       `).get(salonId);
       return row ? row.value : touch();
+    }
+
+    // See syncDayAnchor() at the root: offsets are authoritative relative to the
+    // stored anchor, so first refresh absolute dates from them, then — on a new
+    // salon day — recompute offsets from the dates.
+    function rebaseDayOffsets(today) {
+      return db.transaction(() => {
+        const row = db.prepare(`SELECT value FROM metadata WHERE salon_id = ? AND key = 'day_anchor'`).get(salonId);
+        const anchor = row ? row.value : today;
+        db.prepare(`UPDATE appointments SET appt_date = date(?, printf('%+d days', day_offset)) WHERE salon_id = ?`).run(anchor, salonId);
+        if (anchor !== today) {
+          db.prepare(`
+            UPDATE appointments SET day_offset = CAST(ROUND(julianday(appt_date) - julianday(?)) AS INTEGER)
+            WHERE salon_id = ?
+          `).run(today, salonId);
+          touch();
+        }
+        db.prepare(`
+          INSERT INTO metadata (salon_id, key, value) VALUES (?, 'day_anchor', ?)
+          ON CONFLICT(salon_id, key) DO UPDATE SET value = excluded.value
+        `).run(salonId, today);
+        return anchor !== today;
+      })();
     }
 
     // Wipes THIS salon's rows only — a reset of the demo salon never touches
@@ -2132,6 +2156,7 @@ function createPlatformStore() {
         FROM appointments a
         JOIN stylists s ON s.id = a.stylist_id
         WHERE a.salon_id = ? AND a.client_id = ? AND a.checked_out = 0 AND a.appointment_status != 'canceled'
+          AND a.day_offset >= 0 -- past visits (negative after a day rebase) are not "upcoming"
         ORDER BY a.active DESC, a.updated_at DESC, a.sort_order ASC
         LIMIT 1
       `).get(salonId, clientId);
@@ -3555,6 +3580,7 @@ function createPlatformStore() {
       createConversationMessage,
       createConversationBooking,
       replaceCatalog,
+      rebaseDayOffsets,
       getStaffWithServices,
       stylistsForService,
       clearSalonData,
@@ -3573,7 +3599,47 @@ function createPlatformStore() {
     const id = String(slug || DEFAULT_SALON_SLUG).trim() || DEFAULT_SALON_SLUG;
     if (!salonExists(id)) return null;
     if (!scopes.has(id)) scopes.set(id, createSalonScope(id));
+    syncDayAnchor(id);
     return scopes.get(id);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Day anchor. An appointment's `day_offset` counts days from "today", and
+  // nothing used to move that "today": on a real salon every booking slid one
+  // day per midnight and stopped blocking its own slot (a double-booking the
+  // demo never showed, because the demo lives one day at a time).
+  //
+  // Each salon now keeps `day_anchor` (the salon-local date its offsets are
+  // relative to) and every row an absolute `appt_date`. The first touch on a new
+  // salon day rebases day_offset from appt_date, so every reader and writer
+  // above keeps working in offsets. Callers: forSalon() and the assistant's
+  // chat(), i.e. before any read or write.
+  //
+  // The demo salon is exempt on purpose: its seeded week should always look
+  // like "this week" to whoever opens the demo.
+  // ---------------------------------------------------------------------------
+  const anchorSeen = new Map(); // slug → salon-local date last synced in this process
+
+  function salonLocalDate(slug, now = new Date()) {
+    const record = db.prepare(`SELECT timezone FROM salons WHERE id = ?`).get(slug);
+    let zone = (record && record.timezone) || "America/Toronto";
+    try {
+      new Intl.DateTimeFormat("en-CA", { timeZone: zone });
+    } catch (error) {
+      zone = "America/Toronto";
+    }
+    return new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  }
+
+  function syncDayAnchor(slug, { today: todayOverride } = {}) {
+    const id = String(slug || "").trim();
+    if (!id || id === DEFAULT_SALON_SLUG || !salonExists(id)) return false;
+    const today = todayOverride || salonLocalDate(id);
+    if (!todayOverride && anchorSeen.get(id) === today) return false;
+    if (!scopes.has(id)) scopes.set(id, createSalonScope(id));
+    const moved = scopes.get(id).rebaseDayOffsets(today);
+    if (!todayOverride) anchorSeen.set(id, today);
+    return moved;
   }
 
   // The salon this instance answers for when a request names none. This and
@@ -3624,6 +3690,7 @@ function createPlatformStore() {
     salonExists,
     getSalonSlug,
     hasSalon,
+    syncDayAnchor,
     health() {
       return {
         ok: true,

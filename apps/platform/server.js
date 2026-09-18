@@ -725,12 +725,15 @@ async function handleAssistantRoutes(request, requestUrl, response) {
     // Optional: which salon this guest is talking to. Absent → default salon.
     // Goes through tenancy so a trial salon's plan and setup state gate the reply.
     const salonSlug = String(body.salon || requestUrl.searchParams.get("salon") || store.DEFAULT_SALON_SLUG);
+    // The salon's own signed-in owner may test Maya before launch.
+    const viewer = auth.readSession(request);
+    const preview = Boolean(viewer && viewer.salonSlug === salonSlug);
     const result = await tenancy.chat(salonSlug, {
       sessionId: body.sessionId,
       message: body.message,
       channel: body.channel,
       clientPhone: body.clientPhone
-    });
+    }, { preview });
     if (result.error === "unknown_salon") return jsonCors(request, response, 404, result);
     if (result.error === "bad_request") return jsonCors(request, response, 400, result);
     if (result.error === "rate_limited") return jsonCors(request, response, 429, result);
@@ -901,13 +904,13 @@ async function handleSetupRoutes(request, requestUrl, response) {
     return json(response, 200, {
       salon: { slug, name: record.name },
       tenant: tenant
-        ? { plan: tenant.plan, trialEndsAt: tenant.trialEndsAt, trialDaysLeft: tenant.trialDaysLeft, active: tenant.active, setupComplete: tenant.setupComplete, businessType: tenant.businessType, language }
+        ? { plan: tenant.plan, trialEndsAt: tenant.trialEndsAt, trialDaysLeft: tenant.trialDaysLeft, active: tenant.active, setupComplete: tenant.setupComplete, launched: tenant.launched, live: tenant.live, businessType: tenant.businessType, language }
         : null,
       setup: tenant ? tenant.setup : null,
       telegram: tenancy.telegramStatus(slug),
       addons: tenancy.listAddons(slug, language),
       chatUrl: `/screens/chat.html?salon=${encodeURIComponent(slug)}`,
-      widgetSnippet: `<script>window.AIBEATY_SALON = "${slug}";</script>\n<script src="https://aibeaty.remolda.com/assistant-widget.js" defer></script>`
+      widgetSnippet: `<script>window.AIBEATY_API_BASE = "${tenancy.publicBase}"; window.AIBEATY_SALON = "${slug}";</script>\n<script src="${tenancy.publicBase}/assistant-widget.js" defer></script>`
     });
   }
 
@@ -919,6 +922,11 @@ async function handleSetupRoutes(request, requestUrl, response) {
     const body = await readBody();
     if (!body) return json(response, 400, { error: "bad_request" });
     const result = tenancy.saveSetup(slug, body.setup || body, { language });
+    return json(response, result.ok ? 200 : 422, result);
+  }
+
+  if (pathname === "/api/setup/launch" && request.method === "POST") {
+    const result = tenancy.launch(slug);
     return json(response, result.ok ? 200 : 422, result);
   }
 

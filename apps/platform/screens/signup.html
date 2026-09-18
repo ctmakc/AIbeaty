@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta content="noindex, nofollow" name="robots"/>
+<title>AIbeaty — Start your free trial</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@500;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+  /* Tokens mirror apps/platform/tailwind.config.js (Luminous Core M3 light).
+     Sign-up is the owner door's twin (see DESIGN.md «Owner door»): same 5/7 split,
+     same ledger rows, same single settle. */
+  :root {
+    --bg: #f5f6f7;
+    --surface-lowest: #ffffff;
+    --surface-low: #eff1f2;
+    --surface-container: #e6e8ea;
+    --surface-variant: #dadddf;
+    --on-surface: #2c2f30;
+    --on-surface-variant: #595c5d;
+    --outline: #757778;
+    --outline-variant: #abadae;
+    --ink: #17181b;
+    --primary: #4d2afa;
+    --primary-dim: #400aef;
+    --on-primary: #ffffff;
+    --error: #b41340;
+    --on-error-container: #510017;
+    --r-xl: 0.5rem;
+    --r-full: 0.75rem;
+    --font-headline: "Manrope", sans-serif;
+    --font-body: "Inter", sans-serif;
+    --settle: cubic-bezier(.2, 0, 0, 1);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--on-surface);
+    font-family: var(--font-body); font-size: 14px;
+    -webkit-font-smoothing: antialiased; min-height: 100vh;
+  }
+  .material-symbols-outlined { font-variation-settings: "FILL" 0, "wght" 400; vertical-align: middle; }
+
+  .door {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    grid-template-areas: "mark card" "body card";
+    grid-template-rows: auto 1fr;
+    align-content: center;
+    column-gap: 64px;
+    max-width: 1080px; margin: 0 auto; padding: 48px 32px;
+  }
+  .mark { grid-area: mark; display: flex; align-items: center; gap: 12px; margin-bottom: 28px; align-self: end; }
+  .shelf { grid-area: body; max-width: 420px; }
+  .card { grid-area: card; align-self: center; }
+  .disc {
+    width: 44px; height: 44px; border-radius: var(--r-full);
+    background: linear-gradient(135deg, #4d2afa, #7a25db);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-headline); font-weight: 800; font-size: 20px; color: var(--on-primary);
+    flex-shrink: 0;
+  }
+  .mark .name { font-family: var(--font-headline); font-weight: 800; font-size: 17px; letter-spacing: -0.02em; color: var(--ink); line-height: 1.15; }
+  .mark .sub { font-size: 12px; color: var(--on-surface-variant); font-weight: 500; margin-top: 2px; }
+  .lang {
+    margin-left: auto; font: 600 12px var(--font-body); color: var(--on-surface-variant);
+    background: none; border: 1px solid var(--surface-variant); border-radius: var(--r-xl);
+    padding: 6px 10px; cursor: pointer;
+  }
+  .lang:hover { border-color: var(--outline); color: var(--on-surface); }
+
+  .shelf h1 {
+    font-family: var(--font-headline); font-weight: 800; font-size: 36px;
+    line-height: 1.08; letter-spacing: -0.03em; margin: 0 0 12px; color: var(--ink);
+    text-wrap: balance;
+  }
+  .shelf .lede { font-size: 15px; line-height: 1.55; color: var(--on-surface-variant); margin: 0 0 28px; max-width: 40ch; }
+
+  /* The ledger: what happens after this form, in order. Numbers, not icons —
+     it is a sequence the owner will actually walk through. */
+  .ledger { border-top: 1px solid var(--surface-variant); counter-reset: step; }
+  .ledger .row {
+    display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: baseline;
+    padding: 13px 2px; border-bottom: 1px solid var(--surface-variant);
+  }
+  .ledger .row::before {
+    counter-increment: step; content: counter(step, decimal-leading-zero);
+    font: 700 12px var(--font-headline); color: var(--outline);
+  }
+  .ledger .t { font-weight: 600; font-size: 14px; color: var(--on-surface); }
+  .ledger .d { font-size: 12.5px; color: var(--on-surface-variant); margin-top: 2px; line-height: 1.45; }
+
+  .card {
+    background: var(--surface-lowest); border: 1px solid var(--surface-variant);
+    border-radius: var(--r-full); padding: 32px 32px 28px; max-width: 480px; width: 100%;
+  }
+  .card h2 { font-family: var(--font-headline); font-weight: 800; font-size: 22px; letter-spacing: -0.02em; margin: 0 0 4px; color: var(--ink); }
+  .card .h2-sub { font-size: 13px; color: var(--on-surface-variant); margin: 0 0 22px; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+  .field { display: grid; gap: 6px; margin-bottom: 15px; }
+  .field label { font-size: 12px; font-weight: 700; color: var(--on-surface-variant); text-transform: uppercase; letter-spacing: 0.04em; }
+  .field .opt { text-transform: none; letter-spacing: 0; font-weight: 500; }
+  .field input, .field select {
+    width: 100%; font-family: var(--font-body); font-size: 15px; color: var(--on-surface);
+    background: var(--surface-lowest); border: 1px solid var(--outline-variant);
+    border-radius: var(--r-xl); padding: 11px 13px; outline: none;
+    transition: border-color 150ms var(--settle), box-shadow 150ms var(--settle);
+  }
+  .field input:hover, .field select:hover { border-color: var(--outline); }
+  .field input:focus, .field select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(77, 42, 250, .14); }
+  .field.bad input, .field.bad select { border-color: var(--error); }
+  .field .err { font-size: 12.5px; color: var(--error); font-weight: 500; display: none; }
+  .field.bad .err { display: block; }
+
+  /* Business type: one tap, not a dropdown — the owner recognises their salon. */
+  .types { display: flex; flex-wrap: wrap; gap: 8px; }
+  .types button {
+    font: 600 13px var(--font-body); color: var(--on-surface);
+    background: var(--surface-low); border: 1px solid var(--surface-variant);
+    border-radius: var(--r-xl); padding: 8px 12px; cursor: pointer;
+    transition: border-color 150ms var(--settle), background 150ms var(--settle);
+  }
+  .types button:hover { border-color: var(--outline); }
+  .types button[aria-pressed="true"] { background: var(--surface-lowest); border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+
+  button.submit {
+    width: 100%; margin-top: 6px;
+    font: 700 15px var(--font-body); color: var(--on-primary);
+    background: var(--primary); border: 1px solid var(--primary);
+    border-radius: var(--r-xl); padding: 13px 18px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: background 150ms var(--settle), transform 120ms var(--settle);
+  }
+  button.submit:hover { background: var(--primary-dim); }
+  button.submit:active { transform: scale(.985); }
+  button.submit[disabled] { opacity: .6; cursor: default; }
+  .fine { font-size: 12px; color: var(--on-surface-variant); line-height: 1.5; margin: 12px 0 0; text-align: center; }
+
+  .alert {
+    display: none; gap: 9px; align-items: flex-start;
+    background: rgba(180, 19, 64, .07); border: 1px solid rgba(180, 19, 64, .22);
+    color: var(--on-error-container); border-radius: var(--r-xl);
+    padding: 11px 13px; font-size: 13px; font-weight: 500; margin-bottom: 16px; line-height: 1.45;
+  }
+  .alert.on { display: flex; }
+  .alert .material-symbols-outlined { font-size: 19px; color: var(--error); }
+  .foot { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--surface-variant); font-size: 13px; color: var(--on-surface-variant); }
+  .foot a { color: var(--primary); font-weight: 600; text-decoration: none; }
+  .foot a:hover { text-decoration: underline; }
+
+  .spinner { width: 15px; height: 15px; border-radius: 999px; border: 2px solid rgba(255,255,255,.35); border-top-color: var(--on-primary); animation: spin 800ms linear infinite; display: none; }
+  button.submit.busy .spinner { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .settle { opacity: 0; transform: translateY(10px); animation: settle 340ms var(--settle) forwards; }
+  @keyframes settle { to { opacity: 1; transform: none; } }
+  .d1 { animation-delay: 60ms; } .d2 { animation-delay: 140ms; } .d3 { animation-delay: 220ms; }
+
+  @media (max-width: 900px) {
+    .door { grid-template-columns: minmax(0, 1fr); grid-template-areas: "mark" "card" "body"; grid-template-rows: auto auto auto; row-gap: 24px; padding: 24px 16px 40px; align-content: start; }
+    .mark { margin-bottom: 0; }
+    .shelf { max-width: none; }
+    .card { max-width: none; padding: 24px 18px 22px; }
+    .shelf h1 { font-size: 27px; }
+  }
+  @media (max-width: 420px) { .grid2 { grid-template-columns: 1fr; } }
+  @media (prefers-reduced-motion: reduce) {
+    .settle { opacity: 1; transform: none; animation: none; }
+    .spinner { animation: none; }
+    * { transition-duration: 1ms !important; }
+  }
+</style>
+</head>
+<body>
+<main class="door">
+  <div class="mark settle d1">
+    <div class="disc" aria-hidden="true">M</div>
+    <div>
+      <div class="name">AIbeaty</div>
+      <div class="sub" data-i18n="markSub">AI front desk for salons</div>
+    </div>
+    <button class="lang" id="lang" type="button" aria-label="Switch language">Русский</button>
+  </div>
+
+  <section class="shelf settle d3">
+    <h1 data-i18n="h1">Maya answers your clients tonight.</h1>
+    <p class="lede" data-i18n="lede">She books, reschedules and answers price questions in your salon's own Telegram bot. You get every booking on your phone.</p>
+    <div class="ledger">
+      <div class="row"><div><div class="t" data-i18n="s1t">Create your account</div><div class="d" data-i18n="s1d">Two minutes. No card.</div></div></div>
+      <div class="row"><div><div class="t" data-i18n="s2t">Paste your price list or website</div><div class="d" data-i18n="s2d">Maya drafts your services and prices, you check them.</div></div></div>
+      <div class="row"><div><div class="t" data-i18n="s3t">Connect your Telegram bot</div><div class="d" data-i18n="s3d">Step-by-step, about five minutes with @BotFather.</div></div></div>
+      <div class="row"><div><div class="t" data-i18n="s4t">14 days free</div><div class="d" data-i18n="s4d">Instagram, WhatsApp, SMS and calendar sync on request.</div></div></div>
+    </div>
+  </section>
+
+  <section class="card settle d2">
+    <h2 data-i18n="cardTitle">Start your free trial</h2>
+    <p class="h2-sub" data-i18n="cardSub">Your salon gets its own assistant and its own workspace.</p>
+
+    <div class="alert" id="alert" role="alert" aria-live="polite">
+      <span class="material-symbols-outlined" aria-hidden="true">error</span>
+      <span id="alert-text"></span>
+    </div>
+
+    <form id="form" novalidate="">
+      <div class="field" data-field="salonName">
+        <label for="salonName" data-i18n="salonName">Salon name</label>
+        <input id="salonName" autocomplete="organization" required/>
+        <div class="err"></div>
+      </div>
+      <div class="field">
+        <label data-i18n="type">What do you do?</label>
+        <div class="types" id="types" role="group">
+          <button type="button" data-type="hair" aria-pressed="false" data-i18n="tHair">Hair</button>
+          <button type="button" data-type="nails" aria-pressed="false" data-i18n="tNails">Nails</button>
+          <button type="button" data-type="lashes_brows" aria-pressed="false" data-i18n="tLashes">Lashes &amp; brows</button>
+          <button type="button" data-type="barber" aria-pressed="false" data-i18n="tBarber">Barber</button>
+          <button type="button" data-type="spa" aria-pressed="false" data-i18n="tSpa">Spa &amp; massage</button>
+          <button type="button" data-type="multi" aria-pressed="true" data-i18n="tMulti">A bit of everything</button>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label for="ownerName" data-i18n="ownerName">Your name</label>
+          <input id="ownerName" autocomplete="name"/>
+        </div>
+        <div class="field">
+          <label for="city" data-i18n="city">City</label>
+          <input id="city" autocomplete="address-level2"/>
+        </div>
+      </div>
+      <div class="field" data-field="timezone">
+        <label for="timezone" data-i18n="timezone">Time zone</label>
+        <select id="timezone">
+          <option value="America/St_Johns">Newfoundland (St. John's)</option>
+          <option value="America/Halifax">Atlantic (Halifax)</option>
+          <option value="America/Toronto" selected>Eastern (Toronto, Ottawa, Montréal)</option>
+          <option value="America/Winnipeg">Central (Winnipeg)</option>
+          <option value="America/Regina">Saskatchewan (Regina)</option>
+          <option value="America/Edmonton">Mountain (Calgary, Edmonton)</option>
+          <option value="America/Vancouver">Pacific (Vancouver)</option>
+          <option value="America/New_York">US Eastern (New York)</option>
+          <option value="America/Chicago">US Central (Chicago)</option>
+          <option value="America/Los_Angeles">US Pacific (Los Angeles)</option>
+          <option value="Europe/London">London</option>
+          <option value="Europe/Kyiv">Kyiv</option>
+        </select>
+        <div class="err"></div>
+      </div>
+      <div class="field" data-field="email">
+        <label for="email" data-i18n="email">Email</label>
+        <input id="email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false"/>
+        <div class="err"></div>
+      </div>
+      <div class="field" data-field="password">
+        <label for="password"><span data-i18n="password">Password</span> <span class="opt" data-i18n="passwordHint">· 10+ characters</span></label>
+        <input id="password" type="password" autocomplete="new-password"/>
+        <div class="err"></div>
+      </div>
+      <button class="submit" id="submit" type="submit">
+        <span class="spinner" aria-hidden="true"></span>
+        <span data-i18n="submit">Create my assistant</span>
+      </button>
+      <p class="fine" data-i18n="fine">14 days free. Nothing to install. Your clients see that Maya is an AI and can ask for a person any time.</p>
+    </form>
+
+    <div class="foot"><span data-i18n="haveAccount">Already have an account?</span> <a href="login.html" data-i18n="signIn">Sign in</a></div>
+  </section>
+</main>
+
+<script>
+(function () {
+  var TEXT = {
+    en: {},
+    ru: {
+      markSub: "ИИ-администратор для салонов",
+      h1: "Майя ответит вашим клиентам уже сегодня.",
+      lede: "Она записывает, переносит визиты и отвечает про цены в собственном Telegram-боте вашего салона. Каждая запись приходит вам на телефон.",
+      s1t: "Создайте аккаунт", s1d: "Две минуты. Без карты.",
+      s2t: "Вставьте прайс или ссылку на сайт", s2d: "Майя сама составит список услуг и цен, вы проверите.",
+      s3t: "Подключите Telegram-бота", s3d: "Пошагово, минут пять с @BotFather.",
+      s4t: "14 дней бесплатно", s4d: "Instagram, WhatsApp, SMS и синхронизация календаря по запросу.",
+      cardTitle: "Бесплатный пробный период", cardSub: "Вашему салону — свой ассистент и свой кабинет.",
+      salonName: "Название салона", type: "Чем вы занимаетесь?",
+      tHair: "Волосы", tNails: "Ногти", tLashes: "Ресницы и брови", tBarber: "Барбершоп", tSpa: "Спа и массаж", tMulti: "Всего понемногу",
+      ownerName: "Ваше имя", city: "Город", timezone: "Часовой пояс", email: "Почта", password: "Пароль", passwordHint: "· от 10 символов",
+      submit: "Создать ассистента",
+      fine: "14 дней бесплатно. Ничего не нужно устанавливать. Клиенты видят, что Майя — ИИ, и могут в любой момент позвать человека.",
+      haveAccount: "Уже есть аккаунт?", signIn: "Войти"
+    }
+  };
+  var MSG = {
+    en: { required: "Fill in the salon name, email and password.", network: "The server did not respond. Try again.", rate: "Too many sign-ups from this network. Try again in an hour." },
+    ru: { required: "Заполните название салона, почту и пароль.", network: "Сервер не ответил. Попробуйте ещё раз.", rate: "Слишком много регистраций из этой сети. Попробуйте через час." }
+  };
+
+  var lang = "en";
+  try {
+    var stored = localStorage.getItem("aibeaty-lang");
+    if (stored === "ru" || stored === "en") lang = stored;
+    else if (/^(ru|uk)/.test(navigator.language || "")) lang = "ru";
+  } catch (error) { /* storage blocked: stay English */ }
+
+  var english = {};
+  document.querySelectorAll("[data-i18n]").forEach(function (node) { english[node.getAttribute("data-i18n")] = node.innerHTML; });
+
+  function applyLang() {
+    document.documentElement.lang = lang;
+    document.querySelectorAll("[data-i18n]").forEach(function (node) {
+      var key = node.getAttribute("data-i18n");
+      node.innerHTML = lang === "ru" && TEXT.ru[key] ? TEXT.ru[key] : english[key];
+    });
+    document.getElementById("lang").textContent = lang === "ru" ? "English" : "Русский";
+    document.title = lang === "ru" ? "AIbeaty — бесплатный пробный период" : "AIbeaty — Start your free trial";
+  }
+  document.getElementById("lang").addEventListener("click", function () {
+    lang = lang === "ru" ? "en" : "ru";
+    try { localStorage.setItem("aibeaty-lang", lang); } catch (error) { /* ignore */ }
+    applyLang();
+  });
+  applyLang();
+
+  // Guess the time zone from the browser when it is one of ours.
+  try {
+    var zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    var select = document.getElementById("timezone");
+    if (zone && select.querySelector('option[value="' + zone + '"]')) select.value = zone;
+  } catch (error) { /* keep Toronto */ }
+
+  var businessType = "multi";
+  document.getElementById("types").addEventListener("click", function (event) {
+    var button = event.target.closest("button[data-type]");
+    if (!button) return;
+    businessType = button.getAttribute("data-type");
+    document.querySelectorAll("#types button").forEach(function (node) {
+      node.setAttribute("aria-pressed", node === button ? "true" : "false");
+    });
+  });
+
+  var form = document.getElementById("form");
+  var submit = document.getElementById("submit");
+  var alertBox = document.getElementById("alert");
+  var alertText = document.getElementById("alert-text");
+
+  function clearErrors() {
+    alertBox.classList.remove("on");
+    document.querySelectorAll(".field.bad").forEach(function (node) { node.classList.remove("bad"); });
+  }
+  function showAlert(text) {
+    alertText.textContent = text;
+    alertBox.classList.add("on");
+  }
+  function fieldError(name, text) {
+    var field = document.querySelector('[data-field="' + name + '"]');
+    if (!field) return showAlert(text);
+    field.classList.add("bad");
+    field.querySelector(".err").textContent = text;
+  }
+  function value(id) { return (document.getElementById(id).value || "").trim(); }
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    clearErrors();
+    var payload = {
+      salonName: value("salonName"),
+      businessType: businessType,
+      ownerName: value("ownerName"),
+      city: value("city"),
+      timezone: document.getElementById("timezone").value,
+      email: value("email"),
+      password: document.getElementById("password").value || "",
+      language: lang
+    };
+    if (!payload.salonName || !payload.email || !payload.password) {
+      showAlert(MSG[lang].required);
+      return;
+    }
+    submit.disabled = true;
+    submit.classList.add("busy");
+    fetch("/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(payload)
+    })
+      .then(function (response) { return response.json().then(function (data) { return { status: response.status, data: data }; }); })
+      .then(function (result) {
+        if (result.status === 201 && result.data.ok) {
+          window.location.replace(result.data.next || "/screens/setup.html");
+          return;
+        }
+        submit.disabled = false;
+        submit.classList.remove("busy");
+        if (result.status === 429) return showAlert(MSG[lang].rate);
+        var errors = (result.data && result.data.errors) || [];
+        if (!errors.length) return showAlert((result.data && result.data.message) || MSG[lang].network);
+        errors.forEach(function (error) { fieldError(error.field, error.message); });
+        var first = document.querySelector(".field.bad input, .field.bad select");
+        if (first) first.focus();
+      })
+      .catch(function () {
+        submit.disabled = false;
+        submit.classList.remove("busy");
+        showAlert(MSG[lang].network);
+      });
+  });
+})();
+</script>
+</body></html>

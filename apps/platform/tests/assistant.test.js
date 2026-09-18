@@ -61,6 +61,18 @@ const BOOK_ARGS = {
 
 let passed = 0;
 const failures = [];
+// The day a booking test uses must still have free slots: a hard-coded "Friday"
+// has none on a Friday evening, which made these tests fail by time of day.
+function pickBookableDay(probe, duration) {
+  const days = [["вторник", "во вторник"], ["среда", "в среду"], ["четверг", "в четверг"], ["пятница", "в пятницу"], ["суббота", "в субботу"]];
+  const found = days
+    .map(([word, phrase]) => ({ word, phrase, offset: probe._internals.resolveDay(word).offset }))
+    .filter((day) => probe._internals.freeSlots(day.offset, duration, null).length > 0)
+    .sort((a, b) => a.offset - b.offset)[0];
+  if (!found) throw new Error("no weekday with free slots in the demo salon");
+  return found;
+}
+
 async function test(name, fn) {
   try {
     await fn();
@@ -625,20 +637,21 @@ async function test(name, fn) {
 
   await test("auto-commit backstop: affirmation + staged action + empty model reply commits in code", async () => {
     const probe = createAssistant({ store, llm: scriptedLlm([]) });
-    const dayOffset = probe._internals.resolveDay("пятница").offset;
     const duration = store.db.prepare(`SELECT duration_minutes FROM services WHERE name = 'Blowout & Style'`).get().duration_minutes;
+    const DAY = pickBookableDay(probe, duration);
+    const dayOffset = DAY.offset;
     const slot = probe._internals.freeSlots(dayOffset, duration, null)[0];
     const timeArg = `${Math.floor(slot.startMinutes / 60)}:${String(slot.startMinutes % 60).padStart(2, "0")}`;
-    const bookArgs = { service: "укладка", day: "пятница", time: timeArg, stylist: slot.stylist, client_name: "Тест Бэкстоп" };
+    const bookArgs = { service: "укладка", day: DAY.word, time: timeArg, stylist: slot.stylist, client_name: "Тест Бэкстоп" };
     const assistant = createAssistant({
       store,
       llm: scriptedLlm([
         toolCall("book_appointment", bookArgs),
-        text("Проверяю: укладка в пятницу. Всё верно?"),
+        text(`Проверяю: укладка ${DAY.phrase}. Всё верно?`),
         text("") // the model flakes out on the commit turn
       ])
     });
-    await assistant.chat({ sessionId: "s-auto", message: `Запишите меня на укладку в пятницу в ${timeArg}, я Тест Бэкстоп` });
+    await assistant.chat({ sessionId: "s-auto", message: `Запишите меня на укладку ${DAY.phrase} в ${timeArg}, я Тест Бэкстоп` });
     const result = await assistant.chat({ sessionId: "s-auto", message: "Да, всё верно!" });
     const row = store.db.prepare(`SELECT * FROM appointments WHERE client_name = 'Тест Бэкстоп'`).get();
     assert.ok(row && row.appointment_status === "scheduled", `row committed by the backstop: ${JSON.stringify(row)}`);
@@ -650,11 +663,12 @@ async function test(name, fn) {
 
   await test("auto-commit backstop: cancel commits even when the LLM throws", async () => {
     const probe = createAssistant({ store, llm: scriptedLlm([]) });
-    const dayOffset = probe._internals.resolveDay("пятница").offset;
     const duration = store.db.prepare(`SELECT duration_minutes FROM services WHERE name = 'Men''s Scissor Cut'`).get().duration_minutes;
+    const DAY = pickBookableDay(probe, duration);
+    const dayOffset = DAY.offset;
     const slot = probe._internals.freeSlots(dayOffset, duration, null)[0];
     const timeArg = `${Math.floor(slot.startMinutes / 60)}:${String(slot.startMinutes % 60).padStart(2, "0")}`;
-    const bookArgs = { service: "мужская стрижка", day: "пятница", time: timeArg, stylist: slot.stylist, client_name: "Тест Бэкстоп Отмена" };
+    const bookArgs = { service: "мужская стрижка", day: DAY.word, time: timeArg, stylist: slot.stylist, client_name: "Тест Бэкстоп Отмена" };
     let mode = "book";
     const assistant = createAssistant({
       store,
@@ -662,11 +676,11 @@ async function test(name, fn) {
         model: "mock", baseUrl: "mock://",
         script: scriptedLlm([
           toolCall("book_appointment", bookArgs),
-          text("Проверяю: мужская стрижка в пятницу. Всё верно?"),
+          text(`Проверяю: мужская стрижка ${DAY.phrase}. Всё верно?`),
           toolCall("book_appointment", bookArgs),
           text("Вы записаны!"),
           toolCall("cancel_appointment", {}),
-          text("Проверяю: отменяем мужскую стрижку в пятницу?")
+          text(`Проверяю: отменяем мужскую стрижку ${DAY.phrase}?`)
         ]),
         async complete(args) {
           if (mode === "die") throw new Error("simulated LLM outage");
@@ -674,7 +688,7 @@ async function test(name, fn) {
         }
       }
     });
-    await assistant.chat({ sessionId: "s-auto-cancel", message: `Запишите на мужскую стрижку в пятницу в ${timeArg}, я Тест Бэкстоп Отмена` });
+    await assistant.chat({ sessionId: "s-auto-cancel", message: `Запишите на мужскую стрижку ${DAY.phrase} в ${timeArg}, я Тест Бэкстоп Отмена` });
     await assistant.chat({ sessionId: "s-auto-cancel", message: "Да, всё верно!" });
     await assistant.chat({ sessionId: "s-auto-cancel", message: "Хочу отменить запись" });
     mode = "die";

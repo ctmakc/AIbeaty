@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta content="noindex, nofollow" name="robots"/>
+<title>AIbeaty — Set up your assistant</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@500;700;800&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+  /* Luminous Core M3 light (tailwind.config.js), mirrored like login.html / digest.html.
+     The wizard's one layout primitive is the ledger row: the step rail, the service
+     list, the team and the add-ons are all hairline-ruled rows, never card grids. */
+  :root {
+    --bg: #f5f6f7;
+    --surface-lowest: #ffffff;
+    --surface-low: #eff1f2;
+    --surface-container: #e6e8ea;
+    --surface-variant: #dadddf;
+    --on-surface: #2c2f30;
+    --on-surface-variant: #595c5d;
+    --outline: #757778;
+    --outline-variant: #abadae;
+    --ink: #17181b;
+    --primary: #4d2afa;
+    --primary-dim: #400aef;
+    --on-primary: #ffffff;
+    --tertiary-container: #c79eff;
+    --on-tertiary-container: #450087;
+    --secondary-container: #97daff;
+    --on-secondary-container: #004d68;
+    --ok: #0b6b3a;
+    --ok-bg: rgba(11, 107, 58, .08);
+    --error: #b41340;
+    --on-error-container: #510017;
+    --r-sm: 0.25rem;
+    --r-xl: 0.5rem;
+    --r-full: 0.75rem;
+    --font-headline: "Manrope", sans-serif;
+    --font-body: "Inter", sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+    --settle: cubic-bezier(.2, 0, 0, 1);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--bg); color: var(--on-surface); font-family: var(--font-body); font-size: 14px; -webkit-font-smoothing: antialiased; }
+  .material-symbols-outlined { font-variation-settings: "FILL" 0, "wght" 400; vertical-align: middle; font-size: 20px; }
+  a { color: var(--primary); }
+  button { font-family: var(--font-body); }
+
+  /* ---- top bar ---- */
+  .bar {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 24px; background: rgba(245, 246, 247, .92);
+    backdrop-filter: blur(6px); border-bottom: 1px solid var(--surface-variant);
+  }
+  .disc {
+    width: 34px; height: 34px; border-radius: var(--r-full); flex-shrink: 0;
+    background: linear-gradient(135deg, #4d2afa, #7a25db);
+    display: flex; align-items: center; justify-content: center;
+    font: 800 16px var(--font-headline); color: var(--on-primary);
+  }
+  .bar .salon { font: 800 15px var(--font-headline); color: var(--ink); letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pill { font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 999px; background: var(--surface-container); color: var(--on-surface-variant); white-space: nowrap; }
+  .pill.live { background: var(--ok-bg); color: var(--ok); }
+  .bar .grow { flex: 1; }
+  .ghost {
+    font: 600 12.5px var(--font-body); color: var(--on-surface-variant); background: none;
+    border: 1px solid var(--surface-variant); border-radius: var(--r-xl); padding: 6px 10px; cursor: pointer; text-decoration: none; white-space: nowrap;
+  }
+  .ghost:hover { border-color: var(--outline); color: var(--on-surface); }
+  #saved { font-size: 12px; color: var(--on-surface-variant); min-width: 60px; text-align: right; }
+
+  /* ---- layout: step rail + panel ---- */
+  .wrap { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 40px; max-width: 1120px; margin: 0 auto; padding: 32px 24px 80px; }
+  .rail { position: sticky; top: 84px; align-self: start; border-top: 1px solid var(--surface-variant); }
+  .rail button {
+    width: 100%; display: grid; grid-template-columns: 26px 1fr 20px; align-items: center; gap: 8px;
+    padding: 11px 4px; background: none; border: 0; border-bottom: 1px solid var(--surface-variant);
+    text-align: left; cursor: pointer; color: var(--on-surface-variant); font-size: 13.5px; font-weight: 600;
+  }
+  .rail button .n { font: 700 12px var(--font-headline); color: var(--outline); }
+  .rail button:hover { color: var(--on-surface); }
+  .rail button[aria-current="step"] { color: var(--ink); }
+  .rail button[aria-current="step"] .n { color: var(--primary); }
+  .rail button .st { font-size: 18px; color: var(--outline-variant); }
+  .rail button .st.done { color: var(--ok); }
+  .rail button .st.todo { color: var(--error); }
+
+  .panel { min-width: 0; }
+  .panel h1 { font: 800 28px/1.12 var(--font-headline); letter-spacing: -0.03em; color: var(--ink); margin: 0 0 8px; }
+  .panel .lede { font-size: 14.5px; line-height: 1.55; color: var(--on-surface-variant); margin: 0 0 26px; max-width: 64ch; }
+  .panel h2 { font: 800 16px var(--font-headline); color: var(--ink); margin: 30px 0 10px; letter-spacing: -0.01em; }
+  .step { animation: settle 300ms var(--settle); }
+  @keyframes settle { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  /* ---- fields ---- */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  .field { display: grid; gap: 6px; margin-bottom: 14px; }
+  .field > label, .lbl { font-size: 12px; font-weight: 700; color: var(--on-surface-variant); text-transform: uppercase; letter-spacing: 0.04em; }
+  .hint { font-size: 12.5px; color: var(--on-surface-variant); line-height: 1.45; }
+  input, select, textarea {
+    width: 100%; font-family: var(--font-body); font-size: 14.5px; color: var(--on-surface);
+    background: var(--surface-lowest); border: 1px solid var(--outline-variant);
+    border-radius: var(--r-xl); padding: 10px 12px; outline: none;
+    transition: border-color 150ms var(--settle), box-shadow 150ms var(--settle);
+  }
+  textarea { resize: vertical; min-height: 84px; line-height: 1.5; }
+  input:hover, select:hover, textarea:hover { border-color: var(--outline); }
+  input:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(77, 42, 250, .14); }
+  .bad { border-color: var(--error) !important; background: rgba(180, 19, 64, .04); }
+  input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--primary); padding: 0; }
+
+  .btn {
+    font: 700 14px var(--font-body); color: var(--on-primary); background: var(--primary);
+    border: 1px solid var(--primary); border-radius: var(--r-xl); padding: 11px 16px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
+    transition: background 150ms var(--settle), transform 120ms var(--settle);
+  }
+  .btn:hover { background: var(--primary-dim); }
+  .btn:active { transform: scale(.985); }
+  .btn[disabled] { opacity: .55; cursor: default; }
+  .btn.quiet { background: var(--surface-lowest); color: var(--on-surface); border-color: var(--outline-variant); }
+  .btn.quiet:hover { border-color: var(--outline); background: var(--surface-low); }
+  .btn.small { font-size: 13px; padding: 7px 11px; }
+  .linkbtn { background: none; border: 0; color: var(--primary); font: 600 13px var(--font-body); cursor: pointer; padding: 4px 0; }
+  .linkbtn:hover { text-decoration: underline; }
+  .iconbtn { background: none; border: 0; color: var(--outline); cursor: pointer; padding: 4px; border-radius: var(--r-sm); }
+  .iconbtn:hover { color: var(--error); background: rgba(180, 19, 64, .06); }
+  .nav { display: flex; justify-content: space-between; gap: 12px; margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--surface-variant); }
+
+  /* ---- hours ---- */
+  .hours { border-top: 1px solid var(--surface-variant); }
+  .hours .row { display: grid; grid-template-columns: 120px 110px 1fr; align-items: center; gap: 12px; padding: 8px 2px; border-bottom: 1px solid var(--surface-variant); }
+  .hours .row .day { font-weight: 600; }
+  .hours .times { display: flex; align-items: center; gap: 8px; }
+  .hours .times input { width: 110px; font-family: var(--font-mono); font-size: 13.5px; }
+  .hours .closed { color: var(--on-surface-variant); font-size: 13px; }
+  .toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+
+  /* ---- import box: the one tinted surface on the services step ---- */
+  .import { background: var(--surface-lowest); border: 1px solid var(--surface-variant); border-radius: var(--r-full); padding: 18px 18px 16px; margin-bottom: 26px; }
+  .import .head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .import .head .disc { width: 28px; height: 28px; font-size: 13px; }
+  .import .head b { font: 800 15px var(--font-headline); color: var(--ink); }
+  .import .row2 { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-top: 10px; align-items: center; }
+  .note { display: none; margin-top: 12px; font-size: 13px; line-height: 1.45; padding: 10px 12px; border-radius: var(--r-xl); }
+  .note.on { display: block; }
+  .note.ok { background: var(--ok-bg); color: var(--ok); }
+  .note.err { background: rgba(180, 19, 64, .07); color: var(--on-error-container); }
+
+  /* ---- ruled rows for services / team / Q&A ---- */
+  .rows { border-top: 1px solid var(--surface-variant); }
+  .srow { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.3fr) 82px 104px 64px 30px; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--surface-variant); }
+  .srow.head { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--on-surface-variant); padding: 8px 0; }
+  .srow input { padding: 8px 10px; font-size: 14px; }
+  .srow .dep { display: flex; justify-content: center; }
+  .srow.flag input[data-k="price"] { border-color: var(--on-tertiary-container); }
+  .trow { padding: 12px 0; border-bottom: 1px solid var(--surface-variant); display: grid; gap: 10px; }
+  .trow .top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 30px; gap: 8px; align-items: center; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font: 600 12.5px var(--font-body); padding: 5px 10px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--surface-variant); background: var(--surface-lowest); color: var(--on-surface-variant);
+  }
+  .chip[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+  .qrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) 30px; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--surface-variant); }
+
+  /* ---- go live ---- */
+  .todo { border-top: 1px solid var(--surface-variant); margin-bottom: 18px; }
+  .todo .item { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: start; padding: 10px 2px; border-bottom: 1px solid var(--surface-variant); font-size: 13.5px; line-height: 1.45; }
+  .todo .item .material-symbols-outlined { font-size: 18px; color: var(--error); margin-top: 1px; }
+  .livebox { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 28px; align-items: start; }
+  .phone { border: 1px solid var(--surface-variant); border-radius: 18px; overflow: hidden; height: 600px; background: var(--surface-lowest); }
+  .phone iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .status { display: flex; gap: 10px; align-items: flex-start; padding: 14px; border-radius: var(--r-full); margin-bottom: 18px; line-height: 1.5; }
+  .status.ok { background: var(--ok-bg); color: var(--ok); }
+  .status.wait { background: var(--surface-container); color: var(--on-surface); }
+  .tries { margin: 8px 0 0; padding-left: 18px; color: var(--on-surface-variant); line-height: 1.7; }
+
+  /* ---- channels ---- */
+  .howto { counter-reset: how; border-top: 1px solid var(--surface-variant); margin: 6px 0 16px; }
+  .howto li { list-style: none; counter-increment: how; display: grid; grid-template-columns: 28px 1fr; gap: 8px; padding: 10px 2px; border-bottom: 1px solid var(--surface-variant); line-height: 1.5; }
+  .howto li::before { content: counter(how); font: 700 12px var(--font-headline); color: var(--outline); padding-top: 2px; }
+  .howto { padding: 0; }
+  code, .mono { font-family: var(--font-mono); font-size: 12.5px; }
+  code { background: var(--surface-container); padding: 1px 5px; border-radius: var(--r-sm); }
+  pre.snippet { font-family: var(--font-mono); font-size: 12px; background: var(--ink); color: #e9e8f5; padding: 14px; border-radius: var(--r-xl); overflow-x: auto; white-space: pre; margin: 8px 0; }
+  .connected { display: grid; gap: 10px; border-top: 1px solid var(--surface-variant); }
+  .connected .line { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: center; padding: 10px 2px; border-bottom: 1px solid var(--surface-variant); }
+  .connected .line .material-symbols-outlined { color: var(--ok); font-size: 19px; }
+  .connected .line.pending .material-symbols-outlined { color: var(--outline); }
+
+  /* ---- plan ---- */
+  .addons { border-top: 1px solid var(--surface-variant); }
+  .addons .a { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding: 12px 2px; border-bottom: 1px solid var(--surface-variant); }
+  .addons .a .t { font-weight: 600; }
+  .tag { font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 999px; white-space: nowrap; }
+  .tag.active { background: var(--ok-bg); color: var(--ok); }
+  .tag.requested { background: var(--secondary-container); color: var(--on-secondary-container); }
+
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); opacity: 0; background: var(--ink); color: #fff; padding: 10px 16px; border-radius: var(--r-xl); font-size: 13.5px; transition: all 220ms var(--settle); pointer-events: none; z-index: 20; }
+  .toast.on { opacity: 1; transform: translateX(-50%); }
+  .spin { width: 14px; height: 14px; border-radius: 999px; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; animation: rot 800ms linear infinite; display: inline-block; }
+  .btn.quiet .spin { border-color: var(--surface-variant); border-top-color: var(--primary); }
+  @keyframes rot { to { transform: rotate(360deg); } }
+
+  @media (max-width: 900px) {
+    .wrap { grid-template-columns: minmax(0, 1fr); gap: 18px; padding: 16px 16px 60px; }
+    .rail { position: static; display: flex; overflow-x: auto; border-top: 0; border-bottom: 1px solid var(--surface-variant); gap: 2px; scrollbar-width: none; }
+    .rail button { width: auto; grid-template-columns: auto auto; border-bottom: 2px solid transparent; padding: 10px 8px; white-space: nowrap; }
+    .rail button .st { display: none; }
+    .rail button[aria-current="step"] { border-bottom-color: var(--primary); }
+    .bar { padding: 10px 16px; gap: 8px; }
+    .bar .hide-sm, .pill .hide-sm, #saved, .bar .salon { display: none; }
+    .livebox { grid-template-columns: minmax(0, 1fr); }
+    .phone { height: 540px; }
+    .srow { grid-template-columns: minmax(0, 1fr) 70px 90px 30px; }
+    .srow .cat, .srow .dep, .srow.head .cat, .srow.head .dep { display: none; }
+    .hours .row { grid-template-columns: 1fr auto; }
+    .hours .row .times { grid-column: 1 / -1; }
+    .panel h1 { font-size: 23px; }
+  }
+  @media (max-width: 480px) {
+    .grid2 { grid-template-columns: 1fr; }
+    .trow .top { grid-template-columns: minmax(0, 1fr) 30px; }
+    .trow .top .role { grid-column: 1 / 2; }
+    .qrow { grid-template-columns: minmax(0, 1fr) 30px; }
+    .qrow textarea { grid-column: 1 / 2; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .step { animation: none; }
+    .spin { animation: none; }
+    * { transition-duration: 1ms !important; }
+  }
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="disc" aria-hidden="true">M</div>
+  <div class="salon" id="salonName">…</div>
+  <span class="pill" id="planPill"></span>
+  <div class="grow"></div>
+  <span id="saved" aria-live="polite"></span>
+  <button class="ghost" id="lang" type="button">Русский</button>
+  <a class="ghost hide-sm" href="/screens/salon-performance-luminous-core.html" id="dashLink">Dashboard</a>
+  <button class="ghost" id="logout" type="button">Sign out</button>
+</header>
+
+<div class="wrap">
+  <nav class="rail" id="rail" aria-label="Setup steps"></nav>
+  <main class="panel" id="panel"></main>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ------------------------------------------------------------------ text
+  var T = {
+    en: {
+      dashboard: "Dashboard", signOut: "Sign out", saving: "Saving…", saved: "Saved", offline: "Not saved — check connection",
+      trial: function (days) { return "Trial · " + days + (days === 1 ? " day left" : " days left"); },
+      trialOver: "Trial ended", live: "Live", notLive: "Not live yet",
+      steps: ["Your salon", "Services & prices", "Team", "Answers", "Test & go live", "Channels", "Plan & extras"],
+      next: "Next", back: "Back",
+      s1h: "Your salon", s1l: "The basics Maya tells clients: where you are, how to reach you and when you are open.",
+      name: "Salon name", city: "City", address: "Address", phone: "Phone", website: "Website", instagram: "Instagram", timezone: "Time zone",
+      hours: "Opening hours", open: "Open", closed: "Closed", from: "from", to: "to",
+      days: { sun: "Sunday", mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday" },
+      s2h: "Services & prices", s2l: "Maya only quotes what is written here, exactly as you write it. Nothing else.",
+      importTitle: "Let Maya read your price list",
+      importHint: "Paste your menu from Instagram, a PDF or your booking app, or give a link to your website. You check the result before anything goes live.",
+      importPaste: "Paste your price list here…", importUrl: "https://your-salon.com (optional)", importBtn: "Draft my services",
+      importing: "Reading…", imported: function (s, t) { return "Drafted " + s + " services" + (t ? " and " + t + " team members" : "") + ". Check the prices and times below, then continue."; },
+      importNone: "Maya did not find services in that text. Try pasting only the price list.",
+      starter: "Or start from a typical menu", starterNote: "Typical times are filled in, prices are yours to add.",
+      colName: "Service", colCat: "Category", colMin: "Minutes", colPrice: "Price", colDep: "Deposit",
+      phName: "e.g. Gel manicure", phCat: "e.g. Nails", phPrice: "$65 or from $110",
+      addService: "Add a service", keywordsHint: "Maya understands everyday words for your services (\"gel nails\", \"shellac\", \"fade\") on her own.",
+      s3h: "Team", s3l: "Who does the work and on which days. Maya offers each person's free time only on their days.",
+      member: "Name", role: "Role", phMember: "e.g. Olena", phRole: "e.g. Nail tech",
+      workDays: "Works on", doesWhat: "Does", allServices: "All services", addMember: "Add a person",
+      short: { sun: "Sun", mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat" },
+      s4h: "Answers", s4l: "What clients ask most. Maya uses your words. Leave anything blank that you would rather answer yourself: she hands those to you.",
+      parking: "Parking", payment: "Payment methods", cancellation: "Cancellation policy", deposit: "Deposits", late: "If a client is late",
+      phParking: "Free lot behind the building", phPayment: "Card, cash, e-Transfer", phCancellation: "Free up to 24 hours before", phDeposit: "30% for extensions, non-refundable", phLate: "We wait 15 minutes, then may reschedule",
+      custom: "Other questions", phQ: "Question", phA: "Your answer", addQ: "Add a question",
+      forbidden: "Topics Maya should not discuss", phForbidden: "e.g. medical advice, competitors",
+      s5h: "Test & go live", s5l: "Everything you enter is saved as you type. Clients see Maya only after you press Go live.",
+      liveOk: "Maya is live for your clients. Changes you make from now on apply right away.",
+      readyTitle: "Ready. Test Maya in the chat: only you can see her for now.", readyLead: "Ask what your clients ask. When the answers look right, go live.",
+      goLive: "Go live", launching: "Going live…", launchedToast: "Maya is live. Next: connect your Telegram bot.",
+      waitTitle: "Almost there. Fix these and Maya goes live:", fix: "Fix",
+      tryThis: "Try asking:", try1: function (name) { return "How much does “" + name + "” cost?"; }, try2: "Can I book for Friday afternoon?", try3: "Where do I park?", try4: "I want to talk to a person",
+      warnings: "Worth a look (not blocking):",
+      s6h: "Channels", s6l: "Where your clients can reach Maya. Telegram and your website are included.",
+      tgTitle: "Your salon's Telegram bot", tgLead: "A bot with your salon's name. Clients open it and Maya answers. It takes about five minutes:",
+      tg1: "Open <a href=\"https://t.me/BotFather\" target=\"_blank\" rel=\"noopener\">@BotFather</a> in Telegram and press <b>Start</b>.",
+      tg2: "Send <code>/newbot</code>. Give it your salon's name, then a username ending in <code>bot</code>, like <code>petalnails_bot</code>.",
+      tg3: "BotFather replies with a token like <code>1234567890:AAH…</code>. Copy it and paste it below.",
+      tokenPh: "Paste the token from BotFather", connect: "Connect bot", connecting: "Connecting…",
+      tgConnected: "Connected", tgOpen: "Open your bot", tgOwner: "Get bookings and alerts in your Telegram", tgOwnerDone: "Bookings and alerts come to your Telegram",
+      tgOwnerHint: "Tap once from the phone where you use Telegram. The bot then messages you on every booking, change and \"call a human\".",
+      tgLink: "Link my Telegram", tgDisconnect: "Disconnect", tgReplace: "Use a different bot",
+      qr: "Put this link on your Instagram bio, Google profile and at the front desk:",
+      webTitle: "Chat on your website", webLead: "Paste these two lines before <code>&lt;/body&gt;</code> on your site. A chat button with Maya appears in the corner.",
+      copy: "Copy", copied: "Copied", chatLink: "Or share this chat link:",
+      moreTitle: "Instagram, WhatsApp, Messenger, SMS", moreLead: "We connect these for you. Request them on the next step.",
+      s7h: "Plan & extras", s7l: "Your trial includes Maya on Telegram and your website, with bookings sent to your phone.",
+      trialLine: function (days, date) { return days > 0 ? "Trial: " + days + " days left (until " + date + ")." : "Your trial ended on " + date + ". Maya is paused for clients."; },
+      paidLine: "Your plan is active.",
+      request: "Request", setUp: "Set up", requested: "Requested", active: "Active", notePh: "Anything we should know? (optional)",
+      requestedToast: "Request sent. We will get back to you within one business day.",
+      addonsLead: "We set these up for you and send the price first. Nothing is charged without your yes.",
+      keepTitle: "Keep Maya after the trial", keepLead: "Tell us you want to continue and we will send you a plan and payment link.",
+      loadFail: "Could not load your setup. Refresh the page.", managed: "This salon is set up by the AIbeaty team. Write to us to change it."
+    },
+    ru: {
+      dashboard: "Кабинет", signOut: "Выйти", saving: "Сохраняю…", saved: "Сохранено", offline: "Не сохранено — проверьте интернет",
+      trial: function (days) { return "Пробный период · осталось " + days + " дн."; },
+      trialOver: "Пробный период закончился", live: "Работает", notLive: "Ещё не запущена",
+      steps: ["Салон", "Услуги и цены", "Мастера", "Ответы", "Проверка и запуск", "Каналы", "Тариф и доп. услуги"],
+      next: "Дальше", back: "Назад",
+      s1h: "Ваш салон", s1l: "Основное, что Майя говорит клиентам: где вы находитесь, как с вами связаться и когда вы работаете.",
+      name: "Название салона", city: "Город", address: "Адрес", phone: "Телефон", website: "Сайт", instagram: "Instagram", timezone: "Часовой пояс",
+      hours: "Часы работы", open: "Работаем", closed: "Выходной", from: "с", to: "до",
+      days: { sun: "Воскресенье", mon: "Понедельник", tue: "Вторник", wed: "Среда", thu: "Четверг", fri: "Пятница", sat: "Суббота" },
+      s2h: "Услуги и цены", s2l: "Майя называет только то, что написано здесь, и ровно так, как вы написали.",
+      importTitle: "Пусть Майя прочитает ваш прайс",
+      importHint: "Вставьте прайс из Instagram, PDF или программы записи, либо дайте ссылку на сайт. Вы проверите результат до запуска.",
+      importPaste: "Вставьте прайс сюда…", importUrl: "https://ваш-салон.com (необязательно)", importBtn: "Составить список услуг",
+      importing: "Читаю…", imported: function (s, t) { return "Найдено услуг: " + s + (t ? ", мастеров: " + t : "") + ". Проверьте цены и время ниже и идите дальше."; },
+      importNone: "Майя не нашла услуг в этом тексте. Попробуйте вставить только прайс.",
+      starter: "Или начните с типового прайса", starterNote: "Время заполнено типовое, цены впишите свои.",
+      colName: "Услуга", colCat: "Категория", colMin: "Минут", colPrice: "Цена", colDep: "Депозит",
+      phName: "напр. Маникюр с покрытием", phCat: "напр. Ногти", phPrice: "$65 или от $110",
+      addService: "Добавить услугу", keywordsHint: "Майя сама понимает, как клиенты называют услуги («гель-лак», «шеллак», «фейд»).",
+      s3h: "Мастера", s3l: "Кто работает и в какие дни. Майя предлагает время мастера только в его дни.",
+      member: "Имя", role: "Роль", phMember: "напр. Олена", phRole: "напр. Мастер маникюра",
+      workDays: "Рабочие дни", doesWhat: "Делает", allServices: "Все услуги", addMember: "Добавить мастера",
+      short: { sun: "Вс", mon: "Пн", tue: "Вт", wed: "Ср", thu: "Чт", fri: "Пт", sat: "Сб" },
+      s4h: "Ответы", s4l: "Самые частые вопросы клиентов. Майя отвечает вашими словами. Что оставите пустым, она передаст вам.",
+      parking: "Парковка", payment: "Способы оплаты", cancellation: "Правила отмены", deposit: "Депозиты", late: "Если клиент опаздывает",
+      phParking: "Бесплатная парковка за зданием", phPayment: "Карта, наличные, e-Transfer", phCancellation: "Бесплатно за 24 часа", phDeposit: "30% за наращивание, не возвращается", phLate: "Ждём 15 минут, дальше можем перенести",
+      custom: "Другие вопросы", phQ: "Вопрос", phA: "Ваш ответ", addQ: "Добавить вопрос",
+      forbidden: "О чём Майе не говорить", phForbidden: "напр. медицинские советы, конкуренты",
+      s5h: "Проверка и запуск", s5l: "Всё сохраняется по ходу. Клиенты увидят Майю только после кнопки «Запустить».",
+      liveOk: "Майя работает для ваших клиентов. Изменения отсюда применяются сразу.",
+      readyTitle: "Готово. Проверьте Майю в чате: пока её видите только вы.", readyLead: "Спросите то, что спрашивают клиенты. Если ответы верные, запускайте.",
+      goLive: "Запустить Майю", launching: "Запускаю…", launchedToast: "Майя запущена. Дальше: подключите Telegram-бота.",
+      waitTitle: "Почти готово. Исправьте это, и Майя запустится:", fix: "Исправить",
+      tryThis: "Попробуйте спросить:", try1: function (name) { return "Сколько стоит «" + name + "»?"; }, try2: "Можно записаться на пятницу после обеда?", try3: "Где припарковаться?", try4: "Хочу поговорить с человеком",
+      warnings: "Стоит проверить (не мешает запуску):",
+      s6h: "Каналы", s6l: "Где клиенты могут написать Майе. Telegram и сайт входят в пробный период.",
+      tgTitle: "Telegram-бот вашего салона", tgLead: "Бот с названием вашего салона: клиенты открывают его, Майя отвечает. Это минут пять:",
+      tg1: "Откройте <a href=\"https://t.me/BotFather\" target=\"_blank\" rel=\"noopener\">@BotFather</a> в Telegram и нажмите <b>Start</b>.",
+      tg2: "Отправьте <code>/newbot</code>. Дайте имя (название салона), затем адрес, который заканчивается на <code>bot</code>, например <code>petalnails_bot</code>.",
+      tg3: "BotFather пришлёт токен вида <code>1234567890:AAH…</code>. Скопируйте его и вставьте ниже.",
+      tokenPh: "Вставьте токен от BotFather", connect: "Подключить бота", connecting: "Подключаю…",
+      tgConnected: "Подключён", tgOpen: "Открыть бота", tgOwner: "Получать записи и тревоги в свой Telegram", tgOwnerDone: "Записи и тревоги приходят вам в Telegram",
+      tgOwnerHint: "Нажмите один раз с телефона, где у вас Telegram. Бот будет писать вам о каждой записи, изменении и просьбе позвать человека.",
+      tgLink: "Привязать мой Telegram", tgDisconnect: "Отключить", tgReplace: "Подключить другого бота",
+      qr: "Разместите эту ссылку в Instagram, в Google-профиле и на ресепшене:",
+      webTitle: "Чат на вашем сайте", webLead: "Вставьте эти две строки перед <code>&lt;/body&gt;</code> на сайте. В углу появится кнопка чата с Майей.",
+      copy: "Скопировать", copied: "Скопировано", chatLink: "Или отправляйте ссылку на чат:",
+      moreTitle: "Instagram, WhatsApp, Messenger, SMS", moreLead: "Эти каналы подключаем мы. Закажите их на следующем шаге.",
+      s7h: "Тариф и доп. услуги", s7l: "В пробный период входят Майя в Telegram и на сайте, записи приходят вам на телефон.",
+      trialLine: function (days, date) { return days > 0 ? "Пробный период: осталось " + days + " дн. (до " + date + ")." : "Пробный период закончился " + date + ". Для клиентов Майя на паузе."; },
+      paidLine: "Тариф активен.",
+      request: "Заказать", setUp: "Настроить", requested: "Заказано", active: "Работает", notePh: "Что нам стоит знать? (необязательно)",
+      requestedToast: "Заявка отправлена. Ответим в течение рабочего дня.",
+      addonsLead: "Это настраиваем мы и сначала присылаем цену. Без вашего согласия ничего не списываем.",
+      keepTitle: "Оставить Майю после пробного периода", keepLead: "Сообщите, что хотите продолжить, и мы пришлём тариф и ссылку на оплату.",
+      loadFail: "Не удалось загрузить настройки. Обновите страницу.", managed: "Этот салон настраивает команда AIbeaty. Напишите нам, чтобы что-то изменить."
+    }
+  };
+
+  // Typical menus by salon type: durations only. Prices stay empty on purpose —
+  // an invented price quoted to a real client is the one mistake we cannot make.
+  var STARTERS = {
+    hair: [["Women's haircut", "Hair", 60], ["Men's haircut", "Hair", 30], ["Blow-dry & style", "Hair", 45], ["Root colour", "Colour", 90], ["Full colour", "Colour", 120], ["Balayage", "Colour", 180], ["Toner / gloss", "Colour", 45]],
+    nails: [["Classic manicure", "Nails", 45], ["Gel manicure", "Nails", 60], ["Nail extensions", "Nails", 120], ["Gel removal", "Nails", 20], ["Pedicure", "Pedicure", 60], ["Gel pedicure", "Pedicure", 75]],
+    lashes_brows: [["Classic lash set", "Lashes", 120], ["Volume lash set", "Lashes", 150], ["Lash fill", "Lashes", 60], ["Lash lift & tint", "Lashes", 60], ["Brow lamination", "Brows", 60], ["Brow shaping", "Brows", 30], ["Brow tint", "Brows", 20]],
+    barber: [["Haircut", "Cuts", 30], ["Skin fade", "Cuts", 45], ["Kids haircut", "Cuts", 30], ["Beard trim", "Beard", 20], ["Haircut + beard", "Combo", 50], ["Hot towel shave", "Beard", 30]],
+    spa: [["Swedish massage 60 min", "Massage", 60], ["Deep tissue massage 60 min", "Massage", 60], ["Classic facial", "Face", 60], ["Body scrub", "Body", 45]],
+    multi: [["Women's haircut", "Hair", 60], ["Men's haircut", "Hair", 30], ["Gel manicure", "Nails", 60], ["Pedicure", "Nails", 60], ["Lash lift & tint", "Lashes & brows", 60], ["Brow shaping", "Lashes & brows", 30]]
+  };
+  var DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+
+  // ------------------------------------------------------------------ state
+  var lang = "en";
+  var state = null;       // GET /api/setup payload
+  var doc = null;         // the setup document being edited
+  var errors = [];        // last server validation errors
+  var warnings = [];
+  var step = 0;
+  var saveTimer = null;
+  var saveSeq = 0;
+
+  function t(key) { return (T[lang] && T[lang][key] !== undefined) ? T[lang][key] : T.en[key]; }
+  function esc(value) {
+    return String(value === undefined || value === null ? "" : value)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function $(id) { return document.getElementById(id); }
+  function toast(text) {
+    var node = $("toast");
+    node.textContent = text;
+    node.classList.add("on");
+    clearTimeout(node._timer);
+    node._timer = setTimeout(function () { node.classList.remove("on"); }, 2600);
+  }
+  function api(method, url, body) {
+    return fetch(url, {
+      method: method,
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      credentials: "same-origin"
+    }).then(function (response) {
+      if (response.status === 401) { window.location.replace("/screens/login.html?next=/screens/setup.html"); throw new Error("signed out"); }
+      return response.json().then(function (data) { return { status: response.status, data: data }; });
+    });
+  }
+
+  // ------------------------------------------------------------------ saving
+  function scheduleSave() {
+    $("saved").textContent = t("saving");
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(save, 900);
+  }
+  function save() {
+    var seq = ++saveSeq;
+    return api("PUT", "/api/setup", { setup: doc }).then(function (result) {
+      if (seq !== saveSeq) return;
+      errors = (result.data && result.data.errors) || [];
+      warnings = (result.data && result.data.warnings) || [];
+      if (state.tenant) state.tenant.setupComplete = result.status === 200;
+      $("saved").textContent = t("saved");
+      paintChrome();
+      if (step === 4) render();
+    }).catch(function () {
+      $("saved").textContent = t("offline");
+    });
+  }
+
+  // ------------------------------------------------------------------ chrome
+  function paintChrome() {
+    document.documentElement.lang = lang;
+    $("lang").textContent = lang === "ru" ? "English" : "Русский";
+    $("dashLink").textContent = t("dashboard");
+    $("logout").textContent = t("signOut");
+    $("salonName").textContent = (doc && doc.salon.name) || (state && state.salon.name) || "";
+    var pill = $("planPill");
+    var tenant = state && state.tenant;
+    if (tenant) {
+      var live = tenant.live;
+      pill.className = "pill" + (live ? " live" : "");
+      var planText = tenant.plan === "trial" ? (tenant.active ? t("trial")(tenant.trialDaysLeft) : t("trialOver")) : "";
+      pill.innerHTML = esc(live ? t("live") : t("notLive")) + (planText ? '<span class="hide-sm"> · ' + esc(planText) + '</span>' : "");
+    }
+    var done = stepStatus();
+    $("rail").innerHTML = t("steps").map(function (label, index) {
+      var mark = done[index] === "done" ? '<span class="material-symbols-outlined st done" aria-hidden="true">check_circle</span>'
+        : done[index] === "todo" ? '<span class="material-symbols-outlined st todo" aria-hidden="true">error</span>'
+        : '<span class="st"></span>';
+      return '<button type="button" data-step="' + index + '"' + (index === step ? ' aria-current="step"' : "") + '>' +
+        '<span class="n">' + ("0" + (index + 1)).slice(-2) + '</span><span>' + esc(label) + '</span>' + mark + '</button>';
+    }).join("");
+  }
+  function stepOfField(field) {
+    if (/^salon|^hours/.test(field)) return 0;
+    if (/^services/.test(field)) return 1;
+    if (/^staff/.test(field)) return 2;
+    return 3;
+  }
+  function stepStatus() {
+    var status = ["", "", "", "", "", "", ""];
+    if (!doc) return status;
+    var bad = {};
+    errors.forEach(function (error) { bad[stepOfField(error.field)] = true; });
+    [0, 1, 2].forEach(function (index) { status[index] = bad[index] ? "todo" : "done"; });
+    status[3] = (doc.faq.parking || doc.faq.payment || doc.faq.cancellation) ? "done" : "";
+    status[4] = state.tenant && state.tenant.launched ? "done" : (errors.length ? "todo" : "");
+    status[5] = state.telegram && state.telegram.connected ? "done" : "";
+    return status;
+  }
+  function fieldBad(path) {
+    return errors.some(function (error) { return error.field === path; }) ? " bad" : "";
+  }
+
+  // ------------------------------------------------------------------ steps
+  function navButtons() {
+    return '<div class="nav">' +
+      (step > 0 ? '<button class="btn quiet" type="button" data-go="' + (step - 1) + '">' + t("back") + '</button>' : "<span></span>") +
+      (step < 6 ? '<button class="btn" type="button" data-go="' + (step + 1) + '">' + t("next") + ' <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></button>' : "") +
+      '</div>';
+  }
+  function input(path, value, placeholder, extra) {
+    return '<input data-path="' + path + '" value="' + esc(value) + '" placeholder="' + esc(placeholder || "") + '" class="' + fieldBad(path).trim() + '" ' + (extra || "") + '/>';
+  }
+
+  function stepSalon() {
+    var s = doc.salon;
+    var zones = ["America/St_Johns", "America/Halifax", "America/Toronto", "America/Winnipeg", "America/Regina", "America/Edmonton", "America/Vancouver", "America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London", "Europe/Kyiv"];
+    if (zones.indexOf(s.timezone) === -1) zones.unshift(s.timezone);
+    var hours = DAYS.map(function (day) {
+      var raw = doc.hours[day] || "closed";
+      var match = /^(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})$/.exec(raw);
+      var open = raw !== "closed";
+      return '<div class="row">' +
+        '<div class="day">' + esc(t("days")[day]) + '</div>' +
+        '<label class="toggle"><input type="checkbox" data-hours-open="' + day + '"' + (open ? " checked" : "") + '/> ' + (open ? t("open") : t("closed")) + '</label>' +
+        (open
+          ? '<div class="times"><input type="time" step="900" data-hours-from="' + day + '" value="' + esc(match ? pad(match[1]) : "10:00") + '" class="' + fieldBad("hours." + day).trim() + '"/>' +
+            '<span class="hint">' + t("to") + '</span><input type="time" step="900" data-hours-to="' + day + '" value="' + esc(match ? pad(match[2]) : "19:00") + '" class="' + fieldBad("hours." + day).trim() + '"/></div>'
+          : '<div class="closed">—</div>') +
+        '</div>';
+    }).join("");
+    return '<h1>' + t("s1h") + '</h1><p class="lede">' + t("s1l") + '</p>' +
+      '<div class="grid2">' +
+      '<div class="field"><label>' + t("name") + '</label>' + input("salon.name", s.name) + '</div>' +
+      '<div class="field"><label>' + t("city") + '</label>' + input("salon.city", s.city) + '</div>' +
+      '</div>' +
+      '<div class="field"><label>' + t("address") + '</label>' + input("salon.address", s.address, "12 Bank St, Unit 3") + '</div>' +
+      '<div class="grid2">' +
+      '<div class="field"><label>' + t("phone") + '</label>' + input("salon.phone", s.phone, "(613) 555-0199", 'inputmode="tel"') + '</div>' +
+      '<div class="field"><label>' + t("timezone") + '</label><select data-path="salon.timezone">' +
+      zones.map(function (zone) { return '<option value="' + esc(zone) + '"' + (zone === s.timezone ? " selected" : "") + '>' + esc(zone.replace("America/", "").replace("Europe/", "").replace("_", " ")) + '</option>'; }).join("") +
+      '</select></div>' +
+      '<div class="field"><label>' + t("website") + '</label>' + input("salon.website", s.website, "your-salon.com") + '</div>' +
+      '<div class="field"><label>' + t("instagram") + '</label>' + input("salon.instagram", s.instagram, "@yoursalon") + '</div>' +
+      '</div>' +
+      '<h2>' + t("hours") + '</h2><div class="hours">' + hours + '</div>' + navButtons();
+  }
+  function pad(time) { return time.length === 4 ? "0" + time : time; }
+
+  function stepServices() {
+    var rows = doc.services.map(function (service, index) {
+      var base = "services." + index + ".";
+      return '<div class="srow' + (service._draft && !service.price ? " flag" : "") + '">' +
+        '<input data-list="services" data-i="' + index + '" data-k="name" value="' + esc(service.name) + '" placeholder="' + esc(t("phName")) + '" class="' + fieldBad(base + "name").trim() + '"/>' +
+        '<input class="cat" data-list="services" data-i="' + index + '" data-k="category" value="' + esc(service.category) + '" placeholder="' + esc(t("phCat")) + '"/>' +
+        '<input data-list="services" data-i="' + index + '" data-k="durationMinutes" type="number" min="5" step="5" inputmode="numeric" value="' + esc(service.durationMinutes || "") + '" class="' + fieldBad(base + "durationMinutes").trim() + '"/>' +
+        '<input data-list="services" data-i="' + index + '" data-k="price" value="' + esc(service.price) + '" placeholder="' + esc(t("phPrice")) + '" class="' + fieldBad(base + "price").trim() + '"/>' +
+        '<div class="dep"><input type="checkbox" data-list="services" data-i="' + index + '" data-k="deposit"' + (service.deposit ? " checked" : "") + ' aria-label="' + esc(t("colDep")) + '"/></div>' +
+        '<button class="iconbtn" type="button" data-remove="services" data-i="' + index + '" aria-label="Remove"><span class="material-symbols-outlined">close</span></button>' +
+        '</div>';
+    }).join("");
+    var type = (state.tenant && state.tenant.businessType) || "multi";
+    return '<h1>' + t("s2h") + '</h1><p class="lede">' + t("s2l") + '</p>' +
+      '<section class="import">' +
+      '<div class="head"><div class="disc" aria-hidden="true">M</div><b>' + t("importTitle") + '</b></div>' +
+      '<div class="hint">' + t("importHint") + '</div>' +
+      '<div style="margin-top:10px"><textarea id="importText" placeholder="' + esc(t("importPaste")) + '"></textarea></div>' +
+      '<div class="row2"><input id="importUrl" placeholder="' + esc(t("importUrl")) + '" inputmode="url"/>' +
+      '<button class="btn" type="button" id="importBtn">' + t("importBtn") + '</button></div>' +
+      '<div class="note" id="importNote" role="status"></div>' +
+      '</section>' +
+      '<div class="rows">' +
+      '<div class="srow head"><div>' + t("colName") + '</div><div class="cat">' + t("colCat") + '</div><div>' + t("colMin") + '</div><div>' + t("colPrice") + '</div><div class="dep">' + t("colDep") + '</div><div></div></div>' +
+      rows + '</div>' +
+      '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;align-items:center">' +
+      '<button class="linkbtn" type="button" data-add="services">+ ' + t("addService") + '</button>' +
+      (doc.services.length ? "" : '<button class="linkbtn" type="button" data-starter="' + esc(type) + '">' + t("starter") + '</button><span class="hint">' + t("starterNote") + '</span>') +
+      '</div>' +
+      '<p class="hint" style="margin-top:14px">' + t("keywordsHint") + '</p>' + navButtons();
+  }
+
+  function stepTeam() {
+    var names = doc.services.map(function (service) { return service.name; }).filter(Boolean);
+    var rows = doc.staff.map(function (member, index) {
+      var base = "staff." + index + ".";
+      var all = !member.services.length;
+      return '<div class="trow">' +
+        '<div class="top">' +
+        '<input data-list="staff" data-i="' + index + '" data-k="name" value="' + esc(member.name) + '" placeholder="' + esc(t("phMember")) + '" class="' + fieldBad(base + "name").trim() + '"/>' +
+        '<input class="role" data-list="staff" data-i="' + index + '" data-k="role" value="' + esc(member.role) + '" placeholder="' + esc(t("phRole")) + '"/>' +
+        '<button class="iconbtn" type="button" data-remove="staff" data-i="' + index + '" aria-label="Remove"><span class="material-symbols-outlined">close</span></button>' +
+        '</div>' +
+        '<div><div class="lbl" style="margin-bottom:6px">' + t("workDays") + '</div><div class="chips">' +
+        DAYS.map(function (day) {
+          return '<button type="button" class="chip" data-day="' + day + '" data-i="' + index + '" aria-pressed="' + (member.workDays.indexOf(day) !== -1) + '">' + t("short")[day] + '</button>';
+        }).join("") + '</div></div>' +
+        (names.length ? '<div><div class="lbl" style="margin-bottom:6px">' + t("doesWhat") + '</div><div class="chips' + fieldBad(base + "services") + '">' +
+          '<button type="button" class="chip" data-all="' + index + '" aria-pressed="' + all + '">' + t("allServices") + '</button>' +
+          names.map(function (name) {
+            return '<button type="button" class="chip" data-svc="' + esc(name) + '" data-i="' + index + '" aria-pressed="' + (!all && member.services.indexOf(name) !== -1) + '">' + esc(name) + '</button>';
+          }).join("") + '</div></div>' : "") +
+        '</div>';
+    }).join("");
+    return '<h1>' + t("s3h") + '</h1><p class="lede">' + t("s3l") + '</p>' +
+      '<div class="rows">' + rows + '</div>' +
+      '<button class="linkbtn" type="button" data-add="staff" style="margin-top:12px">+ ' + t("addMember") + '</button>' + navButtons();
+  }
+
+  function stepAnswers() {
+    var f = doc.faq;
+    function area(key, ph) {
+      return '<div class="field"><label>' + t(key) + '</label><textarea data-path="faq.' + key + '" rows="2" placeholder="' + esc(t(ph)) + '">' + esc(f[key]) + '</textarea></div>';
+    }
+    var custom = f.custom.map(function (entry, index) {
+      return '<div class="qrow">' +
+        '<input data-list="custom" data-i="' + index + '" data-k="q" value="' + esc(entry.q) + '" placeholder="' + esc(t("phQ")) + '"/>' +
+        '<textarea rows="2" data-list="custom" data-i="' + index + '" data-k="a" placeholder="' + esc(t("phA")) + '">' + esc(entry.a) + '</textarea>' +
+        '<button class="iconbtn" type="button" data-remove="custom" data-i="' + index + '" aria-label="Remove"><span class="material-symbols-outlined">close</span></button>' +
+        '</div>';
+    }).join("");
+    return '<h1>' + t("s4h") + '</h1><p class="lede">' + t("s4l") + '</p>' +
+      '<div class="grid2">' + area("parking", "phParking") + area("payment", "phPayment") + area("cancellation", "phCancellation") + area("deposit", "phDeposit") + '</div>' +
+      area("late", "phLate") +
+      '<h2>' + t("custom") + '</h2><div class="rows">' + custom + '</div>' +
+      '<button class="linkbtn" type="button" data-add="custom" style="margin-top:10px">+ ' + t("addQ") + '</button>' +
+      '<h2>' + t("forbidden") + '</h2><textarea data-path="assistant.forbidden" rows="2" placeholder="' + esc(t("phForbidden")) + '">' + esc(doc.assistant.forbidden) + '</textarea>' +
+      navButtons();
+  }
+
+  function stepLive() {
+    var ready = state.tenant && state.tenant.setupComplete && !errors.length;
+    var launched = state.tenant && state.tenant.launched;
+    var body;
+    if (ready) {
+      var firstService = (doc.services[0] && doc.services[0].name) || "";
+      body = (launched
+        ? '<div class="status ok"><span class="material-symbols-outlined" aria-hidden="true">check_circle</span><div>' + t("liveOk")
+        : '<div class="status wait"><span class="material-symbols-outlined" aria-hidden="true">visibility</span><div><b>' + t("readyTitle") + '</b><div style="margin-top:4px">' + t("readyLead") + '</div>') +
+        '<div style="margin-top:8px;color:var(--on-surface)"><b>' + t("tryThis") + '</b><ul class="tries">' +
+        '<li>' + esc(t("try1")(firstService)) + '</li><li>' + t("try2") + '</li><li>' + t("try3") + '</li><li>' + t("try4") + '</li></ul></div></div></div>' +
+        (launched ? "" : '<button class="btn" type="button" id="launchBtn">' + t("goLive") + ' <span class="material-symbols-outlined" aria-hidden="true">rocket_launch</span></button>');
+    } else {
+      body = '<div class="status wait"><span class="material-symbols-outlined" aria-hidden="true">pending</span><div><b>' + t("waitTitle") + '</b></div></div>' +
+        '<div class="todo">' + errors.map(function (error) {
+          return '<div class="item"><span class="material-symbols-outlined" aria-hidden="true">error</span><div>' + esc(error.message) + '</div>' +
+            '<button class="linkbtn" type="button" data-go="' + stepOfField(error.field) + '">' + t("fix") + '</button></div>';
+        }).join("") + '</div>';
+    }
+    if (warnings.length) {
+      body += '<p class="hint"><b>' + t("warnings") + '</b></p><ul class="tries">' + warnings.map(function (w) { return '<li>' + esc(w.message) + '</li>'; }).join("") + '</ul>';
+    }
+    var phone = ready ? '<div class="phone"><iframe title="Maya" src="' + esc(state.chatUrl) + '&embed=1&v=' + Date.now() + '"></iframe></div>' : "";
+    return '<h1>' + t("s5h") + '</h1><p class="lede">' + t("s5l") + '</p>' +
+      '<div class="livebox"><div>' + body + '</div>' + phone + '</div>' + navButtons();
+  }
+
+  function stepChannels() {
+    var tg = state.telegram || {};
+    var tgBlock;
+    if (tg.connected) {
+      tgBlock = '<div class="connected">' +
+        '<div class="line"><span class="material-symbols-outlined" aria-hidden="true">check_circle</span><div><b>' + t("tgConnected") + ':</b> <span class="mono">@' + esc(tg.username) + '</span></div>' +
+        '<a class="btn quiet small" href="' + esc(tg.botLink) + '" target="_blank" rel="noopener">' + t("tgOpen") + '</a></div>' +
+        '<div class="line' + (tg.ownerLinked ? "" : " pending") + '"><span class="material-symbols-outlined" aria-hidden="true">' + (tg.ownerLinked ? "check_circle" : "notifications") + '</span>' +
+        '<div><b>' + (tg.ownerLinked ? t("tgOwnerDone") : t("tgOwner")) + '</b>' + (tg.ownerLinked ? "" : '<div class="hint">' + t("tgOwnerHint") + '</div>') + '</div>' +
+        (tg.ownerLinked ? "<span></span>" : '<a class="btn small" href="' + esc(tg.ownerLink) + '" target="_blank" rel="noopener">' + t("tgLink") + '</a>') + '</div>' +
+        '</div>' +
+        '<p class="hint" style="margin-top:14px">' + t("qr") + '</p><pre class="snippet">' + esc(tg.botLink) + '</pre>' +
+        '<div style="display:flex;gap:10px;margin-top:10px"><button class="btn quiet small" type="button" data-copy="' + esc(tg.botLink) + '">' + t("copy") + '</button>' +
+        '<button class="btn quiet small" type="button" id="tgDisconnect">' + t("tgDisconnect") + '</button></div>';
+    } else {
+      tgBlock = '<p class="hint">' + t("tgLead") + '</p><ol class="howto"><li><div>' + t("tg1") + '</div></li><li><div>' + t("tg2") + '</div></li><li><div>' + t("tg3") + '</div></li></ol>' +
+        '<div class="row2" style="display:grid;grid-template-columns:1fr auto;gap:10px"><input id="tgToken" class="mono" placeholder="' + esc(t("tokenPh")) + '" autocomplete="off" spellcheck="false"/>' +
+        '<button class="btn" type="button" id="tgConnect">' + t("connect") + '</button></div><div class="note" id="tgNote" role="status"></div>';
+    }
+    var publicChat = window.location.origin + state.chatUrl;
+    return '<h1>' + t("s6h") + '</h1><p class="lede">' + t("s6l") + '</p>' +
+      '<h2>' + t("tgTitle") + '</h2>' + tgBlock +
+      '<h2>' + t("webTitle") + '</h2><p class="hint">' + t("webLead") + '</p><pre class="snippet" id="snippet">' + esc(state.widgetSnippet) + '</pre>' +
+      '<button class="btn quiet small" type="button" data-copy-snippet="1">' + t("copy") + '</button>' +
+      '<p class="hint" style="margin-top:14px">' + t("chatLink") + '</p><pre class="snippet">' + esc(publicChat) + '</pre>' +
+      '<button class="btn quiet small" type="button" data-copy="' + esc(publicChat) + '">' + t("copy") + '</button>' +
+      '<h2>' + t("moreTitle") + '</h2><p class="hint">' + t("moreLead") + '</p>' + navButtons();
+  }
+
+  function stepPlan() {
+    var tenant = state.tenant || {};
+    var date = tenant.trialEndsAt ? new Date(tenant.trialEndsAt).toLocaleDateString(lang === "ru" ? "ru-RU" : "en-CA", { day: "numeric", month: "long" }) : "";
+    var line = tenant.plan === "trial" ? t("trialLine")(tenant.trialDaysLeft, date) : t("paidLine");
+    var extras = state.addons.filter(function (addon) { return !addon.auto && addon.key !== "continue_after_trial"; });
+    var keep = state.addons.filter(function (addon) { return addon.key === "continue_after_trial"; })[0];
+    function row(addon) {
+      var right = addon.status === "requested" ? '<span class="tag requested">' + t("requested") + '</span>'
+        : addon.status === "active" ? '<span class="tag active">' + t("active") + '</span>'
+        : addon.auto ? '<button class="btn quiet small" type="button" data-go="5">' + t("setUp") + '</button>'
+        : '<button class="btn quiet small" type="button" data-request="' + esc(addon.key) + '">' + t("request") + '</button>';
+      return '<div class="a"><div class="t">' + esc(addon.title) + '</div>' + right + '</div>';
+    }
+    var included = state.addons.filter(function (addon) { return addon.auto; });
+    return '<h1>' + t("s7h") + '</h1><p class="lede">' + t("s7l") + '</p>' +
+      '<div class="status ' + (tenant.active ? "wait" : "") + '" style="' + (tenant.active ? "" : "background:rgba(180,19,64,.07);color:var(--on-error-container)") + '"><span class="material-symbols-outlined" aria-hidden="true">schedule</span><div>' + esc(line) + '</div></div>' +
+      '<div class="addons">' + included.map(row).join("") + '</div>' +
+      '<h2>' + t("moreTitle") + '</h2><p class="hint">' + t("addonsLead") + '</p>' +
+      '<div class="field" style="margin-top:10px"><input id="addonNote" placeholder="' + esc(t("notePh")) + '"/></div>' +
+      '<div class="addons">' + extras.map(row).join("") + '</div>' +
+      (keep ? '<h2>' + t("keepTitle") + '</h2><p class="hint">' + t("keepLead") + '</p><div class="addons">' + row(keep) + '</div>' : "") +
+      navButtons();
+  }
+
+  var STEPS = [stepSalon, stepServices, stepTeam, stepAnswers, stepLive, stepChannels, stepPlan];
+
+  function render() {
+    paintChrome();
+    if (!state.tenant) {
+      $("panel").innerHTML = '<div class="status wait">' + esc(t("managed")) + '</div>';
+      return;
+    }
+    $("panel").innerHTML = '<div class="step">' + STEPS[step]() + '</div>';
+    var current = document.querySelector('.rail [aria-current="step"]');
+    if (current && window.innerWidth <= 900) current.scrollIntoView({ block: "nearest", inline: "center" });
+  }
+  function go(index) {
+    step = Math.max(0, Math.min(STEPS.length - 1, index));
+    try { history.replaceState(null, "", "#" + (step + 1)); } catch (error) { /* ignore */ }
+    render();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // ------------------------------------------------------------------ events
+  function setPath(path, value) {
+    var parts = path.split(".");
+    var target = doc;
+    for (var i = 0; i < parts.length - 1; i += 1) target = target[parts[i]];
+    target[parts[parts.length - 1]] = value;
+  }
+  function listFor(name) { return name === "custom" ? doc.faq.custom : doc[name]; }
+
+  document.addEventListener("input", function (event) {
+    var node = event.target;
+    if (!doc) return;
+    if (node.hasAttribute("data-path")) {
+      setPath(node.getAttribute("data-path"), node.value);
+      if (node.getAttribute("data-path") === "salon.name") $("salonName").textContent = node.value;
+      scheduleSave();
+    } else if (node.hasAttribute("data-list")) {
+      var item = listFor(node.getAttribute("data-list"))[Number(node.getAttribute("data-i"))];
+      var key = node.getAttribute("data-k");
+      // Renaming a service keeps every team member's link to it.
+      if (key === "name" && node.getAttribute("data-list") === "services" && item.name) {
+        var before = item.name;
+        doc.staff.forEach(function (member) {
+          member.services = member.services.map(function (name) { return name === before ? node.value : name; });
+        });
+      }
+      if (node.type === "checkbox") item[key] = node.checked;
+      else if (key === "durationMinutes") item[key] = Number(node.value) || 0;
+      else item[key] = node.value;
+      scheduleSave();
+    } else if (node.hasAttribute("data-hours-from") || node.hasAttribute("data-hours-to")) {
+      var day = node.getAttribute("data-hours-from") || node.getAttribute("data-hours-to");
+      var from = document.querySelector('[data-hours-from="' + day + '"]').value;
+      var to = document.querySelector('[data-hours-to="' + day + '"]').value;
+      doc.hours[day] = from + "-" + to;
+      scheduleSave();
+    }
+  });
+
+  document.addEventListener("change", function (event) {
+    var node = event.target;
+    if (node.hasAttribute("data-hours-open")) {
+      var day = node.getAttribute("data-hours-open");
+      doc.hours[day] = node.checked ? "10:00-19:00" : "closed";
+      scheduleSave();
+      render();
+    } else if (node.tagName === "SELECT" && node.hasAttribute("data-path")) {
+      setPath(node.getAttribute("data-path"), node.value);
+      scheduleSave();
+    }
+  });
+
+  document.addEventListener("click", function (event) {
+    var node = event.target.closest("button, a");
+    if (!node) return;
+    if (node.hasAttribute("data-step")) return go(Number(node.getAttribute("data-step")));
+    if (node.hasAttribute("data-go")) return go(Number(node.getAttribute("data-go")));
+    if (node.hasAttribute("data-add")) {
+      var list = node.getAttribute("data-add");
+      if (list === "services") doc.services.push({ name: "", category: "", durationMinutes: 60, price: "", deposit: false, keywords: [], note: "" });
+      if (list === "staff") doc.staff.push({ name: "", role: "", services: [], workDays: ["tue", "wed", "thu", "fri", "sat"] });
+      if (list === "custom") doc.faq.custom.push({ q: "", a: "" });
+      render();
+      var inputs = document.querySelectorAll('[data-list="' + list + '"][data-k="' + (list === "custom" ? "q" : "name") + '"]');
+      if (inputs.length) inputs[inputs.length - 1].focus();
+      return;
+    }
+    if (node.hasAttribute("data-remove")) {
+      var removed = listFor(node.getAttribute("data-remove")).splice(Number(node.getAttribute("data-i")), 1)[0];
+      if (node.getAttribute("data-remove") === "services" && removed) {
+        doc.staff.forEach(function (member) { member.services = member.services.filter(function (name) { return name !== removed.name; }); });
+      }
+      scheduleSave();
+      return render();
+    }
+    if (node.hasAttribute("data-starter")) {
+      (STARTERS[node.getAttribute("data-starter")] || STARTERS.multi).forEach(function (row) {
+        doc.services.push({ name: row[0], category: row[1], durationMinutes: row[2], price: "", deposit: false, keywords: [], note: "", _draft: true });
+      });
+      scheduleSave();
+      render();
+      var firstPrice = document.querySelector('[data-k="price"]');
+      if (firstPrice) firstPrice.focus();
+      return;
+    }
+    if (node.hasAttribute("data-day")) {
+      var member = doc.staff[Number(node.getAttribute("data-i"))];
+      var day = node.getAttribute("data-day");
+      var at = member.workDays.indexOf(day);
+      if (at === -1) member.workDays.push(day); else member.workDays.splice(at, 1);
+      scheduleSave();
+      return render();
+    }
+    if (node.hasAttribute("data-all")) {
+      doc.staff[Number(node.getAttribute("data-all"))].services = [];
+      scheduleSave();
+      return render();
+    }
+    if (node.hasAttribute("data-svc")) {
+      var who = doc.staff[Number(node.getAttribute("data-i"))];
+      var name = node.getAttribute("data-svc");
+      var index = who.services.indexOf(name);
+      if (index === -1) who.services.push(name); else who.services.splice(index, 1);
+      scheduleSave();
+      return render();
+    }
+    if (node.id === "importBtn") return runImport(node);
+    if (node.id === "launchBtn") {
+      busy(node, t("launching"));
+      clearTimeout(saveTimer);
+      return save().then(function () { return api("POST", "/api/setup/launch"); }).then(function (result) {
+        idle(node);
+        if (result.status !== 200) { errors = (result.data && result.data.errors) || errors; return render(); }
+        state.tenant = Object.assign(state.tenant, { launched: true, live: result.data.tenant.live });
+        toast(t("launchedToast"));
+        go(5);
+      });
+    }
+    if (node.id === "tgConnect") return connectTelegram(node);
+    if (node.id === "tgDisconnect") {
+      return api("DELETE", "/api/setup/telegram").then(refresh);
+    }
+    if (node.hasAttribute("data-copy") || node.hasAttribute("data-copy-snippet")) {
+      var text = node.hasAttribute("data-copy") ? node.getAttribute("data-copy") : state.widgetSnippet;
+      (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function () { toast(t("copied")); }).catch(function () { toast(text); });
+      return;
+    }
+    if (node.hasAttribute("data-request")) {
+      node.disabled = true;
+      var note = ($("addonNote") && $("addonNote").value) || "";
+      return api("POST", "/api/setup/addons", { addon: node.getAttribute("data-request"), note: note }).then(function (result) {
+        if (result.data && result.data.addons) state.addons = result.data.addons;
+        toast(t("requestedToast"));
+        render();
+      });
+    }
+    if (node.id === "lang") {
+      lang = lang === "ru" ? "en" : "ru";
+      try { localStorage.setItem("aibeaty-lang", lang); } catch (error) { /* ignore */ }
+      return render();
+    }
+    if (node.id === "logout") {
+      return fetch("/api/auth/logout", { method: "POST" }).then(function () { window.location.replace("/screens/login.html"); });
+    }
+  });
+
+  // ------------------------------------------------------------------ actions
+  function busy(button, label) {
+    button.disabled = true;
+    button.dataset.label = button.innerHTML;
+    button.innerHTML = '<span class="spin" aria-hidden="true"></span> ' + label;
+  }
+  function idle(button) {
+    button.disabled = false;
+    if (button.dataset.label) button.innerHTML = button.dataset.label;
+  }
+  function note(id, kind, text) {
+    var node = $(id);
+    if (!node) return;
+    node.className = "note on " + kind;
+    node.textContent = text;
+  }
+
+  function runImport(button) {
+    var text = $("importText").value;
+    var url = $("importUrl").value.trim();
+    busy(button, t("importing"));
+    api("POST", "/api/setup/extract", { text: text, url: url || undefined }).then(function (result) {
+      idle(button);
+      if (result.status !== 200) return note("importNote", "err", (result.data && result.data.message) || t("importNone"));
+      var draft = result.data.draft;
+      if (!draft.services.length) return note("importNote", "err", t("importNone"));
+      var existing = {};
+      doc.services.forEach(function (service) { existing[service.name.toLowerCase()] = true; });
+      draft.services.forEach(function (service) {
+        if (!existing[service.name.toLowerCase()]) doc.services.push(Object.assign({ deposit: false, keywords: [], note: "" }, service, { _draft: true }));
+      });
+      var names = {};
+      doc.staff.forEach(function (member) { names[member.name.toLowerCase()] = true; });
+      var addedStaff = 0;
+      draft.staff.forEach(function (member) {
+        if (member.name && !names[member.name.toLowerCase()]) {
+          doc.staff.push({ name: member.name, role: member.role || "", services: [], workDays: ["tue", "wed", "thu", "fri", "sat"] });
+          addedStaff += 1;
+        }
+      });
+      Object.keys(draft.hours || {}).forEach(function (day) {
+        if (DAYS.indexOf(day) !== -1 && draft.hours[day]) doc.hours[day] = draft.hours[day];
+      });
+      ["address", "phone", "website", "instagram"].forEach(function (key) {
+        if (draft.salon && draft.salon[key] && !doc.salon[key]) doc.salon[key] = draft.salon[key];
+      });
+      ["parking", "payment", "cancellation", "deposit", "late"].forEach(function (key) {
+        if (draft.faq && draft.faq[key] && !doc.faq[key]) doc.faq[key] = draft.faq[key];
+      });
+      scheduleSave();
+      render();
+      note("importNote", "ok", t("imported")(draft.services.length, addedStaff));
+    }).catch(function () {
+      idle(button);
+      note("importNote", "err", t("offline"));
+    });
+  }
+
+  function connectTelegram(button) {
+    var token = ($("tgToken").value || "").trim();
+    if (!token) return $("tgToken").focus();
+    busy(button, t("connecting"));
+    api("POST", "/api/setup/telegram", { token: token }).then(function (result) {
+      idle(button);
+      if (result.status !== 200) return note("tgNote", "err", result.data.message);
+      state.telegram = result.data;
+      render();
+    }).catch(function () {
+      idle(button);
+      note("tgNote", "err", t("offline"));
+    });
+  }
+
+  // The owner links their Telegram in another app; notice it when they come back.
+  function refresh() {
+    return api("GET", "/api/setup").then(function (result) {
+      if (result.status !== 200) return;
+      state.telegram = result.data.telegram;
+      state.addons = result.data.addons;
+      state.tenant = result.data.tenant;
+      if (step === 5 || step === 6) render(); else paintChrome();
+    });
+  }
+  document.addEventListener("visibilitychange", function () { if (!document.hidden && state) refresh(); });
+
+  // ------------------------------------------------------------------ boot
+  try {
+    var stored = localStorage.getItem("aibeaty-lang");
+    if (stored === "ru" || stored === "en") lang = stored;
+  } catch (error) { /* ignore */ }
+
+  api("GET", "/api/setup").then(function (result) {
+    if (result.status !== 200) { $("panel").textContent = t("loadFail"); return; }
+    state = result.data;
+    var chosen = null;
+    try { chosen = localStorage.getItem("aibeaty-lang"); } catch (error) { /* ignore */ }
+    if (state.tenant && !chosen) lang = state.tenant.language || lang;
+    doc = state.setup || null;
+    var fromHash = Number((window.location.hash || "").replace("#", ""));
+    if (fromHash >= 1 && fromHash <= STEPS.length) step = fromHash - 1;
+    else if (state.tenant && state.tenant.launched) step = 5;
+    render();
+    // First validation pass so the rail and the go-live list are accurate at once.
+    if (doc) save();
+  }).catch(function () { $("panel").textContent = t("loadFail"); });
+})();
+</script>
+</body></html>

@@ -289,6 +289,7 @@
     <div class="foot">
       Забыли пароль или нужен доступ для мастера — напишите нам, выдадим новый.
       <br/>Клиентам салона вход не нужен: <a href="chat.html">чат с Майей</a> открыт всем.
+      <br/>Нет аккаунта? <a href="signup.html">Попробовать бесплатно · Start a free trial</a>
     </div>
   </section>
 </main>
@@ -301,7 +302,9 @@
   var submit = document.getElementById("submit");
   var alertBox = document.getElementById("alert");
   var alertText = document.getElementById("alert-text");
-  var DASHBOARD = "salon-performance-luminous-core.html";
+  // "/" lets the server decide: a self-serve salon that has not finished setup
+  // goes to the wizard, everyone else to the dashboard.
+  var DASHBOARD = "/";
 
   // Only ever bounce to a path on this origin — an attacker-supplied ?next= must not
   // turn the login page into an open redirector.

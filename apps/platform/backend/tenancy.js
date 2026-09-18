@@ -457,6 +457,12 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       created_at TEXT NOT NULL
     );
   `);
+  // Added after the first self-serve build: an explicit "Go live" press. Until
+  // then only the owner (preview) talks to Maya — an AI-imported price list must
+  // be looked at by a human before a client hears it.
+  if (!db.prepare(`PRAGMA table_info(tenants)`).all().some((column) => column.name === "launched_at")) {
+    db.exec(`ALTER TABLE tenants ADD COLUMN launched_at TEXT NOT NULL DEFAULT ''`);
+  }
 
   function attachAssistant(instance) {
     assistant = instance;
@@ -482,6 +488,9 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       trialDaysLeft: row.plan === "trial" ? Math.max(0, Math.ceil(msLeft / 86400000)) : null,
       active: row.plan !== "trial" || msLeft > 0,
       setupComplete: Boolean(row.setup_complete),
+      launched: Boolean(row.launched_at),
+      launchedAt: row.launched_at || "",
+      live: Boolean(row.setup_complete) && Boolean(row.launched_at) && (row.plan !== "trial" || msLeft > 0),
       setup: normalizeSetup(setup),
       createdAt: row.created_at
     };
@@ -581,7 +590,10 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
 
     if (tenant) {
       // The draft is always kept, so a half-filled wizard survives a reload.
-      db.prepare(`UPDATE tenants SET setup_json = ?, updated_at = ? WHERE salon_slug = ?`).run(JSON.stringify(doc), stamp, slug);
+      // An invalid draft also takes the salon out of "complete": the last good
+      // catalogue stays in place, but a launched salon is told what broke.
+      db.prepare(`UPDATE tenants SET setup_json = ?, setup_complete = ?, updated_at = ? WHERE salon_slug = ?`)
+        .run(JSON.stringify(doc), complete ? 1 : (tenant.launched ? 1 : 0), stamp, slug);
     }
     if (!complete) return { ok: false, errors, warnings, setup: doc };
 
@@ -608,6 +620,22 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     return { ok: true, errors: [], warnings, setup: doc };
   }
 
+  function launch(slug) {
+    const tenant = getTenant(slug);
+    if (!tenant) return { ok: false, error: "not_self_serve" };
+    const { errors } = validateSetup(tenant.setup, tenant.language);
+    if (errors.length || !tenant.setupComplete) return { ok: false, error: "incomplete", errors };
+    if (!tenant.launched) {
+      db.prepare(`UPDATE tenants SET launched_at = ?, updated_at = ? WHERE salon_slug = ?`).run(nowIso(clock), nowIso(clock), slug);
+      const record = store.getSalonRecord(slug) || {};
+      notifyPlatform({
+        subject: `AIbeaty: ${record.name || slug} went live`,
+        lines: [`Salon: ${record.name || slug} (${slug})`, `Services: ${tenant.setup.services.length}`, `Team: ${tenant.setup.staff.length}`, `Owner email: ${record.email || "—"}`]
+      });
+    }
+    return { ok: true, tenant: getTenant(slug) };
+  }
+
   // Reads a price list / website text and drafts services, staff, hours and FAQ.
   // The result is only a DRAFT for the wizard: the owner reviews it before save,
   // because a wrong price quoted to a real client is the worst failure we have.
@@ -626,12 +654,13 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       "Schema:",
       '{"salon":{"name":"","address":"","phone":"","website":"","instagram":""},',
       ' "hours":{"sun":"closed|HH:MM-HH:MM","mon":"","tue":"","wed":"","thu":"","fri":"","sat":""},',
-      ' "services":[{"name":"","category":"","durationMinutes":60,"price":"$65","keywords":["how clients call it"]}],',
+      ' "services":[{"name":"","category":"","durationMinutes":60,"price":"$65","deposit":false,"keywords":["how clients call it"]}],',
       ' "staff":[{"name":"","role":""}],',
       ' "faq":{"parking":"","payment":"","cancellation":"","deposit":"","late":""}}',
       "Rules: copy prices exactly as written (keep 'from', ranges and currency). Never invent a price, a person or an address:",
       "leave a field empty when the text does not say it. If duration is missing, estimate a typical duration for that service",
-      "and it will be reviewed. Keep service names in the language of the text. Hours you cannot find: leave empty string."
+      "and it will be reviewed. Keep service names in the language of the text. Hours you cannot find: leave empty string.",
+      "deposit is true only for services the text says need a deposit."
     ].join("\n");
     const message = await llm.complete({
       messages: [
@@ -687,11 +716,13 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
 
   // ---------- plan gate for every client-facing message ----------
   // Used by the web chat and the Telegram webhook alike.
-  async function chat(slug, payload) {
+  // preview: the salon's own owner is testing (signed-in web chat, or the
+  // owner's linked Telegram chat). They reach Maya before launch.
+  async function chat(slug, payload, { preview = false } = {}) {
     const tenant = getTenant(slug);
     if (tenant) {
       const ru = /[а-яёіїє]/i.test(String(payload.message || ""));
-      if (!tenant.setupComplete) {
+      if (!tenant.setupComplete || (!tenant.launched && !preview)) {
         return {
           reply: ru
             ? "Ассистент этого салона ещё настраивается. Пожалуйста, свяжитесь с салоном напрямую."
@@ -947,7 +978,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
         message: body.slice(0, 2000),
         channel: "telegram",
         clientPhone
-      });
+      }, { preview: Boolean(row.owner_chat_id) && row.owner_chat_id === chatId });
     } finally {
       clearInterval(typing);
     }
@@ -996,6 +1027,8 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     getTenant,
     signup,
     saveSetup,
+    launch,
+    publicBase: PUBLIC_BASE,
     extractSetup,
     chat,
     telegramStatus,

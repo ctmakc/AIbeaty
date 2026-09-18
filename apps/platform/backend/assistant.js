@@ -2167,6 +2167,9 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
     forSalon,
     invalidate,
     async chat(payload = {}) {
+      // Rebase day offsets on the first message of a new salon day, before the
+      // assistant reads busy slots (see syncDayAnchor in store.js).
+      if (typeof rootStore.syncDayAnchor === "function") rootStore.syncDayAnchor(String(payload.salon || rootStore.DEFAULT_SALON_SLUG || ""));
       const salon = forSalon(payload.salon);
       if (!salon) {
         return { error: "unknown_salon", message: `Unknown salon: ${payload.salon}` };

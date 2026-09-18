@@ -236,9 +236,25 @@ async function main() {
       assert.strictEqual(result.status, 200, JSON.stringify(result.data));
       const state = await call("GET", "/api/setup");
       assert.strictEqual(state.data.tenant.setupComplete, true);
-      const chat = await call("POST", "/api/assistant/chat", { salon: slug, sessionId: "web-2", message: "hi there" }, { Cookie: "" });
-      assert.strictEqual(chat.status, 200);
-      assert.ok(chat.data.reply && !/still being set up/.test(chat.data.reply), JSON.stringify(chat.data));
+      assert.strictEqual(state.data.tenant.launched, false);
+      const preview = await call("POST", "/api/assistant/chat", { salon: slug, sessionId: "web-2", message: "hi there" });
+      assert.ok(preview.data.reply && !/still being set up/.test(preview.data.reply), `the owner previews Maya: ${JSON.stringify(preview.data)}`);
+    });
+
+    await check("clients see Maya only after the owner presses Go live", async () => {
+      const before = await call("POST", "/api/assistant/chat", { salon: slug, sessionId: "web-3", message: "hi there" }, { Cookie: "" });
+      assert.match(before.data.reply, /still being set up/);
+      const launched = await call("POST", "/api/setup/launch");
+      assert.strictEqual(launched.status, 200, JSON.stringify(launched.data));
+      assert.strictEqual(launched.data.tenant.live, true);
+      const after = await call("POST", "/api/assistant/chat", { salon: slug, sessionId: "web-4", message: "hi there" }, { Cookie: "" });
+      assert.ok(after.data.reply && !/still being set up/.test(after.data.reply), JSON.stringify(after.data));
+    });
+
+    await check("the widget snippet carries the API base the widget needs", async () => {
+      const state = await call("GET", "/api/setup");
+      assert.match(state.data.widgetSnippet, /AIBEATY_API_BASE = "https:\/\/salons\.example\.test"/);
+      assert.match(state.data.widgetSnippet, /AIBEATY_SALON = "petal-nails"/);
     });
 
     let hookSecret = "";

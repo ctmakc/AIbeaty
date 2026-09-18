@@ -597,6 +597,15 @@
         button.textContent = "Выйти";
         button.addEventListener("click", logout);
         host.insertAdjacentElement("afterend", button);
+        // The owner's way back to the setup wizard: services, team, channels, plan.
+        if (owner.role === "owner") {
+          var setup = document.createElement("a");
+          setup.className = "aibeaty-logout";
+          setup.href = "/screens/setup.html";
+          setup.textContent = "Настройка · Setup";
+          setup.style.textDecoration = "none";
+          host.insertAdjacentElement("afterend", setup);
+        }
       })
       .catch(function () {
         /* the gate already redirects on 401; nothing to do here */
