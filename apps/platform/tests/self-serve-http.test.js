@@ -117,7 +117,8 @@ async function main() {
       TELEGRAM_API_BASE: `http://127.0.0.1:${tgPort}`,
       PUBLIC_BASE_URL: "https://salons.example.test",
       ALERT_EMAIL: "",
-      PLATFORM_EMAIL: ""
+      PLATFORM_EMAIL: "",
+      TENANCY_TICKER: "0"
     },
     stdio: ["ignore", "pipe", "pipe"]
   });

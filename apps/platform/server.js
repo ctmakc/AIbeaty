@@ -1108,6 +1108,8 @@ if (process.argv.includes("--check")) {
       });
     });
   });
+  // Client reminders and trial notices (backend/tenancy.js). Off in tests.
+  if (process.env.TENANCY_TICKER !== "0") tenancy.startTicker();
   server.listen(PORT, HOST, () => {
     console.log(`Platform server running at http://${HOST}:${PORT}`);
   });

@@ -456,7 +456,12 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         new Date().toISOString());
       if (typeof onEvent === "function") {
         try {
-          onEvent(salonId, type, Object.assign({ conversationId: session.conversation_id || "", channel: session.channel || "" }, payload));
+          onEvent(salonId, type, Object.assign({
+            conversationId: session.conversation_id || "",
+            channel: session.channel || "",
+            sessionId: session.id || "",
+            language: session.language || ""
+          }, payload));
         } catch (error) {
           console.error(`[assistant] onEvent hook failed: ${String((error && error.message) || error).slice(0, 140)}`);
         }

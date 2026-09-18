@@ -463,6 +463,23 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
   if (!db.prepare(`PRAGMA table_info(tenants)`).all().some((column) => column.name === "launched_at")) {
     db.exec(`ALTER TABLE tenants ADD COLUMN launched_at TEXT NOT NULL DEFAULT ''`);
   }
+  if (!db.prepare(`PRAGMA table_info(tenants)`).all().some((column) => column.name === "notices_json")) {
+    db.exec(`ALTER TABLE tenants ADD COLUMN notices_json TEXT NOT NULL DEFAULT '{}'`);
+  }
+  // One row per Telegram booking: the evening before the visit, the client
+  // gets a reminder in the same chat. Cuts no-shows, needs nothing from the owner.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tenant_reminders (
+      salon_slug TEXT NOT NULL,
+      appointment_id TEXT NOT NULL,
+      chat_id TEXT NOT NULL,
+      language TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      sent_at TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY (salon_slug, appointment_id)
+    );
+  `);
 
   function attachAssistant(instance) {
     assistant = instance;
@@ -754,10 +771,152 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       return getTenant(salonId) ? "" : String(process.env.ALERT_EMAIL || "");
     },
     onEvent(salonId, type, payload) {
+      trackReminder(salonId, type, payload);
       const text = ownerEventText(salonId, type, payload);
       if (text) notifyOwner(salonId, text);
     }
   };
+
+  // ---------- client reminders ----------
+  function trackReminder(salonId, type, payload) {
+    if (!payload.appointmentId) return;
+    if (type === "cancellation") {
+      db.prepare(`DELETE FROM tenant_reminders WHERE salon_slug = ? AND appointment_id = ?`).run(salonId, payload.appointmentId);
+      return;
+    }
+    if (type !== "booking" && type !== "reschedule") return;
+    const match = /^tg:\d+:(-?\d+)$/.exec(String(payload.sessionId || ""));
+    if (type === "booking" && !match) return;
+    if (type === "booking") {
+      db.prepare(`
+        INSERT INTO tenant_reminders (salon_slug, appointment_id, chat_id, language, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(salon_slug, appointment_id) DO NOTHING
+      `).run(salonId, payload.appointmentId, match[1], String(payload.language || ""), nowIso(clock));
+    } else {
+      // A moved visit deserves a fresh reminder for its new day.
+      db.prepare(`UPDATE tenant_reminders SET status = 'pending', sent_at = '' WHERE salon_slug = ? AND appointment_id = ?`).run(salonId, payload.appointmentId);
+    }
+  }
+
+  function localParts(timezone, date = clock()) {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone || "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+    }).formatToParts(date).map((part) => [part.type, part.value]));
+    return { date: `${parts.year}-${parts.month}-${parts.day}`, minutes: Number(parts.hour) * 60 + Number(parts.minute) };
+  }
+
+  function addDaysIso(isoDate, days) {
+    const date = new Date(`${isoDate}T12:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+  }
+
+  function clockLabel(minutes) {
+    const hour = Math.floor(minutes / 60);
+    const minute = minutes % 60;
+    return `${((hour + 11) % 12) + 1}:${String(minute).padStart(2, "0")} ${hour < 12 ? "AM" : "PM"}`;
+  }
+
+  // Reminder window: the evening before, from 17:00 to 21:00 salon time.
+  const REMINDER_FROM = 17 * 60;
+  const REMINDER_UNTIL = 21 * 60;
+
+  async function sendDueReminders() {
+    const rows = db.prepare(`
+      SELECT r.*, t.bot_id, t.token_sealed, t.bot_username
+      FROM tenant_reminders r JOIN tenant_telegram t ON t.salon_slug = r.salon_slug
+      WHERE r.status = 'pending'
+    `).all();
+    let sent = 0;
+    for (const row of rows) {
+      store.syncDayAnchor(row.salon_slug);
+      const record = store.getSalonRecord(row.salon_slug) || {};
+      const appointment = db.prepare(`
+        SELECT
+          -- appt_date is only refreshed when the day rolls over; a booking made
+          -- today has it empty, so derive the date from the anchor + offset.
+          date((SELECT value FROM metadata m WHERE m.salon_id = a.salon_id AND m.key = 'day_anchor'), printf('%+d days', a.day_offset)) AS appt_date,
+          a.start_minutes, a.service_name, a.appointment_status, s.name AS stylist
+        FROM appointments a LEFT JOIN stylists s ON s.salon_id = a.salon_id AND s.id = a.stylist_id
+        WHERE a.salon_id = ? AND a.id = ?
+      `).get(row.salon_slug, row.appointment_id);
+      if (!appointment || appointment.appointment_status !== "scheduled") {
+        db.prepare(`UPDATE tenant_reminders SET status = 'dropped' WHERE salon_slug = ? AND appointment_id = ?`).run(row.salon_slug, row.appointment_id);
+        continue;
+      }
+      const now = localParts(record.timezone);
+      const tomorrow = addDaysIso(now.date, 1);
+      if (appointment.appt_date && appointment.appt_date <= now.date) {
+        // Booked for today (or already past): a reminder now would be noise.
+        db.prepare(`UPDATE tenant_reminders SET status = 'skipped' WHERE salon_slug = ? AND appointment_id = ?`).run(row.salon_slug, row.appointment_id);
+        continue;
+      }
+      if (appointment.appt_date !== tomorrow || now.minutes < REMINDER_FROM || now.minutes >= REMINDER_UNTIL) continue;
+      const ru = /^(ru|uk)/.test(row.language);
+      const time = clockLabel(appointment.start_minutes);
+      const text = ru
+        ? `Напоминаем: завтра в ${time} — ${appointment.service_name}${appointment.stylist ? `, мастер ${appointment.stylist}` : ""}, салон «${record.name}».${record.address ? ` Адрес: ${record.address}.` : ""} Если планы изменились, напишите сюда: перенесём или отменим.`
+        : `Reminder: tomorrow at ${time} — ${appointment.service_name}${appointment.stylist ? ` with ${appointment.stylist}` : ""} at ${record.name}.${record.address ? ` Address: ${record.address}.` : ""} If your plans changed, reply here and we'll reschedule or cancel.`;
+      try {
+        await sendTelegram(row, row.chat_id, text);
+        db.prepare(`UPDATE tenant_reminders SET status = 'sent', sent_at = ? WHERE salon_slug = ? AND appointment_id = ?`).run(nowIso(clock), row.salon_slug, row.appointment_id);
+        sent += 1;
+      } catch (error) {
+        console.error(`[tenancy] reminder failed for ${row.salon_slug}: ${String(error.message).slice(0, 140)}`);
+      }
+    }
+    return sent;
+  }
+
+  // ---------- trial notices to the owner ----------
+  function sendTrialNotices() {
+    const rows = db.prepare(`SELECT salon_slug, notices_json FROM tenants WHERE plan = 'trial'`).all();
+    let sent = 0;
+    rows.forEach((row) => {
+      const tenant = getTenant(row.salon_slug);
+      if (!tenant) return;
+      let notices = {};
+      try { notices = JSON.parse(row.notices_json || "{}"); } catch (error) { notices = {}; }
+      const ru = tenant.language === "ru";
+      const planLink = `${PUBLIC_BASE}/screens/setup.html#7`;
+      let key = "";
+      let text = "";
+      if (!tenant.active && !notices.ended) {
+        key = "ended";
+        text = ru
+          ? `Пробный период закончился, и Майя поставлена на паузу для клиентов. Чтобы продолжить, нажмите «Оставить ассистента» здесь: ${planLink}`
+          : `Your trial has ended and Maya is paused for clients. To keep her, press "Keep the assistant" here: ${planLink}`;
+        const record = store.getSalonRecord(row.salon_slug) || {};
+        notifyPlatform({ subject: `AIbeaty trial ended: ${record.name || row.salon_slug}`, lines: [`Salon: ${record.name || row.salon_slug}`, `Owner email: ${record.email || "—"}`, `Launched: ${tenant.launched ? "yes" : "no"}`] });
+      } else if (tenant.active && tenant.trialDaysLeft <= 3 && !notices.d3) {
+        key = "d3";
+        text = ru
+          ? `Пробный период закончится через ${tenant.trialDaysLeft} дн. Чтобы Майя продолжала отвечать клиентам без перерыва, нажмите «Оставить ассистента»: ${planLink}`
+          : `Your trial ends in ${tenant.trialDaysLeft} day(s). To keep Maya answering clients without a gap, press "Keep the assistant": ${planLink}`;
+      }
+      if (!key) return;
+      notices[key] = nowIso(clock);
+      db.prepare(`UPDATE tenants SET notices_json = ? WHERE salon_slug = ?`).run(JSON.stringify(notices), row.salon_slug);
+      notifyOwner(row.salon_slug, text);
+      sent += 1;
+    });
+    return sent;
+  }
+
+  let ticker = null;
+  function startTicker(intervalMs = 10 * 60 * 1000) {
+    if (ticker) return;
+    const tick = () => {
+      Promise.resolve()
+        .then(() => sendTrialNotices())
+        .then(() => sendDueReminders())
+        .catch((error) => console.error(`[tenancy] tick failed: ${String(error.message).slice(0, 160)}`));
+    };
+    ticker = setInterval(tick, intervalMs);
+    ticker.unref();
+    setTimeout(tick, 5000).unref();
+  }
 
   function ownerEventText(salonId, type, payload) {
     const tenant = getTenant(salonId);
@@ -1037,6 +1196,9 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     handleTelegramUpdate,
     listAddons,
     requestAddon,
+    sendDueReminders,
+    sendTrialNotices,
+    startTicker,
     ADDONS,
     BUSINESS_TYPES
   };
