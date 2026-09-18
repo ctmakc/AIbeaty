@@ -123,6 +123,9 @@
     color: #fff; font-family: var(--font-headline); font-weight: 800; font-size: 12px;
     display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
+  /* A person from the salon answered: a quiet neutral disc instead of Maya's. */
+  .msg .mini.team { background: var(--surface-container); color: var(--on-surface-variant); }
+  .msg .mini.team .material-symbols-outlined { font-size: 15px; }
   .msg .stack { display: flex; flex-direction: column; gap: 3px; max-width: 82%; }
   .bubble {
     padding: 10px 14px; font-size: 14px; line-height: 1.45; white-space: pre-wrap;
@@ -320,7 +323,8 @@
       errRate: "Слишком много сообщений подряд — подождите минутку и попробуйте снова.",
       errTeam: "Диалог у команды салона — вам ответят прямо здесь.",
       errFail: "Майя отошла на минутку — попробуйте ещё раз.",
-      retry: "Повторить"
+      retry: "Повторить",
+      teamName: "Команда салона"
     },
     uk: {
       title: "Майя — чат із салоном",
@@ -349,7 +353,8 @@
       errRate: "Забагато повідомлень поспіль — зачекайте хвилинку і спробуйте ще раз.",
       errTeam: "Діалог у команди салону — вам дадуть відповідь просто тут.",
       errFail: "Майя відійшла на хвилинку — спробуйте ще раз.",
-      retry: "Повторити"
+      retry: "Повторити",
+      teamName: "Команда салону"
     },
     en: {
       title: "Maya — salon chat",
@@ -378,7 +383,8 @@
       errRate: "Too many messages in a row — give it a minute and try again.",
       errTeam: "The salon team has this conversation — they will reply right here.",
       errFail: "Maya stepped away for a minute — please try again.",
-      retry: "Retry"
+      retry: "Retry",
+      teamName: "Salon team"
     }
   };
   var LOCALE = (function () {
@@ -475,6 +481,9 @@
     if (entry.k === "out") {
       return el('<div class="msg out' + cls + '"><div class="stack"><div class="bubble">' + esc(entry.t) + '</div><span class="meta">' + esc(timeLabel(entry.ts)) + "</span></div></div>");
     }
+    if (entry.k === "team") {
+      return el('<div class="msg in' + cls + '"><div class="mini team" aria-hidden="true"><span class="material-symbols-outlined">person</span></div><div class="stack"><div class="bubble">' + esc(entry.t) + '</div><span class="meta">' + esc(T.teamName || "Salon team") + " · " + esc(timeLabel(entry.ts)) + "</span></div></div>");
+    }
     return el('<div class="msg in' + cls + '"><div class="mini" aria-hidden="true">M</div><div class="stack"><div class="bubble">' + mdInline(entry.t) + '</div><span class="meta">' + esc(T.metaName) + " · " + esc(timeLabel(entry.ts)) + "</span></div></div>");
   }
   function append(entry, animate) {
@@ -532,10 +541,14 @@
         }
         if (result.status >= 400 || data.error) { fail(text); return; }
         if (data.reply === null) {
-          append({ k: "sys", t: T.errTeam });
+          // Only once: a paused Maya answers every message with null.
+          var lastEntry = log[log.length - 2];
+          if (!(lastEntry && lastEntry.k === "sys" && lastEntry.t === T.errTeam)) append({ k: "sys", t: T.errTeam });
+          pollTeam();
           return;
         }
         append({ k: "in", t: String(data.reply || ""), ts: Date.now() });
+        pollTeam();
       });
     }).catch(function () {
       finish(function () { fail(text); });
@@ -566,6 +579,36 @@
     });
   }
 
+  // --- answers from the salon team ---
+  // When a person from the salon answers in the owner's inbox, the chat shows
+  // it on the next check: every 10 s while the page is visible, and right
+  // after each of Maya's replies. The cursor survives a reload.
+  var TEAM_KEY = "aibeaty.chat.team" + (SALON ? "." + SALON : "");
+  var teamAfter = store.get(TEAM_KEY) || "";
+  var polling = false;
+  function pollTeam() {
+    if (polling) return;
+    polling = true;
+    var url = API_BASE + "/api/assistant/updates?sessionId=" + encodeURIComponent(sessionId) +
+      (SALON ? "&salon=" + encodeURIComponent(SALON) : "") + (teamAfter ? "&after=" + encodeURIComponent(teamAfter) : "");
+    fetch(url).then(function (r) { return r.json(); }).then(function (data) {
+      (data && data.messages || []).forEach(function (message) {
+        var known = log.some(function (entry) { return entry.id === message.id; });
+        teamAfter = message.createdAt;
+        if (!known) append({ k: "team", t: String(message.text || ""), ts: Date.parse(message.createdAt) || Date.now(), id: message.id });
+      });
+      if (teamAfter) store.set(TEAM_KEY, teamAfter);
+    }).catch(function () {}).then(function () { polling = false; });
+  }
+  // Only a chat that has started a conversation can have answers waiting.
+  setInterval(function () {
+    if (log.length && document.visibilityState === "visible") pollTeam();
+  }, 10000);
+  if (log.length) pollTeam();
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && log.length) pollTeam();
+  });
+
   // --- composer ---
   function autosize() {
     input.style.height = "auto";
@@ -587,6 +630,7 @@
   document.getElementById("restart").addEventListener("click", function () {
     store.del(LOG_KEY);
     store.del(SESSION_KEY);
+    store.del(TEAM_KEY);
     location.reload();
   });
   document.getElementById("close").addEventListener("click", function () {

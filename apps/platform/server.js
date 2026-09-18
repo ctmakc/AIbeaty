@@ -67,7 +67,10 @@ const PUBLIC_EXACT_PATHS = new Set([
 // until someone deliberately writes it down here.
 const PUBLIC_ASSISTANT_PATHS = new Set([
   "/api/assistant/health",
-  "/api/assistant/chat"
+  "/api/assistant/chat",
+  // The web chat fetches the salon team's answers for ITS OWN session (the
+  // random web-<uuid> id is the key; Telegram session ids are refused).
+  "/api/assistant/updates"
 ]);
 
 function isPublicPath(pathname) {
@@ -594,17 +597,22 @@ async function handleApiMutation(request, requestUrl, response) {
   const messageMatch = pathname.match(/^\/api\/platform\/inbox\/conversations\/([^/]+)\/messages$/);
   if (messageMatch && request.method === "POST") {
     const conversationId = decodeURIComponent(messageMatch[1]);
-    const result = scope.createConversationMessage(conversationId, body);
+    const staffReply = body.type !== "incoming" && body.type !== "system";
+    const messageId = staffReply ? `message-staff-${require("crypto").randomBytes(6).toString("hex")}` : undefined;
+    const result = scope.createConversationMessage(conversationId, staffReply ? Object.assign({}, body, { author: "staff", id: messageId }) : body);
     if (!result) return sendNotFound(response, `Unknown conversation: ${conversationId}`);
     if (result.error) return sendBadRequest(response, result.error);
-    // Staff replied manually in an assistant thread → human takeover, Maya goes silent.
-    // Scoped to the session's salon like every other conversation action here.
-    if (body.type !== "incoming" && body.type !== "system") {
-      assistant.noteStaffMessage(conversationId, request.salonSlug);
+    // Staff replied manually in an assistant thread → human takeover, Maya goes
+    // silent, and the answer goes to the client's own chat (Telegram now, the
+    // web chat on its next poll). Scoped to the session's salon.
+    let delivery = null;
+    if (staffReply) {
+      delivery = await tenancy.sendStaffReply(request.salonSlug, conversationId, String(body.text || ""), { existingMessageId: messageId });
     }
     return json(response, 201, {
       ok: true,
       action: "conversation_message_created",
+      delivery: delivery ? { status: delivery.delivery, note: delivery.note, channel: delivery.channel } : undefined,
       conversationId: result,
       conversation: scope.getInboxPage().conversations.find((conversation) => conversation.id === result),
       page: scope.getInboxPage(),
@@ -738,6 +746,11 @@ async function handleAssistantRoutes(request, requestUrl, response) {
     if (result.error === "bad_request") return jsonCors(request, response, 400, result);
     if (result.error === "rate_limited") return jsonCors(request, response, 429, result);
     return jsonCors(request, response, 200, result);
+  }
+
+  if (request.method === "GET" && pathname === "/api/assistant/updates") {
+    const salonSlug = String(requestUrl.searchParams.get("salon") || store.DEFAULT_SALON_SLUG);
+    return jsonCors(request, response, 200, tenancy.webUpdates(salonSlug, requestUrl.searchParams.get("sessionId"), requestUrl.searchParams.get("after")));
   }
 
   const takeoverMatch = pathname.match(/^\/api\/assistant\/conversations\/([^/]+)\/takeover$/);
@@ -964,6 +977,48 @@ async function handleSetupRoutes(request, requestUrl, response) {
   return json(response, 404, { error: "not_found", message: `Unknown setup endpoint: ${pathname}` });
 }
 
+// The owner's inbox (screens/inbox.html): read threads, answer a client, hand
+// a thread back to Maya. enforceAuth pinned request.salonSlug to the session.
+async function handleInboxRoutes(request, requestUrl, response) {
+  const pathname = requestUrl.pathname;
+  const slug = request.salonSlug;
+  if (pathname === "/api/inbox" && request.method === "GET") {
+    const view = tenancy.inboxView(slug);
+    if (!view) return json(response, 404, { error: "unknown_salon" });
+    const session = request.session || {};
+    return json(response, 200, Object.assign(view, {
+      owner: { displayName: session.displayName || "", email: session.email || "", role: session.role || "" }
+    }));
+  }
+  const replyMatch = pathname.match(/^\/api\/inbox\/conversations\/([^/]+)\/reply$/);
+  if (replyMatch && request.method === "POST") {
+    let body = {};
+    try {
+      body = await parseRequestBody(request);
+    } catch (error) {
+      return json(response, 400, { error: "bad_request" });
+    }
+    const text = String(body.text || "").trim().slice(0, 4000);
+    if (!text) return json(response, 400, { error: "empty", message: "Write a message first." });
+    const result = await tenancy.sendStaffReply(slug, decodeURIComponent(replyMatch[1]), text);
+    if (!result.ok) return json(response, result.error === "not_found" ? 404 : 400, result);
+    return json(response, 201, result);
+  }
+  const mayaMatch = pathname.match(/^\/api\/inbox\/conversations\/([^/]+)\/maya$/);
+  if (mayaMatch && request.method === "POST") {
+    let body = {};
+    try {
+      body = await parseRequestBody(request);
+    } catch (error) {
+      return json(response, 400, { error: "bad_request" });
+    }
+    const result = assistant.setTakeover(decodeURIComponent(mayaMatch[1]), !body.active, slug);
+    if (!result) return json(response, 404, { error: "not_found" });
+    return json(response, 200, Object.assign({ ok: true }, result));
+  }
+  return json(response, 404, { error: "not_found", message: `Unknown inbox endpoint: ${pathname}` });
+}
+
 // The gate. Everything that is not explicitly public needs a session, and a session
 // may only ever touch its own salon.
 function enforceAuth(request, requestUrl, response) {
@@ -1032,6 +1087,20 @@ async function requestHandler(request, response) {
 
   if (requestUrl.pathname.startsWith("/api/assistant")) {
     await handleAssistantRoutes(request, requestUrl, response);
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/inbox" || requestUrl.pathname.startsWith("/api/inbox/")) {
+    await handleInboxRoutes(request, requestUrl, response);
+    return;
+  }
+
+  // A self-serve salon's owner gets their own inbox (real threads only, their
+  // language, phone layout) at the address every alert links to. The demo
+  // salon keeps the Luminous Core console.
+  if (request.method === "GET" && requestUrl.pathname === "/screens/unified-inbox-luminous-core.html" &&
+      request.session && tenancy.getTenant(request.session.salonSlug)) {
+    serveFile(new URL(`/screens/inbox.html${requestUrl.search || ""}`, requestUrl), response);
     return;
   }
 

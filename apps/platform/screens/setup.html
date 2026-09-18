@@ -192,6 +192,12 @@
   .connected .line { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: center; padding: 10px 2px; border-bottom: 1px solid var(--surface-variant); }
   .connected .line .material-symbols-outlined { color: var(--ok); font-size: 19px; }
   .connected .line.pending .material-symbols-outlined { color: var(--outline); }
+  .ownerqr { display: none; grid-template-columns: 148px 1fr; gap: 16px; align-items: center; padding: 12px 2px 12px 32px; border-bottom: 1px solid var(--surface-variant); }
+  .ownerqr.ready { display: grid; }
+  .ownerqr .qrbox { width: 148px; height: 148px; padding: 8px; background: #fff; border: 1px solid var(--surface-variant); border-radius: var(--r-xl); }
+  .ownerqr .qrbox img, .ownerqr .qrbox canvas { display: block; width: 132px; height: 132px; }
+  .ownerqr .hint { margin: 0; max-width: 40ch; }
+  @media (max-width: 760px) { .ownerqr, .ownerqr.ready { display: none; } }
 
   /* ---- plan ---- */
   .addons { border-top: 1px solid var(--surface-variant); }
@@ -245,6 +251,7 @@
   <div class="grow"></div>
   <span id="saved" aria-live="polite"></span>
   <button class="ghost" id="lang" type="button">Русский</button>
+  <a class="ghost" href="/screens/unified-inbox-luminous-core.html" id="inboxLink">Inbox</a>
   <a class="ghost hide-sm" href="/screens/salon-performance-luminous-core.html" id="dashLink">Dashboard</a>
   <button class="ghost" id="logout" type="button">Sign out</button>
 </header>
@@ -262,7 +269,7 @@
   // ------------------------------------------------------------------ text
   var T = {
     en: {
-      dashboard: "Dashboard", signOut: "Sign out", saving: "Saving…", saved: "Saved", offline: "Not saved — check connection",
+      dashboard: "Dashboard", inbox: "Inbox", signOut: "Sign out", saving: "Saving…", saved: "Saved", offline: "Not saved — check connection",
       trial: function (days) { return "Trial · " + days + (days === 1 ? " day left" : " days left"); },
       trialOver: "Trial ended", live: "Live", notLive: "Not live yet",
       steps: ["Your salon", "Services & prices", "Team", "Answers", "Test & go live", "Channels", "Plan & extras"],
@@ -306,6 +313,7 @@
       tgConnected: "Connected", tgOpen: "Open your bot", tgOwner: "Get bookings and alerts in your Telegram", tgOwnerDone: "Bookings and alerts come to your Telegram",
       tgOwnerHint: "Tap once from the phone where you use Telegram. The bot then messages you on every booking, change and \"call a human\".",
       tgLink: "Link my Telegram", tgDisconnect: "Disconnect", tgReplace: "Use a different bot",
+      tgOwnerQr: "On a computer? Scan this with your phone's camera. It opens your bot in Telegram and links it to you.",
       qr: "Put this link on your Instagram bio, Google profile and at the front desk:",
       webTitle: "Chat on your website", webLead: "Paste these two lines before <code>&lt;/body&gt;</code> on your site. A chat button with Maya appears in the corner.",
       copy: "Copy", copied: "Copied", chatLink: "Or share this chat link:",
@@ -320,7 +328,7 @@
       loadFail: "Could not load your setup. Refresh the page.", managed: "This salon is set up by the AIbeaty team. Write to us to change it."
     },
     ru: {
-      dashboard: "Кабинет", signOut: "Выйти", saving: "Сохраняю…", saved: "Сохранено", offline: "Не сохранено — проверьте интернет",
+      dashboard: "Кабинет", inbox: "Входящие", signOut: "Выйти", saving: "Сохраняю…", saved: "Сохранено", offline: "Не сохранено — проверьте интернет",
       trial: function (days) { return "Пробный период · осталось " + days + " дн."; },
       trialOver: "Пробный период закончился", live: "Работает", notLive: "Ещё не запущена",
       steps: ["Салон", "Услуги и цены", "Мастера", "Ответы", "Проверка и запуск", "Каналы", "Тариф и доп. услуги"],
@@ -362,6 +370,7 @@
       tg3: "BotFather пришлёт токен вида <code>1234567890:AAH…</code>. Скопируйте его и вставьте ниже.",
       tokenPh: "Вставьте токен от BotFather", connect: "Подключить бота", connecting: "Подключаю…",
       tgConnected: "Подключён", tgOpen: "Открыть бота", tgOwner: "Получать записи и тревоги в свой Telegram", tgOwnerDone: "Записи и тревоги приходят вам в Telegram",
+      tgOwnerQr: "Вы за компьютером? Наведите камеру телефона на этот код: откроется ваш бот в Telegram и привяжется к вам.",
       tgOwnerHint: "Нажмите один раз с телефона, где у вас Telegram. Бот будет писать вам о каждой записи, изменении и просьбе позвать человека.",
       tgLink: "Привязать мой Telegram", tgDisconnect: "Отключить", tgReplace: "Подключить другого бота",
       qr: "Разместите эту ссылку в Instagram, в Google-профиле и на ресепшене:",
@@ -452,6 +461,7 @@
     document.documentElement.lang = lang;
     $("lang").textContent = lang === "ru" ? "English" : "Русский";
     $("dashLink").textContent = t("dashboard");
+    $("inboxLink").textContent = t("inbox") || "Inbox";
     $("logout").textContent = t("signOut");
     $("salonName").textContent = (doc && doc.salon.name) || (state && state.salon.name) || "";
     var pill = $("planPill");
@@ -655,6 +665,7 @@
         '<div class="line' + (tg.ownerLinked ? "" : " pending") + '"><span class="material-symbols-outlined" aria-hidden="true">' + (tg.ownerLinked ? "check_circle" : "notifications") + '</span>' +
         '<div><b>' + (tg.ownerLinked ? t("tgOwnerDone") : t("tgOwner")) + '</b>' + (tg.ownerLinked ? "" : '<div class="hint">' + t("tgOwnerHint") + '</div>') + '</div>' +
         (tg.ownerLinked ? "<span></span>" : '<a class="btn small" href="' + esc(tg.ownerLink) + '" target="_blank" rel="noopener">' + t("tgLink") + '</a>') + '</div>' +
+        (tg.ownerLinked ? "" : '<div class="ownerqr"><div class="qrbox" data-qr="' + esc(tg.ownerLink) + '" aria-hidden="true"></div><p class="hint">' + t("tgOwnerQr") + '</p></div>') +
         '</div>' +
         '<p class="hint" style="margin-top:14px">' + t("qr") + '</p><pre class="snippet">' + esc(tg.botLink) + '</pre>' +
         '<div style="display:flex;gap:10px;margin-top:10px"><button class="btn quiet small" type="button" data-copy="' + esc(tg.botLink) + '">' + t("copy") + '</button>' +
@@ -707,9 +718,35 @@
       return;
     }
     $("panel").innerHTML = '<div class="step">' + STEPS[step]() + '</div>';
+    paintQrCodes();
     var current = document.querySelector('.rail [aria-current="step"]');
     if (current && window.innerWidth <= 900) current.scrollIntoView({ block: "nearest", inline: "center" });
   }
+  // The owner deep link as a QR code, for owners doing setup on a computer:
+  // their Telegram is on the phone. qrcodejs loads only when a code is shown.
+  var qrLib = null;
+  function paintQrCodes() {
+    var boxes = document.querySelectorAll("[data-qr]");
+    if (!boxes.length || !window.matchMedia("(min-width: 761px)").matches) return;
+    if (!qrLib) {
+      qrLib = new Promise(function (resolve, reject) {
+        var script = document.createElement("script");
+        script.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+    qrLib.then(function () {
+      Array.prototype.forEach.call(document.querySelectorAll("[data-qr]"), function (box) {
+        if (box.getAttribute("data-painted")) return;
+        box.setAttribute("data-painted", "1");
+        new window.QRCode(box, { text: box.getAttribute("data-qr"), width: 132, height: 132, colorDark: "#17181b", colorLight: "#ffffff", correctLevel: window.QRCode.CorrectLevel.M });
+        box.closest(".ownerqr").classList.add("ready");
+      });
+    }).catch(function () { /* the button still works on a phone */ });
+  }
+
   function go(index) {
     step = Math.max(0, Math.min(STEPS.length - 1, index));
     try { history.replaceState(null, "", "#" + (step + 1)); } catch (error) { /* ignore */ }

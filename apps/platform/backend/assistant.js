@@ -537,15 +537,19 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       if (session) return session;
       const now = new Date().toISOString();
       const knownClient = clientPhone ? findClientByPhone(clientPhone) : null;
-      const guestName = knownClient ? knownClient.name : `Веб-гость ${sessionId.slice(-4)}`;
+      // Stored names are neutral English; the owner's inbox localises the
+      // "Web client" / "Telegram client" label and swaps in the client's own
+      // name as soon as we learn it.
+      const isTelegram = /^tg:/.test(String(sessionId)) || /telegram/i.test(String(channel || ""));
+      const guestName = knownClient ? knownClient.name : `${isTelegram ? "Telegram client" : "Web client"} ${String(sessionId).replace(/[^a-z0-9]/gi, "").slice(-4)}`;
       const conversationId = store.createConversation({
         name: guestName,
         clientId: knownClient ? knownClient.id : undefined,
         channel: channel || "Webchat",
-        preview: "Диалог с ИИ-ассистенткой Майей",
+        preview: "Chat with Maya",
         status: "Maya AI · active",
         contact: clientPhone ? { phone: clientPhone } : undefined,
-        suggestions: ["Позвать человека", "Записаться", "Цены и услуги"]
+        suggestions: ["Book a visit", "Prices and services"]
       });
       db.prepare(`
         UPDATE conversations SET assistant_session_id = ?, assistant_state = 'active' WHERE id = ? AND salon_id = ?
@@ -571,7 +575,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
     }
 
     function persistMessage(session, type, text) {
-      store.createConversationMessage(session.conversation_id, { text, type });
+      store.createConversationMessage(session.conversation_id, { text, type, author: type === "incoming" ? "client" : "maya" });
     }
 
     function addSystemThreadNote(session, text) {
@@ -770,6 +774,12 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
     function dayLabel(offset) {
       return new Date(refDayUtcMs() + offset * 86400000)
         .toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+    }
+
+    // ISO date (salon calendar) for a day offset: alerts format it in the
+    // owner's language instead of the English dayLabel.
+    function isoDateForOffset(offset) {
+      return new Date(refDayUtcMs() + offset * 86400000).toISOString().slice(0, 10);
     }
 
     function dayWeekday(offset) {
@@ -1391,7 +1401,10 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
             stylist: stylist.name,
             day: dayLabel(day.offset),
             time: proposal.timeLabel,
-            price: service.price_label
+            price: service.price_label,
+            date: isoDateForOffset(day.offset),
+            startMinutes: proposal.startMinutes,
+            phone: clientPhone
           });
           return {
             status: "booked",
@@ -1485,7 +1498,12 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
             service: target.service_name,
             stylist: stylist.name,
             day: dayLabel(day.offset),
-            time: proposal.timeLabel
+            time: proposal.timeLabel,
+            date: isoDateForOffset(day.offset),
+            startMinutes,
+            fromDate: isoDateForOffset(target.day_offset),
+            fromStartMinutes: target.start_minutes,
+            phone: session.client_phone || ""
           });
           return { status: "rescheduled", appointment: { id: target.id, service: target.service_name, stylist: stylist.name, day: dayLabel(day.offset), time: proposal.timeLabel } };
         }
@@ -1521,7 +1539,14 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
           session.state.pendingAction = null;
           turn.actionCommitted = true;
           addSystemThreadNote(session, `Maya canceled: ${target.service_name}, ${store.formatTimeRange(target.start_minutes, target.end_minutes)}.`);
-          recordEvent(session, "cancellation", { appointmentId: target.id, client: target.client_name, service: target.service_name });
+          recordEvent(session, "cancellation", {
+            appointmentId: target.id,
+            client: target.client_name,
+            service: target.service_name,
+            date: isoDateForOffset(target.day_offset),
+            startMinutes: target.start_minutes,
+            phone: session.client_phone || ""
+          });
           return { status: "canceled", appointment: { id: target.id, service: target.service_name } };
         }
 
