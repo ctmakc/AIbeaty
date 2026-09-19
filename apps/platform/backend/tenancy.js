@@ -1478,6 +1478,14 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     if (text) notifyOwner(entry.slug, text, { conversationId: entry.conversationId });
   }
 
+  function clearWaiting(slug, conversationId) {
+    const entry = waitingAlerts.get(`${slug}|${conversationId}`);
+    if (!entry) return;
+    if (entry.timer) clearTimeout(entry.timer);
+    entry.timer = null;
+    entry.pending = [];
+  }
+
   // Sends the waiting-client alerts held back by the 5-minute window now
   // (tests, shutdown).
   function flushWaitingAlerts() {
@@ -1874,6 +1882,9 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       scope.createConversationMessage(conversationId, { text: body, type: "outgoing", author: "staff", id: messageId, delivery: sessionId ? (tgMatch ? "sending" : "waiting") : "" });
     }
     if (pauseMaya && assistant && typeof assistant.noteStaffMessage === "function") assistant.noteStaffMessage(conversationId, slug);
+    // The owner has answered, so the messages still held back for a
+    // "wrote again" alert are read: drop them (the 5-minute window stays).
+    clearWaiting(slug, conversationId);
 
     let delivery = "";
     let note = "";

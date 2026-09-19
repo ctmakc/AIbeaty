@@ -236,6 +236,26 @@ async function main() {
     store.db.prepare(`UPDATE tenants SET business_type = '' WHERE salon_slug = ?`).run(slug);
   });
 
+  await step("handoff: a staff answer drops the held-back 'wrote again' alert (the owner has read them)", async () => {
+    sent.length = 0;
+    shift += 60 * 1000;
+    await clientSays(555, "Are you open Sunday?");
+    assert.strictEqual(toOwner().length, 0, "inside the 5-minute window: held");
+    const conv = convFor("tg:7300000:555");
+    const answer = await tenancy.sendStaffReply(slug, conv.id, "Hi Anna, yes, 10 to 4.");
+    assert.ok(answer.ok);
+    tenancy.flushWaitingAlerts();
+    await tick();
+    assert.strictEqual(toOwner().length, 0, "nothing stale goes out after the owner answered");
+    // A message after the answer is counted again.
+    shift += 6 * 60 * 1000;
+    await clientSays(555, "Thanks, and Monday?");
+    const again = toOwner().pop().text;
+    assert.match(again, /Anna wrote again/);
+    assert.match(again, /Thanks, and Monday\?/);
+    assert.doesNotMatch(again, /Are you open Sunday/);
+  });
+
   // ---------- 2. hand-back ----------
   await step("hand-back: Let Maya continue returns the thread; Maya answers again, no holding line", async () => {
     const conv = convFor("tg:7300000:555");
