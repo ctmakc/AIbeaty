@@ -555,7 +555,7 @@ const CLIENT_TEXT = {
   slowDown: { en: "That was fast 🙂 Give me a minute.", fr: "C'était rapide 🙂 Laissez-moi une minute.", ru: "Слишком быстро 🙂 Подождите минутку.", uk: "Занадто швидко 🙂 Зачекайте хвилинку." }
 };
 
-function pick(pack, lang) {
+function pickText(pack, lang) {
   return pack[lang] || pack.en;
 }
 
@@ -1131,13 +1131,13 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       const lang = clientLanguage(payload.message, payload.languageHint);
       if (!tenant.setupComplete || (!tenant.launched && !preview)) {
         return {
-          reply: pick(CLIENT_TEXT.settingUp, lang),
+          reply: pickText(CLIENT_TEXT.settingUp, lang),
           state: { reason: "setup_incomplete" }
         };
       }
       if (!tenant.active) {
         return {
-          reply: pick(CLIENT_TEXT.paused, lang),
+          reply: pickText(CLIENT_TEXT.paused, lang),
           state: { reason: "trial_ended" }
         };
       }
@@ -1252,7 +1252,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       const lang = mayaLanguage.normalizeLanguageCode(row.language) || "en";
       const time = lang === "en" ? clockLabel(appointment.start_minutes) : `${Math.floor(appointment.start_minutes / 60)}:${String(appointment.start_minutes % 60).padStart(2, "0")}`;
       const staff = appointment.stylist || "";
-      const text = pick({
+      const text = pickText({
         en: `Reminder: tomorrow at ${time} — ${appointment.service_name}${staff ? ` with ${staff}` : ""} at ${record.name}.${record.address ? ` Address: ${record.address}.` : ""} If your plans changed, reply here and we'll reschedule or cancel.`,
         fr: `Rappel : demain à ${time}, ${appointment.service_name}${staff ? ` avec ${staff}` : ""} chez ${record.name}.${record.address ? ` Adresse : ${record.address}.` : ""} Si vos plans ont changé, répondez ici et on déplace ou on annule.`,
         ru: `Напоминаем: завтра в ${time} — ${appointment.service_name}${staff ? `, мастер ${staff}` : ""}, салон «${record.name}».${record.address ? ` Адрес: ${record.address}.` : ""} Если планы изменились, напишите сюда: перенесём или отменим.`,
@@ -1631,7 +1631,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       ru: `Здравствуйте! Я Майя, ИИ-ассистентка${name ? ` салона «${name}»` : ""}. Могу записать вас, перенести или отменить визит и ответить на вопросы о ценах и услугах. Если нужен живой человек, просто напишите «позвать человека».`,
       uk: `Вітаю! Я Майя, ШІ-асистентка${name ? ` салону «${name}»` : ""}. Можу записати вас, перенести чи скасувати візит і відповісти на питання про ціни та послуги. Якщо потрібна жива людина, просто напишіть «покликати людину».`
     };
-    return pick(pack, lang);
+    return pickText(pack, lang);
   }
 
   // Webhook entry point. Returns an HTTP status right away; the conversation
@@ -1856,7 +1856,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     }
     if (startMatch) {
       await sendTelegram(row, chatId, greetingFor(row.salon_slug, languageCode), {
-        reply_markup: { keyboard: [[{ text: pick(CLIENT_TEXT.shareNumber, lang), request_contact: true }]], resize_keyboard: true, one_time_keyboard: true }
+        reply_markup: { keyboard: [[{ text: pickText(CLIENT_TEXT.shareNumber, lang), request_contact: true }]], resize_keyboard: true, one_time_keyboard: true }
       });
       return;
     }
@@ -1865,10 +1865,10 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     let body = text;
     if (message.contact && message.contact.phone_number) {
       clientPhone = String(message.contact.phone_number);
-      body = pick(CLIENT_TEXT.myPhone, lang).replace("{phone}", clientPhone);
+      body = pickText(CLIENT_TEXT.myPhone, lang).replace("{phone}", clientPhone);
     }
     if (!body) {
-      await sendTelegram(row, chatId, pick(CLIENT_TEXT.textOnly, lang));
+      await sendTelegram(row, chatId, pickText(CLIENT_TEXT.textOnly, lang));
       return;
     }
 
@@ -1898,7 +1898,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     if (result && result.reply) {
       await sendTelegram(row, chatId, String(result.reply), { reply_markup: { remove_keyboard: true } });
     } else if (result && result.error === "rate_limited") {
-      await sendTelegram(row, chatId, pick(CLIENT_TEXT.slowDown, lang));
+      await sendTelegram(row, chatId, pickText(CLIENT_TEXT.slowDown, lang));
     }
   }
 
