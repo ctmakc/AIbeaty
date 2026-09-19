@@ -366,7 +366,7 @@ function weekdayOfIso(iso) {
     assert.ok(/from \$85/.test(first.reply) && /\$20 deposit/.test(first.reply), first.reply);
     const combo = await salon.chat({ sessionId: "olena-3", message: "And a gel manicure plus nail art on 10 nails?" });
     assert.ok(combo.state.gates.some((gate) => /price_guard/.test(gate)), JSON.stringify(combo.state.gates));
-    assert.ok(/Gel manicure: \$50\.00/.test(combo.reply) && /from \$5\/nail/.test(combo.reply), combo.reply);
+    assert.ok(/Gel manicure: \$50(?!\.)/.test(combo.reply) && /from \$5\/nail/.test(combo.reply), combo.reply);
     assert.ok(!/\$100/.test(combo.reply), combo.reply);
     assert.notStrictEqual(combo.state.assistantState, "escalated");
   });
@@ -536,6 +536,37 @@ function weekdayOfIso(iso) {
     assert.ok(!/within the hour/.test(first.reply) && /as soon as they can/.test(first.reply), first.reply);
     const second = await salon.chat({ sessionId: "priya-4", message: "How do I send the deposit?" });
     assert.ok(/within 12 hours of booking/.test(second.reply), second.reply);
+  });
+
+  await test("post-treatment complications go straight to a human, with no LLM call, in en/fr/ru", async () => {
+    const cases = [
+      "My lip is swollen, hard and a bit bluish since the filler yesterday",
+      "Ma lèvre est enflée et violacée depuis l'injection",
+      "После филлера губа опухла и синеет",
+      "I have blurry vision after my botox"
+    ];
+    for (const [index, message] of cases.entries()) {
+      const llm = scriptedLlm([]);
+      const result = await salonOf("anna-test", llm).chat({ sessionId: `anna-urgent-${index}`, message });
+      assert.strictEqual(llm.calls, 0, `no LLM for: ${message}`);
+      assert.strictEqual(result.state.assistantState, "escalated", `${message} → ${JSON.stringify(result.state)}`);
+      assert.ok(!/would you like me to connect/i.test(result.reply || ""), result.reply);
+    }
+  });
+
+  await test("price labels stay exactly as the owner wrote them; consult-only keeps the indication", async () => {
+    const converted = setupToStore(normalizeSetup({
+      salon: { name: "X", timezone: "America/Toronto" },
+      hours: { mon: "10:00-18:00" },
+      services: [
+        { name: "HydraFacial", durationMinutes: 60, price: "$199" },
+        { name: "Coupe", durationMinutes: 30, price: "35$" },
+        { name: "Filler", durationMinutes: 60, price: "from $650", consultOnly: true }
+      ],
+      staff: [{ name: "A", workDays: ["mon"] }]
+    }));
+    const labels = converted.categories.flatMap((category) => category.services.map((service) => service.priceLabel));
+    assert.deepStrictEqual(labels, ["$199", "35$", "By consultation (from $650)"]);
   });
 
   console.log(`\n${passed} passed, ${failures.length} failed`);

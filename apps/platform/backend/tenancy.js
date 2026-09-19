@@ -644,9 +644,12 @@ function setupToStore(doc) {
       // The owner's own wording ("from $110", "$220–$320", "Free") is what the
       // assistant quotes; priceValue is what the quote guard checks against.
       // A consultation-only service never carries a number to quote.
+      // Verbatim, always: the owner's "$50" stays "$50" (it used to become
+      // "$50.00", which contradicts "word for word"). A consultation-only
+      // service keeps the owner's indication ("from $650") in brackets.
       priceLabel: service.consultOnly
-        ? "By consultation"
-        : /[^\d.,\s$]/.test(service.price) ? service.price : `$${priceValue.toFixed(2)}`,
+        ? (service.price && !/consult/i.test(service.price) ? `By consultation (${service.price})` : "By consultation")
+        : (service.price || `$${priceValue}`),
       requiresDeposit: service.deposit,
       description: service.consultOnly
         ? `${service.note ? `${service.note} ` : ""}Consultation only: do not quote a price; offer a consultation or hand the client to the team.`
