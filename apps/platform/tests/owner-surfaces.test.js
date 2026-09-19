@@ -333,7 +333,7 @@ async function main() {
       assert.strictEqual(anonymous.status, 401);
     });
 
-    await check("rows flagged is_test are left out too (when the column exists)", async () => {
+    await check("rows flagged is_test are left out too", async () => {
       const db = new (require("better-sqlite3"))(TEST_DB);
       const columns = db.prepare(`PRAGMA table_info(appointments)`).all().map((column) => column.name);
       if (!columns.includes("is_test")) db.prepare(`ALTER TABLE appointments ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0`).run();
@@ -379,6 +379,26 @@ async function main() {
       const otherBlocks = await call("GET", "/api/bookings", undefined, other.cookie);
       assert.strictEqual(otherBlocks.data.blocks.length, 0, "blocks stay in their salon");
       await call("DELETE", `/api/bookings/blocks/${salonBlock.data.id}`, undefined, other.cookie).then((result) => assert.strictEqual(result.status, 404));
+    });
+
+    await check("a booking from the owner's own test chat is flagged test: hidden in Bookings and never blocks a real client", async () => {
+      const day4 = addDays(today, 4);
+      const ownerSays = async (message) => {
+        const result = await call("POST", "/api/assistant/chat", { salon: rosa.slug, sessionId: "web-owner-test-2", message }, rosa.cookie);
+        assert.strictEqual(result.status, 200, JSON.stringify(result.data));
+      };
+      await ownerSays(`BOOKIT ${day4}`);
+      await ownerSays("yes");
+      const withTests = await call("GET", "/api/bookings?tests=1", undefined, rosa.cookie);
+      const testBooking = withTests.data.bookings.find((entry) => entry.date === day4 && entry.client === "Rita Client");
+      assert.ok(testBooking, `the test booking exists: ${JSON.stringify(withTests.data.bookings)} / ${serverLog.slice(-1200)}`);
+      assert.strictEqual(testBooking.test, true);
+      const plain = await call("GET", "/api/bookings", undefined, rosa.cookie);
+      assert.ok(!plain.data.bookings.some((entry) => entry.date === day4), "hidden from the owner's real list");
+      lastToolResult = null;
+      const real = await call("POST", "/api/assistant/chat", { salon: rosa.slug, sessionId: "web-real-client-9", message: `CHECK ${day4} 10:00` }, "");
+      assert.strictEqual(real.status, 200);
+      assert.strictEqual(lastToolResult.requested_time.available, true, "a real client still gets 10:00");
     });
 
     await check("cancelling a Telegram booking tells the client through the salon bot, Maya stays on", async () => {
