@@ -1401,8 +1401,7 @@
       '<div class="total">' +
       '<div><div class="lbl">' + esc(t("totalLabel")) + '</div>' +
       '<div class="sum">' + esc(money(totals.total)) + '<small>' + esc(annual ? t("perYear") : t("perMonth")) + ' ' + esc(t("plusTax")) + '</small></div>' +
-      '<div class="how">' + esc(t("totalHow")(plan.seller)) + (annual ? " " + esc(t("annualSave")(totals.saving)) : "") + '</div>' +
-      '<div class="how billed">' + esc(t("billedBy")(plan.seller, plan.sellerPlace || "Ottawa, Canada")) + '</div></div>' +
+      '<div class="how">' + esc(t("totalHow")(plan.seller)) + (annual ? " " + esc(t("annualSave")(totals.saving)) : "") + '</div></div>' +
       '<div style="display:grid;gap:8px">' +
       '<button class="btn" type="button" id="planGo">' + esc(t("continueWith")(chosen)) + ' <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></button>' +
       (planEdit ? '<button class="btn quiet small" type="button" id="planKeep">' + t("keepChoice") + '</button>' : "") +

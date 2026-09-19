@@ -91,6 +91,7 @@
   .value .how { font-size: 12.5px; color: var(--on-surface-variant); line-height: 1.45; flex-basis: 100%; }
   .value .count { font-size: 13px; color: var(--on-surface); font-weight: 600; }
   .tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -6px 0 18px; font-size: 12.5px; color: var(--on-surface-variant); }
+  .jump { display: none; margin: -4px 0 16px; }
   .linkbtn { background: none; border: 0; padding: 0; color: var(--primary); font: 600 12.5px var(--font-body); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 
   /* ---- days ---- */
@@ -102,7 +103,7 @@
   .day.quiet .dayhead b { color: var(--on-surface-variant); font-weight: 700; }
   .none { font-size: 12.5px; color: var(--outline); padding: 8px 2px 0; }
   .appt { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: 14px; align-items: start; padding: 12px 2px; border-bottom: 1px solid var(--surface-variant); }
-  .appt .time { font: 500 13px var(--font-mono); color: var(--ink); padding-top: 1px; }
+  .appt .time { font: 600 13px var(--font-body); font-variant-numeric: tabular-nums; color: var(--ink); padding-top: 1px; white-space: nowrap; }
   .appt .time small { display: block; color: var(--on-surface-variant); font-size: 11.5px; margin-top: 2px; }
   .appt .who { font-weight: 700; font-size: 14px; color: var(--ink); overflow-wrap: anywhere; }
   .appt .who a { color: var(--on-surface-variant); font-weight: 500; font-size: 13px; text-decoration: none; margin-left: 6px; white-space: nowrap; }
@@ -185,9 +186,10 @@
     .ghost .ico { display: inline; }
     .ghost .lbl { display: none; }
     h1 { font-size: 24px; }
-    .appt { grid-template-columns: 64px minmax(0, 1fr); gap: 10px; }
+    .appt { grid-template-columns: 70px minmax(0, 1fr); gap: 10px; }
+    .jump { display: inline-flex; }
     .appt .acts { grid-column: 2 / 3; }
-    .appt.block { grid-template-columns: 64px minmax(0, 1fr); }
+    .appt.block { grid-template-columns: 70px minmax(0, 1fr); }
     .appt .time { font-size: 12.5px; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -213,6 +215,7 @@
     <div id="banner"></div>
     <div class="value" id="value" hidden></div>
     <div class="tools" id="tools"></div>
+    <a class="btn quiet small jump" href="#blockTitle" id="jump"><span class="material-symbols-outlined" aria-hidden="true">block</span><span class="lbl">Block time</span></a>
     <div id="days"><div class="loading" id="loading">Loading…</div></div>
   </main>
   <aside class="side">
@@ -285,6 +288,7 @@
       cancelTg: function (client) { return "We tell " + client + " in Telegram, from your salon’s bot, and Maya offers another time."; },
       cancelWeb: function (client) { return client + " sees the message in your web chat the next time they open it, and Maya offers another time."; },
       cancelCall: function (client, phone) { return "This booking was not made in a chat, so we cannot message " + client + ". Call them" + (phone ? " at " + phone : "") + "."; },
+      cancelNoBot: function (client, phone) { return "Your Telegram bot is not connected right now, so we cannot message " + client + ". Call them" + (phone ? " at " + phone : "") + "."; },
       reasonLbl: "Note for the client (optional)", reasonPh2: "e.g. Olena is sick today.",
       keep: "Keep it", confirmCancel: "Cancel visit", cancelling: "Cancelling…",
       cancelledTg: "Cancelled. The client got a Telegram message.", cancelledWeb: "Cancelled. The client sees it in the web chat.", cancelledPlain: "Cancelled. Remember to let the client know.",
@@ -316,6 +320,7 @@
       cancelTg: function (client) { return "Nous prévenons " + client + " sur Telegram, par le robot de votre salon, et Maya propose un autre moment."; },
       cancelWeb: function (client) { return client + " verra le message dans votre chat web à sa prochaine visite, et Maya proposera un autre moment."; },
       cancelCall: function (client, phone) { return "Ce rendez-vous n’a pas été pris dans un chat : nous ne pouvons pas écrire à " + client + ". Appelez" + (phone ? " au " + phone : "") + "."; },
+      cancelNoBot: function (client, phone) { return "Votre robot Telegram n’est pas connecté : nous ne pouvons pas écrire à " + client + ". Appelez" + (phone ? " au " + phone : "") + "."; },
       reasonLbl: "Note pour la cliente (facultatif)", reasonPh2: "ex. Olena est malade aujourd’hui.",
       keep: "Garder", confirmCancel: "Annuler la visite", cancelling: "Annulation…",
       cancelledTg: "Annulé. La cliente a reçu un message Telegram.", cancelledWeb: "Annulé. La cliente le verra dans le chat web.", cancelledPlain: "Annulé. Pensez à prévenir la cliente.",
@@ -347,6 +352,7 @@
       cancelTg: function (client) { return "Мы сообщим клиенту (" + client + ") в Telegram от бота салона, и Майя предложит другое время."; },
       cancelWeb: function (client) { return "Клиент (" + client + ") увидит сообщение в веб-чате, когда откроет его, и Майя предложит другое время."; },
       cancelCall: function (client, phone) { return "Эта запись сделана не в чате, написать клиенту (" + client + ") мы не можем. Позвоните" + (phone ? ": " + phone : "") + "."; },
+      cancelNoBot: function (client, phone) { return "Telegram-бот сейчас не подключён, написать клиенту (" + client + ") мы не можем. Позвоните" + (phone ? ": " + phone : "") + "."; },
       reasonLbl: "Сообщение клиенту (необязательно)", reasonPh2: "напр. Олена сегодня заболела.",
       keep: "Оставить", confirmCancel: "Отменить визит", cancelling: "Отменяю…",
       cancelledTg: "Отменено. Клиент получил сообщение в Telegram.", cancelledWeb: "Отменено. Клиент увидит это в веб-чате.", cancelledPlain: "Отменено. Не забудьте предупредить клиента.",
@@ -355,6 +361,8 @@
     }
   };
   var LOCALE = { en: "en-CA", fr: "fr-CA", ru: "ru-RU" };
+  // en-CA writes "10:00 a.m."; salons read "10:00 AM" faster.
+  var TIME_LOCALE = { en: "en-US", fr: "fr-CA", ru: "ru-RU" };
   var lang = "en";
   var T = TEXT.en;
   var data = null;
@@ -393,7 +401,7 @@
   }
   function clock(minutes) {
     var d = new Date(Date.UTC(2000, 0, 1, Math.floor(minutes / 60), minutes % 60));
-    try { return new Intl.DateTimeFormat(LOCALE[lang], { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(d); } catch (e) { return Math.floor(minutes / 60) + ":" + String(minutes % 60).padStart(2, "0"); }
+    try { return new Intl.DateTimeFormat(TIME_LOCALE[lang], { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(d); } catch (e) { return Math.floor(minutes / 60) + ":" + String(minutes % 60).padStart(2, "0"); }
   }
   function isoAdd(iso, days) { var d = new Date(iso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); }
   function dayName(iso) {
@@ -412,7 +420,7 @@
     document.documentElement.lang = lang === "fr" ? "fr-CA" : lang;
     document.title = "AIbeaty — " + T.title;
     $("salonName").textContent = (data && data.salon.name) || "";
-    [["inboxLink", T.inbox], ["setupLink", T.setup], ["logout", T.signOut], ["inboxBig", T.inbox], ["setupBig", T.setup]].forEach(function (pair) {
+    [["inboxLink", T.inbox], ["setupLink", T.setup], ["logout", T.signOut], ["inboxBig", T.inbox], ["setupBig", T.setup], ["jump", T.blockTitle]].forEach(function (pair) {
       var node = $(pair[0]);
       node.querySelector(".lbl").textContent = pair[1];
       node.setAttribute("aria-label", pair[1]);
@@ -572,6 +580,7 @@
     $("cancelTitle").textContent = T.cancelTitle(client);
     $("cancelLead").textContent = booking.channel === "telegram" && data.telegram ? T.cancelTg(client)
       : booking.channel === "web" ? T.cancelWeb(client)
+      : booking.channel === "telegram" ? T.cancelNoBot(client, booking.phone)
       : T.cancelCall(client, booking.phone);
     $("cancelReason").value = "";
     if (typeof $("cancelDlg").showModal === "function") $("cancelDlg").showModal();
