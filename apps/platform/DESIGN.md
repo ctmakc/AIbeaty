@@ -87,13 +87,18 @@ Open/close 220ms scale+fade from bottom-right; teaser pill once per session.
 **Inheritance, not a new direction.** Sign-up is the owner door's twin (same 5/7
 split, mark → card → shelf on a phone). The shelf's ledger rows are NUMBERED here
 (01–04) because they describe the sequence the owner is about to walk.
-English first (Canadian salons), a Русский toggle, choice kept in localStorage and
-sent as the tenant's language, so server validation speaks it too.
+English first (Canadian salons), a segmented EN · FR toggle (RU appears only for a
+ru/uk browser), choice kept in localStorage and saved as the tenant's language, so
+server validation speaks it too.
 
 Setup wizard: one primitive, the ledger row, everywhere: the step rail, the
 service list, the team, Q&A, add-ons. The only tinted surface on the services step
 is the "Let Maya read your price list" box (Maya disc + textarea + URL). Rail status
-glyphs: check = done, error = blocking; the go-live step lists server errors with a
+glyphs: check = done, neutral dot = to do, error = blocking but only on a step the
+owner has already worked on; a progress line ("2 of 5 · about 6 min left") sits
+above the rail. Step 6 leads with the chat link + client-side QR (qrcode-generator
+from cdnjs) in the one bordered box; step 7 plans and add-ons are selectable ledger
+rows with the total in the same bordered box; the go-live step lists server errors with a
 Fix link to the owning step. Phone: the rail becomes a horizontal tab strip that
 scrolls the current step into view; the bar drops salon name, save state and the
 trial half of the pill (no horizontal scroll at 390px, checked by script).

@@ -28,6 +28,9 @@ tenancy.attachAssistant(assistant);
 // Tells us (the platform operator) about sign-ups and add-on requests. Same
 // formsubmit relay the assistant alerts use; off when ALERT_EMAIL is empty.
 function platformNotify({ subject, lines }) {
+  // Always in the service log too (journalctl), so a plan request is never lost
+  // when the email relay is off or fails.
+  console.log(`[platform] ${subject}${(lines || []).length ? `\n  ${(lines || []).join("\n  ")}` : ""}`);
   const to = String(process.env.PLATFORM_EMAIL || process.env.ALERT_EMAIL || "").trim();
   if (!to) return;
   const origin = String(process.env.ALERT_ORIGIN || "https://aibeaty.pages.dev").replace(/\/+$/, "");
@@ -75,6 +78,9 @@ function isPublicPath(pathname) {
   // Telegram calls this for every salon bot; each request is authenticated by
   // the per-bot secret header inside tenancy.handleTelegramUpdate.
   if (/^\/api\/telegram\/hook\/\d+$/.test(pathname)) return true;
+  // Stripe calls this; each request is authenticated by its signature inside
+  // tenancy.handleStripeWebhook (and it answers 404 until Stripe is configured).
+  if (pathname === "/api/billing/stripe-webhook") return true;
   if (pathname.startsWith("/api/auth/")) return true;
   if (PUBLIC_EXACT_PATHS.has(pathname)) return true;
   // Stylesheets are the login page's only asset dependency and carry no salon data.
@@ -138,6 +144,20 @@ function sendNotFound(response, message) {
 
 function sendBadRequest(response, message) {
   json(response, 400, { error: "bad_request", message });
+}
+
+// Stripe signs the exact bytes it sent, so its webhook reads the raw body.
+function readRawBody(request, limit = 1_000_000) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    request.on("data", (chunk) => {
+      size += chunk.length;
+      if (size <= limit) chunks.push(chunk);
+    });
+    request.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    request.on("error", reject);
+  });
 }
 
 function parseRequestBody(request) {
@@ -688,7 +708,10 @@ async function handleAssistantRoutes(request, requestUrl, response) {
       salon: salon.name,
       salonSlug: salon.slug,
       city: salon.city,
-      timezone: salon.timezone
+      timezone: salon.timezone,
+      // The salon's first three services with the price as the owner wrote it,
+      // for the chat's greeting (public prices, nothing private).
+      highlights: tenancy.highlights(salon.slug)
     };
     if (request.session) {
       payload.model = llm.model;
@@ -904,12 +927,16 @@ async function handleSetupRoutes(request, requestUrl, response) {
     return json(response, 200, {
       salon: { slug, name: record.name },
       tenant: tenant
-        ? { plan: tenant.plan, trialEndsAt: tenant.trialEndsAt, trialDaysLeft: tenant.trialDaysLeft, active: tenant.active, setupComplete: tenant.setupComplete, launched: tenant.launched, live: tenant.live, businessType: tenant.businessType, language }
+        ? { plan: tenant.plan, planStatus: tenant.planStatus, trialEndsAt: tenant.trialEndsAt, trialDaysLeft: tenant.trialDaysLeft, active: tenant.active, setupComplete: tenant.setupComplete, launched: tenant.launched, live: tenant.live, businessType: tenant.businessType, language }
         : null,
       setup: tenant ? tenant.setup : null,
       telegram: tenancy.telegramStatus(slug),
       addons: tenancy.listAddons(slug, language),
+      plan: tenant ? tenancy.planView(slug, language) : null,
+      owner: { name: (request.session && request.session.displayName) || "" },
       chatUrl: `/screens/chat.html?salon=${encodeURIComponent(slug)}`,
+      // The link clients use: what goes in the Instagram bio and the QR code.
+      publicChatUrl: `${tenancy.publicBase}/screens/chat.html?salon=${encodeURIComponent(slug)}`,
       widgetSnippet: `<script>window.AIBEATY_API_BASE = "${tenancy.publicBase}"; window.AIBEATY_SALON = "${slug}";</script>\n<script src="${tenancy.publicBase}/assistant-widget.js" defer></script>`
     });
   }
@@ -923,6 +950,23 @@ async function handleSetupRoutes(request, requestUrl, response) {
     if (!body) return json(response, 400, { error: "bad_request" });
     const result = tenancy.saveSetup(slug, body.setup || body, { language });
     return json(response, result.ok ? 200 : 422, result);
+  }
+
+  if (pathname === "/api/setup/language" && request.method === "PUT") {
+    const body = await readBody();
+    if (!body) return json(response, 400, { error: "bad_request" });
+    return json(response, 200, { ok: true, language: tenancy.setLanguage(slug, body.language) });
+  }
+
+  if (pathname === "/api/setup/plan" && request.method === "GET") {
+    return json(response, 200, tenancy.planView(slug, language));
+  }
+
+  if (pathname === "/api/setup/plan" && request.method === "POST") {
+    const body = await readBody();
+    if (!body) return json(response, 400, { error: "bad_request" });
+    const result = await tenancy.requestPlan(slug, body, { language });
+    return json(response, result.status || (result.ok ? 200 : 422), result);
   }
 
   if (pathname === "/api/setup/launch" && request.method === "POST") {
@@ -1023,6 +1067,13 @@ async function requestHandler(request, response) {
     response.writeHead(outcome.status, { "Content-Type": "application/json; charset=utf-8" });
     response.end(outcome.status === 200 ? "{\"ok\":true}" : "{}");
     return;
+  }
+
+  if (requestUrl.pathname === "/api/billing/stripe-webhook") {
+    if (request.method !== "POST") return json(response, 405, { error: "method_not_allowed" });
+    const raw = await readRawBody(request);
+    const outcome = tenancy.handleStripeWebhook(raw, request.headers["stripe-signature"]);
+    return json(response, outcome.status, outcome.body);
   }
 
   if (requestUrl.pathname.startsWith("/api/setup")) {
