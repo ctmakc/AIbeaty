@@ -12,6 +12,7 @@ const path = require("path");
 const { buildSystemPrompt } = require("./assistant-prompt");
 const language = require("./maya-language");
 const dates = require("./maya-dates");
+const rules = require("./maya-rules");
 const { detectLanguage, resolveTurnLanguage, replyLanguageMismatch, languageName } = language;
 
 const MAX_TOOL_ROUNDS = 6;
@@ -231,6 +232,68 @@ const FALLBACKS = {
   }
 };
 
+// The same canned line is never sent twice in a row: the second time the
+// client hears this instead.
+const UNKNOWN_AGAIN = {
+  en: "I've noted that for the salon team, and they will answer it here. Is there anything else I can help with meanwhile, like prices or a time to come in?",
+  fr: "C'est noté pour l'équipe du salon, on vous répondra ici. Est-ce que je peux vous aider avec autre chose en attendant, comme les prix ou un moment pour venir?",
+  ru: "Я записала это для команды салона, вам ответят здесь. Чем ещё могу помочь пока: цены, свободное время?",
+  uk: "Я записала це для команди салону, вам дадуть відповідь тут. Чим ще можу допомогти поки: ціни, вільний час?"
+};
+
+// A booking made in another app (Square, Booksy, Fresha…): Maya cannot see
+// it and says so, then hands the thread to a person.
+const EXTERNAL_BOOKING_REPLY = {
+  en: (app) => `I can't see bookings made in ${app}: that calendar is separate from mine, so I won't guess. I'm passing this to the salon team so they can check it, and they will reply here as soon as they can.`,
+  fr: (app) => `Je ne vois pas les réservations faites dans ${app} : ce calendrier est séparé du mien, alors je préfère ne pas deviner. Je transmets votre message à l'équipe du salon pour qu'elle vérifie, on vous répondra ici dès que possible.`,
+  ru: (app) => `Я не вижу записи, сделанные в ${app}: этот календарь отдельный от моего, поэтому гадать не буду. Передаю ваш вопрос команде салона, чтобы они проверили; вам ответят здесь, как только смогут.`,
+  uk: (app) => `Я не бачу записів, зроблених у ${app}: цей календар окремий від мого, тож вгадувати не буду. Передаю ваше питання команді салону, щоб перевірили; вам дадуть відповідь тут, щойно зможуть.`
+};
+
+// Lead-ins for the owner's own policy text after a cancel / move / booking.
+const POLICY_LEAD = {
+  cancel: { en: "Our cancellation policy:", fr: "Notre politique d'annulation :", ru: "Правила отмены в салоне:", uk: "Правила скасування в салоні:" },
+  deposit: { en: "About the deposit:", fr: "Pour le dépôt :", ru: "О депозите:", uk: "Про депозит:" }
+};
+
+// "On Wednesday we're open 10:00-19:00." — the replacement for a sentence
+// that called an open day closed.
+const OPEN_DAY_LINE = {
+  en: (day, hours) => `On ${day} we're open ${hours}.`,
+  fr: (day, hours) => `Le ${day}, nous sommes ouverts de ${hours.replace("-", " à ")}.`,
+  ru: (day, hours) => `В ${day} мы работаем ${hours}.`,
+  uk: (day, hours) => `У ${day} ми працюємо ${hours}.`
+};
+
+// A reply that promises when the team will answer. Maya never does that on
+// the salon's behalf; only sentences about replying are touched, so a fact
+// like "send the deposit within 12 hours" stays.
+const REPLY_VERB_RE = /(reply|respond|get back|answer|contact you|in touch|hear back|call you|répond|reviendr|recontact|contacter|ответ|свяж|перезвон|напишут|відпов|зв'яж|зв’яж|передзвон)/i;
+const TIME_PROMISE_RES = [
+  [/\b(within|in)\s+(the\s+next\s+|the\s+|an?\s+|one\s+|a\s+few\s+|\d+\s*)?(hours?|minutes?|mins?|business days?|days?)\b/gi, { en: "as soon as they can" }],
+  [/\b(shortly|very soon|right away|in no time)\b/gi, { en: "as soon as they can" }],
+  [/dans (l'|l’)heure( qui suit)?|dans les \d+ (minutes|heures)|dans quelques (minutes|heures)|dans la journée|sous peu|très bientôt|rapidement|bientôt/gi, { en: "dès que possible" }],
+  [/в течение (часа|получаса|дня|\d+ (минут|часов|часа)|пары часов|нескольких (минут|часов))|в ближайш(ее время|ий час)/gi, { en: "как только смогут" }],
+  [/протягом (години|дня|\d+ (хвилин|годин))|найближчим часом|незабаром/gi, { en: "щойно зможуть" }]
+];
+function scrubTimePromises(reply) {
+  let changed = false;
+  const out = rules.sentences(reply).map((sentence) => {
+    if (!REPLY_VERB_RE.test(sentence)) return sentence;
+    let value = sentence;
+    for (const [re, pack] of TIME_PROMISE_RES) {
+      re.lastIndex = 0;
+      if (re.test(value)) {
+        re.lastIndex = 0;
+        value = value.replace(re, pack.en);
+        changed = true;
+      }
+    }
+    return value;
+  });
+  return changed ? out.join(" ") : reply;
+}
+
 // A question attached to a "yes" that Maya could not answer.
 const FOLLOWUP_PENDING = {
   en: "About your other question: I've passed it to the salon team, and they will reply here as soon as they can.",
@@ -307,7 +370,8 @@ const ALERT_CATEGORIES = {
   repeated_misunderstanding: "непонимание",
   price_dispute: "спор о цене",
   frustration: "недовольство",
-  owner_message: "сообщение владельцу"
+  owner_message: "сообщение владельцу",
+  external_booking: "запись в другой системе"
 };
 const ALERT_THROTTLE_MS = 10 * 60 * 1000;
 const ALERT_TIMEOUT_MS = 5000;
@@ -607,6 +671,105 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       if (!window) return null;
       if (offset !== 0) return window[0];
       return Math.max(window[0], Math.ceil(salonMinutesNow() / SLOT_STEP_MINUTES) * SLOT_STEP_MINUTES);
+    }
+
+    // ---------- staff: work days and services (hard floor, like hours) ----------
+    function staffDays(row) {
+      return rules.parseWorkDays(row && row.work_days);
+    }
+
+    function staffWorksOn(row, offset) {
+      const days = staffDays(row);
+      return !days || days.includes(dayWeekday(offset));
+    }
+
+    function staffDoesService(row, serviceId) {
+      if (!row || !serviceId) return true;
+      return store.stylistsForService(serviceId).some((entry) => entry.id === row.id);
+    }
+
+    function staffForService(serviceId) {
+      return store.getStylistRows().filter((row) => staffDoesService(row, serviceId));
+    }
+
+    function staffScheduleLabel(row) {
+      return rules.workDaysLabel(staffDays(row));
+    }
+
+    // The next days (after fromOffset) the salon is open and this service has
+    // a free slot, optionally with one staff member.
+    function nextBookableDays(fromOffset, service, stylistRow, count = 2) {
+      const found = [];
+      for (let offset = Math.max(0, fromOffset + 1); offset <= fromOffset + 21 && found.length < count; offset++) {
+        if (offset > dates.MAX_OFFSET) break;
+        const slots = freeSlots(offset, service.duration_minutes, stylistRow, service.id);
+        if (slots.length) {
+          found.push({ day: dayLabel(offset), date: dayIso(offset), slots: slots.slice(0, 4).map((slot) => ({ stylist: slot.stylist, time: slot.time })) });
+        }
+      }
+      return found;
+    }
+
+    // Structured, explainable refusal when the staff member cannot take this
+    // service on this day. null = fine.
+    function staffProblem(stylistRow, service, offset) {
+      if (stylistRow && !staffDoesService(stylistRow, service.id)) {
+        const doers = staffForService(service.id).map((row) => row.name);
+        return {
+          error: "staff_does_not_do_service",
+          stylist: stylistRow.name,
+          service: service.name,
+          who_does_it: doers,
+          note: `${stylistRow.name} does not do ${service.name}.${doers.length ? ` ${doers.join(", ")} ${doers.length === 1 ? "does" : "do"}.` : ""} Tell the client plainly and offer ${doers.length ? "one of them" : "another service"}.`
+        };
+      }
+      if (stylistRow && !staffWorksOn(stylistRow, offset)) {
+        const window = hoursForOffset(offset);
+        const others = window ? freeSlots(offset, service.duration_minutes, null, service.id) : [];
+        return {
+          error: "staff_not_working",
+          stylist: stylistRow.name,
+          works_on: staffScheduleLabel(stylistRow),
+          day: dayLabel(offset),
+          date: dayIso(offset),
+          salon_open_that_day: Boolean(window),
+          salon_hours_that_day: hoursLabelForOffset(offset),
+          same_day_other_staff: others.slice(0, 4).map((slot) => ({ stylist: slot.stylist, time: slot.time })),
+          next_days_with_stylist: nextBookableDays(offset, service, stylistRow),
+          note: `${stylistRow.name} works ${staffScheduleLabel(stylistRow)}, so not on ${dayLabel(offset)}.${window ? ` The salon itself IS open that day (${hoursLabelForOffset(offset)}): never say the salon is closed.` : ""} Offer ${stylistRow.name}'s next days${others.length ? " or another team member that day" : ""}.`
+        };
+      }
+      if (!stylistRow && hoursForOffset(offset) && !store.getStylistRows().some((row) => staffDoesService(row, service.id) && staffWorksOn(row, offset))) {
+        return {
+          error: "no_staff_that_day",
+          service: service.name,
+          day: dayLabel(offset),
+          date: dayIso(offset),
+          salon_open_that_day: true,
+          next_days: nextBookableDays(offset, service, null),
+          note: `The salon is open on ${dayLabel(offset)}, but nobody who does ${service.name} works that day. Never say the salon is closed; offer the next days listed.`
+        };
+      }
+      return null;
+    }
+
+    // Consult-only: the owner priced it "By consultation". No number, no
+    // direct booking; a consultation service is offered instead, if any.
+    function consultOnly(service) {
+      return rules.priceKind(service.price_label) === "consultation" && !/consult/i.test(service.name);
+    }
+
+    function consultOnlyResult(session, service) {
+      const consults = allServices().filter((row) => /consult/i.test(row.name));
+      return {
+        consult_only: true,
+        service: service.name,
+        price: service.price_label,
+        consultation_services: consults.map((row) => serviceSummary(session, row)),
+        note: consults.length
+          ? `${service.name} is priced by consultation: never say a number for it. Offer to book one of the consultation services listed.`
+          : `${service.name} is priced by consultation: never say a number for it. Offer to pass the request to the salon team (leave_message_for_owner).`
+      };
     }
 
     // ---------- persistence helpers ----------
@@ -1019,11 +1182,14 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       );
     }
 
-    function freeSlots(dayOffset, durationMinutes, stylistRow) {
+    // Slots come only from here: salon hours (the service must END by
+    // closing), the staff member's work days and the services they do.
+    function freeSlots(dayOffset, durationMinutes, stylistRow, serviceId) {
       const window = hoursForOffset(dayOffset);
       if (!window) return [];
       const minStart = minStartForOffset(dayOffset);
-      const stylists = stylistRow ? [stylistRow] : store.getStylistRows();
+      const stylists = (stylistRow ? [stylistRow] : store.getStylistRows())
+        .filter((row) => staffWorksOn(row, dayOffset) && staffDoesService(row, serviceId));
       const slots = [];
       for (const stylist of stylists) {
         const open = [];
@@ -1057,13 +1223,20 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
     }
 
     function serviceSummary(session, row) {
-      notePrice(session, row.price_value);
-      return {
+      const kind = rules.priceKind(row.price_label);
+      if (kind !== "consultation") notePrice(session, row.price_value);
+      const summary = {
         name: row.name,
         category: row.category_name,
         price: row.price_label,
         duration_min: row.duration_minutes
       };
+      if (kind !== "fixed") {
+        summary.price_kind = kind;
+        summary.price_note = rules.PRICE_NOTES[kind] || "";
+      }
+      if (Number(row.requires_deposit)) summary.deposit_required = true;
+      return summary;
     }
 
     // ---------- escalation / takeover ----------
@@ -1433,7 +1606,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         case "get_services_and_prices": {
           const rows = args.query ? resolveServices(args.query) : [];
           const list = (rows.length ? rows : allServices()).map((row) => serviceSummary(session, row));
-          return { services: list, note: "These are the only services the salon offers. Quote prices exactly." };
+          return { services: list, note: "These are the only services the salon offers. Quote each price label verbatim (ranges, \"from\", add-ons, per-unit, Free, By consultation) and never add prices up." };
         }
 
         case "check_availability": {
@@ -1455,54 +1628,65 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
           }
           const service = matches[0];
           noteDraft(session, { serviceId: service.id, serviceName: service.name });
+          if (consultOnly(service)) return consultOnlyResult(session, service);
           const day = resolveDay(args.day);
           if (day.error) return dayError(day);
-          const window = hoursForOffset(day.offset);
-          if (!window) {
-            const alt = { offset: nextOpenOffset(day.offset) };
-            return {
-              closed: true,
-              note: `Salon is closed that day. Nearest open day: ${dayLabel(alt.offset)} (${hoursLabelForOffset(alt.offset)}).`,
-              service: serviceSummary(session, service),
-              alternative_day: dayLabel(alt.offset),
-              alternative_slots: freeSlots(alt.offset, service.duration_minutes, stylistForTool(session, turn, args.stylist).row)
-            };
-          }
           const stylistPick = stylistForTool(session, turn, args.stylist);
           const stylist = stylistPick.row;
           if (stylistPick.notFound) {
             return {
               stylist_not_found: true,
-              note: "No such stylist. These are the real staff:",
-              stylists: store.getStylistRows().map((row) => ({ name: row.name, role: row.role }))
+              note: "No such staff member. These are the real team members:",
+              stylists: store.getStylistRows().map((row) => ({ name: row.name, role: row.role, works_on: staffScheduleLabel(row) }))
             };
           }
+          const window = hoursForOffset(day.offset);
+          if (!window) {
+            const nextDays = nextBookableDays(day.offset, service, stylist && staffDoesService(stylist, service.id) ? stylist : null);
+            return {
+              closed: true,
+              salon_closed_that_day: true,
+              day: dayLabel(day.offset),
+              date: dayIso(day.offset),
+              note: `The salon is closed on ${dayLabel(day.offset)}. Offer the next days below.`,
+              service: serviceSummary(session, service),
+              next_days: nextDays,
+              alternative_day: nextDays.length ? nextDays[0].day : null,
+              alternative_slots: nextDays.length ? nextDays[0].slots : []
+            };
+          }
+          const problem = staffProblem(stylist, service, day.offset);
+          if (problem) return problem;
           noteDraft(session, { dayOffset: day.offset, stylistId: stylist ? stylist.id : undefined });
           session.state.draft.offeredDays = [...new Set((session.state.draft.offeredDays || []).concat([day.offset]))].slice(-10);
           if (args.time && parseTimeFlexible(args.time) !== null) noteDraft(session, { startMinutes: parseTimeFlexible(args.time) });
           const minStart = minStartForOffset(day.offset);
           if (day.offset === 0 && minStart + service.duration_minutes > window[1]) {
-            const altOffset = nextOpenOffset(0);
+            const nextDays = nextBookableDays(0, service, stylist);
             return {
               day_over: true,
               salon_time_now: minutesLabel(salonMinutesNow()),
-              note: `Today's hours (${hoursLabelForOffset(0)}) are already over — offer NOTHING for today. Nearest open day: ${dayLabel(altOffset)} (${hoursLabelForOffset(altOffset)}).`,
+              note: `Today's hours (${hoursLabelForOffset(0)}) are over for this service: offer nothing for today. Offer the next days below.`,
               service: serviceSummary(session, service),
-              alternative_day: dayLabel(altOffset),
-              alternative_slots: freeSlots(altOffset, service.duration_minutes, stylist)
-                .map((slot) => ({ stylist: slot.stylist, time: slot.time }))
+              next_days: nextDays,
+              alternative_day: nextDays.length ? nextDays[0].day : null,
+              alternative_slots: nextDays.length ? nextDays[0].slots : []
             };
           }
-          const slots = freeSlots(day.offset, service.duration_minutes, stylist);
+          const slots = freeSlots(day.offset, service.duration_minutes, stylist, service.id);
           const payload = {
             service: serviceSummary(session, service),
             day: dayLabel(day.offset),
             date: dayIso(day.offset),
             opening_hours: hoursLabelForOffset(day.offset),
+            last_start_for_this_service: minutesLabel(window[1] - service.duration_minutes),
             slots: slots.map((slot) => ({ stylist: slot.stylist, time: slot.time })),
-            note: slots.length ? "Offer 2-3 of these real slots. Times not listed may still be free — check them via the `time` argument." : "No free slots that day; suggest another day.",
-            next_step: "When the client settles on a slot, call book_appointment right away — it returns the official read-back. Never compose a read-back or confirmation question yourself."
+            note: slots.length
+              ? "Offer 2-3 of these real slots. Times not listed may still be free: check them via the `time` argument."
+              : "No free slots that day (the salon is open; the team is fully booked or off). Offer the next days below.",
+            next_step: "When the client settles on a slot, call book_appointment right away: it returns the official read-back. Never compose a read-back or confirmation question yourself."
           };
+          if (!slots.length) payload.next_days = nextBookableDays(day.offset, service, stylist);
           if (day.offset === 0) payload.salon_time_now = minutesLabel(salonMinutesNow());
           if (args.time) {
             const wanted = parseTimeFlexible(args.time);
@@ -1510,24 +1694,27 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
               payload.requested_time = {
                 time: store.formatTimeRange(wanted, wanted + service.duration_minutes),
                 available: false,
-                reason: `already in the past — it is ${minutesLabel(salonMinutesNow())} salon time today. Offer only the future slots listed.`
+                reason: `already in the past: it is ${minutesLabel(salonMinutesNow())} salon time today. Offer only the future slots listed.`
               };
             } else if (wanted !== null && wanted >= window[0] && wanted + service.duration_minutes <= window[1]) {
-              const candidates = stylist ? [stylist] : store.getStylistRows();
+              const candidates = (stylist ? [stylist] : store.getStylistRows())
+                .filter((row) => staffWorksOn(row, day.offset) && staffDoesService(row, service.id));
               const freeWith = candidates.filter((row) => slotFree(day.offset, row.id, wanted, wanted + service.duration_minutes));
               payload.requested_time = {
                 time: store.formatTimeRange(wanted, wanted + service.duration_minutes),
                 available: freeWith.length > 0,
                 available_with: freeWith.map((row) => row.name),
                 next_step: freeWith.length
-                  ? "Time is free — call book_appointment NOW with these details; it will return the official read-back to confirm with the client."
-                  : "Time is taken — offer the slots list instead."
+                  ? "Time is free: call book_appointment NOW with these details; it will return the official read-back to confirm with the client."
+                  : "Time is taken: offer the slots list instead."
               };
             } else if (wanted !== null) {
               payload.requested_time = {
                 time: args.time,
                 available: false,
-                reason: `outside working hours ${hoursLabelForOffset(day.offset)} on ${dayLabel(day.offset)}`
+                reason: wanted + service.duration_minutes > window[1] && wanted < window[1]
+                  ? `${service.name} takes ${service.duration_minutes} min and would end after closing (${minutesLabel(window[1])}). The last start for it is ${minutesLabel(window[1] - service.duration_minutes)}.`
+                  : `outside working hours ${hoursLabelForOffset(day.offset)} on ${dayLabel(day.offset)}`
               };
             }
           }
@@ -1575,47 +1762,57 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
           }
           const service = matches[0];
           noteDraft(session, { serviceId: service.id, serviceName: service.name });
+          if (consultOnly(service)) return consultOnlyResult(session, service);
           const day = dayForTool(turn, args.day);
           if (day.error) return dayError(day);
           const window = hoursForOffset(day.offset);
           if (!window) {
-            return { closed: true, note: `Salon is closed that day. Nearest open day: ${dayLabel(nextOpenOffset(day.offset))}.` };
+            return {
+              closed: true,
+              salon_closed_that_day: true,
+              note: `The salon is closed on ${dayLabel(day.offset)}. Offer the next days below.`,
+              next_days: nextBookableDays(day.offset, service, null)
+            };
           }
           const startMinutes = parseTimeFlexible(args.time);
           if (startMinutes === null) return { error: "unparsed_time", note: "Ask for a concrete time like 14:00." };
           const endMinutes = startMinutes + service.duration_minutes;
-          if (startMinutes < window[0] || endMinutes > window[1]) {
-            return {
-              error: "outside_hours",
-              note: `Working hours on ${dayLabel(day.offset)} are ${hoursLabelForOffset(day.offset)}. Tell the client honestly and offer times inside those hours.`,
-              alternatives: freeSlots(day.offset, service.duration_minutes, null).map((s) => ({ stylist: s.stylist, time: s.time }))
-            };
-          }
-          if (day.offset === 0 && startMinutes < minStartForOffset(0)) {
-            const alternatives = freeSlots(0, service.duration_minutes, null).map((s) => ({ stylist: s.stylist, time: s.time }));
-            return {
-              error: "time_in_past",
-              note: `That time today is already past — it is ${minutesLabel(salonMinutesNow())} salon time. Refuse honestly.${alternatives.length ? " Offer these future slots instead." : ` Nothing is left today; suggest ${dayLabel(nextOpenOffset(0))}.`}`,
-              alternatives
-            };
-          }
           const stylistPick = stylistForTool(session, turn, args.stylist);
           let stylist = stylistPick.row;
           if (stylistPick.notFound) {
-            return { stylist_not_found: true, stylists: store.getStylistRows().map((row) => ({ name: row.name, role: row.role })) };
+            return { stylist_not_found: true, stylists: store.getStylistRows().map((row) => ({ name: row.name, role: row.role, works_on: staffScheduleLabel(row) })) };
+          }
+          const problem = staffProblem(stylist, service, day.offset);
+          if (problem) return problem;
+          if (startMinutes < window[0] || endMinutes > window[1]) {
+            return {
+              error: "outside_hours",
+              note: `Working hours on ${dayLabel(day.offset)} are ${hoursLabelForOffset(day.offset)}, and ${service.name} (${service.duration_minutes} min) must end by closing: the last start is ${minutesLabel(window[1] - service.duration_minutes)}. Tell the client honestly and offer times inside those hours.`,
+              alternatives: freeSlots(day.offset, service.duration_minutes, stylist, service.id).map((s) => ({ stylist: s.stylist, time: s.time }))
+            };
+          }
+          if (day.offset === 0 && startMinutes < minStartForOffset(0)) {
+            const alternatives = freeSlots(0, service.duration_minutes, stylist, service.id).map((s) => ({ stylist: s.stylist, time: s.time }));
+            return {
+              error: "time_in_past",
+              note: `That time today is already past: it is ${minutesLabel(salonMinutesNow())} salon time. Refuse honestly.${alternatives.length ? " Offer these future slots instead." : " Nothing is left today; offer the next days below."}`,
+              alternatives,
+              next_days: alternatives.length ? undefined : nextBookableDays(0, service, stylist)
+            };
           }
           if (!stylist) {
-            stylist = store.getStylistRows().find((row) => slotFree(day.offset, row.id, startMinutes, endMinutes)) || null;
+            stylist = store.getStylistRows().find((row) => staffWorksOn(row, day.offset) && staffDoesService(row, service.id) &&
+              slotFree(day.offset, row.id, startMinutes, endMinutes)) || null;
             if (!stylist) {
               return {
                 ok: false, reason: "slot_taken",
-                alternatives: freeSlots(day.offset, service.duration_minutes, null).map((s) => ({ stylist: s.stylist, time: s.time }))
+                alternatives: freeSlots(day.offset, service.duration_minutes, null, service.id).map((s) => ({ stylist: s.stylist, time: s.time }))
               };
             }
           } else if (!slotFree(day.offset, stylist.id, startMinutes, endMinutes)) {
             return {
               ok: false, reason: "slot_taken", stylist: stylist.name,
-              alternatives: freeSlots(day.offset, service.duration_minutes, stylist).map((s) => ({ stylist: s.stylist, time: s.time }))
+              alternatives: freeSlots(day.offset, service.duration_minutes, stylist, service.id).map((s) => ({ stylist: s.stylist, time: s.time }))
             };
           }
           const conversation = getConversationRow(session.conversation_id);
@@ -1722,31 +1919,44 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
           if (!target) return { ok: false, reason: "no_appointment_found", note: "Ask for the client's phone and call get_client_context first." };
           const day = resolveDay(args.day);
           if (day.error) return dayError(day);
+          const duration = target.end_minutes - target.start_minutes;
+          const targetService = allServices().find((row) => row.id === target.service_id) ||
+            { id: target.service_id, name: target.service_name, duration_minutes: duration, price_label: target.price_label || "" };
+          const serviceForSlots = Object.assign({}, targetService, { duration_minutes: duration });
           const window = hoursForOffset(day.offset);
-          if (!window) return { closed: true, note: `Salon is closed that day. Nearest open day: ${dayLabel(nextOpenOffset(day.offset))}.` };
+          if (!window) {
+            return {
+              closed: true,
+              salon_closed_that_day: true,
+              note: `The salon is closed on ${dayLabel(day.offset)}. Offer the next days below.`,
+              next_days: nextBookableDays(day.offset, serviceForSlots, null)
+            };
+          }
           const startMinutes = parseTimeFlexible(args.time);
           if (startMinutes === null) return { error: "unparsed_time" };
-          const duration = target.end_minutes - target.start_minutes;
           const endMinutes = startMinutes + duration;
+          const reschedulePick = stylistForTool(session, turn, args.stylist);
+          if (reschedulePick.notFound) return { stylist_not_found: true, stylists: store.getStylistRows().map((row) => ({ name: row.name, role: row.role, works_on: staffScheduleLabel(row) })) };
+          const stylist = reschedulePick.row || db.prepare(`SELECT * FROM stylists WHERE salon_id = ? AND id = ?`).get(salonId, target.stylist_id);
+          if (!stylist) return { stylist_not_found: true, stylists: store.getStylistRows().map((row) => ({ name: row.name, role: row.role, works_on: staffScheduleLabel(row) })) };
+          const problem = staffProblem(stylist, serviceForSlots, day.offset);
+          if (problem) return problem;
           if (startMinutes < window[0] || endMinutes > window[1]) {
-            return { error: "outside_hours", note: `Working hours on ${dayLabel(day.offset)} are ${hoursLabelForOffset(day.offset)}.` };
+            return { error: "outside_hours", note: `Working hours on ${dayLabel(day.offset)} are ${hoursLabelForOffset(day.offset)}; the visit must end by closing (last start ${minutesLabel(window[1] - duration)}).` };
           }
           if (day.offset === 0 && startMinutes < minStartForOffset(0)) {
             return {
               error: "time_in_past",
-              note: `That time today is already past — it is ${minutesLabel(salonMinutesNow())} salon time. Offer a future time instead.`,
-              alternatives: freeSlots(0, duration, null).map((s) => ({ stylist: s.stylist, time: s.time }))
+              note: `That time today is already past: it is ${minutesLabel(salonMinutesNow())} salon time. Offer a future time instead.`,
+              alternatives: freeSlots(0, duration, stylist, target.service_id).map((s) => ({ stylist: s.stylist, time: s.time }))
             };
           }
-          const reschedulePick = stylistForTool(session, turn, args.stylist);
-          const stylist = reschedulePick.row || (reschedulePick.notFound ? null : db.prepare(`SELECT * FROM stylists WHERE salon_id = ? AND id = ?`).get(salonId, target.stylist_id));
-          if (!stylist) return { stylist_not_found: true, stylists: store.getStylistRows().map((row) => ({ name: row.name, role: row.role })) };
           const busy = busyIntervals(day.offset, stylist.id).some((iv) =>
             startMinutes < iv.end_minutes && endMinutes > iv.start_minutes &&
             !(target.day_offset === day.offset && target.stylist_id === stylist.id && iv.start_minutes === target.start_minutes)
           );
           if (busy) {
-            return { ok: false, reason: "slot_taken", alternatives: freeSlots(day.offset, duration, stylist).map((s) => ({ stylist: s.stylist, time: s.time })) };
+            return { ok: false, reason: "slot_taken", alternatives: freeSlots(day.offset, duration, stylist, target.service_id).map((s) => ({ stylist: s.stylist, time: s.time })) };
           }
           const proposal = {
             kind: "reschedule",
@@ -1803,7 +2013,9 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
             day: dayLabel(day.offset),
             time: proposal.timeLabel
           });
-          return { status: "rescheduled", appointment: { id: target.id, service: target.service_name, stylist: stylist.name, day: dayLabel(day.offset), time: proposal.timeLabel } };
+          const movePolicy = policyNote(proposal, session.language);
+          return Object.assign({ status: "rescheduled", appointment: { id: target.id, service: target.service_name, stylist: stylist.name, day: dayLabel(day.offset), time: proposal.timeLabel } },
+            movePolicy ? { policy: movePolicy, instruction: "First confirm the new time to the client, then quote this policy text." } : {});
         }
 
         case "cancel_appointment": {
@@ -1850,7 +2062,9 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
           turn.actionCommitted = true;
           addSystemThreadNote(session, `Maya canceled: ${target.service_name}, ${store.formatTimeRange(target.start_minutes, target.end_minutes)}.`);
           recordEvent(session, "cancellation", { appointmentId: target.id, client: target.client_name, service: target.service_name });
-          return { status: "canceled", appointment: { id: target.id, service: target.service_name } };
+          const cancelPolicy = policyNote(proposal, session.language);
+          return Object.assign({ status: "canceled", appointment: { id: target.id, service: target.service_name } },
+            cancelPolicy ? { policy: cancelPolicy, instruction: "First tell the client the appointment is cancelled, then quote this policy text." } : {});
         }
 
         case "leave_message_for_owner": {
@@ -1986,7 +2200,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
             client_name: pending.clientName,
             client_phone: pending.clientPhone
           });
-          if (result && result.status === "booked") return committedText(pending, lang);
+          if (result && result.status === "booked") return [committedText(pending, lang), policyNote(pending, lang)].filter(Boolean).join(" ");
         } else if (pending.kind === "reschedule") {
           const result = executeTool(session, turn, "reschedule_appointment", {
             day: String(pending.dayOffset),
@@ -1994,10 +2208,10 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
             stylist: pending.stylistName,
             appointment_id: pending.appointmentId
           });
-          if (result && result.status === "rescheduled") return committedText(pending, lang);
+          if (result && result.status === "rescheduled") return [committedText(pending, lang), policyNote(pending, lang)].filter(Boolean).join(" ");
         } else if (pending.kind === "cancel") {
           const result = executeTool(session, turn, "cancel_appointment", { appointment_id: pending.appointmentId });
-          if (result && result.status === "canceled") return committedText(pending, lang);
+          if (result && result.status === "canceled") return [committedText(pending, lang), policyNote(pending, lang)].filter(Boolean).join(" ");
         }
       } catch (error) {
         // fall through to the honest fallback path
@@ -2025,11 +2239,21 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         );
       }
 
-      // Gate 1: booking claims require a committed DB write this turn.
-      if (BOOKING_CLAIM_RE.test(reply) && !turn.actionCommitted) {
+      // Gate 1: a sentence that CLAIMS a booking happened requires a committed
+      // DB write this turn. "Once you're booked I'll send the address" is not
+      // a claim. With a staged action the client gets the read-back instead.
+      if (!turn.actionCommitted && rules.affirmsBooking(reply, BOOKING_CLAIM_RE)) {
         gates.push("booking_claim_blocked");
-        leaveOwnerMessage(session, `Maya попыталась подтвердить запись без записи в системе. Ответ заменён. Диалог: ${session.conversation_id}`, "booking_gate");
-        reply = localized(FALLBACKS.notBooked, language);
+        const pending = session.state.pendingAction;
+        if (pending) {
+          reply = readBackText(pending, language);
+        } else {
+          leaveOwnerMessage(session, ownerText(
+            `Maya almost told a client a visit was booked, but nothing was saved. The client was told it is not confirmed yet. Client's message: "${String(turn.userMessage || "").slice(0, 200)}"`,
+            `Майя чуть не подтвердила запись, которой нет в системе. Клиенту сказано, что запись ещё не подтверждена. Сообщение клиента: "${String(turn.userMessage || "").slice(0, 200)}"`
+          ), "booking_gate");
+          reply = localized(FALLBACKS.notBooked, language);
+        }
       }
 
       // Gate 2: unknown-stylist guard — if the client named a stylist who does not
@@ -2063,14 +2287,31 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         reply = stylistCorrectionReply(language);
       }
 
-      // Gate 3: price quote-guard — every price in the reply must have come from a tool result.
-      const allowed = new Set((session.state.quotedPrices || []).map(Number));
-      const prices = extractPriceNumbers(reply);
-      const unknownPrice = prices.find((price) => !allowed.has(price));
-      if (unknownPrice !== undefined) {
-        gates.push(`price_guard:${unknownPrice}`);
-        leaveOwnerMessage(session, `Maya назвала цену ${unknownPrice}, которой нет в данных инструментов. Ответ заменён. Вопрос клиента: ${String(turn.userMessage).slice(0, 200)}`, "price_guard");
-        reply = localized(FALLBACKS.unknown, language);
+      // Gate 3: price quote-guard. Every amount must be in the salon's own
+      // data: service labels (ranges, "from", add-ons, per-unit), FAQ and
+      // policy text. A wrong amount gets the price straight from the
+      // services table; only when no service matches does the question go
+      // to the team.
+      const unknownPrices = unknownPricesIn(session, reply, turn.userMessage);
+      if (unknownPrices.length) {
+        gates.push(`price_guard:${unknownPrices[0]}`);
+        const direct = priceAnswer(turn.userMessage, language);
+        if (direct) {
+          reply = direct;
+        } else {
+          leaveOwnerMessage(session, ownerText(
+            `A client asked something Maya could not answer from your prices and FAQ: "${String(turn.userMessage || "").slice(0, 200)}"`,
+            `Клиент спросил то, на что Майя не нашла ответа в ваших ценах и FAQ: "${String(turn.userMessage || "").slice(0, 200)}"`
+          ), "price_guard");
+          reply = localized(FALLBACKS.unknown, language);
+        }
+      }
+
+      // Gate 3b: a day the salon is open may not be called closed.
+      const fixedClosed = fixClosedClaims(reply, language);
+      if (fixedClosed !== reply) {
+        gates.push("closed_claim_fixed");
+        reply = fixedClosed;
       }
 
       // Gate 4: plain-text scrub — every Maya surface (web chat bubble, Telegram)
@@ -2085,11 +2326,22 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         reply = plain;
       }
 
+      // Gate 4b: no response-time promises on the salon's behalf.
+      const unpromised = scrubTimePromises(reply);
+      if (unpromised !== reply) {
+        gates.push("promise_scrub");
+        reply = unpromised;
+      }
+
       // Gate 5: banned phrases (style scrub, non-blocking).
       for (const [re, replacement] of BANNED_REPLACEMENTS) {
+        re.lastIndex = 0;
         if (re.test(reply)) {
           gates.push("style_scrub");
+          re.lastIndex = 0;
           reply = reply.replace(re, replacement);
+          // "К сожалению, в понедельник…" → "В понедельник…"
+          reply = reply.replace(/(^|[.!?]\s+)(\p{Ll})/gu, (match, lead, letter) => lead + letter.toUpperCase());
         }
       }
       reply = reply.replace(/\s{2,}/g, " ").trim();
@@ -2111,13 +2363,162 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       return store.getStylistRows().map((row) => row.name);
     }
 
+    // Team for the prompt: who works which days and which services.
+    function staffDetails() {
+      const services = allServices();
+      return store.getStylistRows().map((row) => {
+        const does = services.filter((service) => staffDoesService(row, service.id)).map((service) => service.name);
+        return {
+          name: row.name,
+          days: staffScheduleLabel(row),
+          services: does.length === services.length ? "all services" : (does.length ? does.join(", ") : "no bookable services")
+        };
+      });
+    }
+
+    function faqTopics() {
+      return (faq.topics || []).map((topic) => ({
+        id: String(topic.id || ""),
+        text: String(topic.en || topic.fr || topic.ru || topic.uk || "")
+      })).filter((topic) => topic.text);
+    }
+
+    function topicText(id, lang) {
+      const topic = (faq.topics || []).find((entry) => entry.id === id);
+      if (!topic) return "";
+      return String(topic[lang] || topic.en || topic.fr || topic.ru || topic.uk || "").trim();
+    }
+
+    // Owner-facing note in the owner's language (ru owners keep Russian).
+    function ownerText(en, ru) {
+      return salonLanguage() === "ru" ? ru : en;
+    }
+
+    const ADDRESS_PRIVATE = rules.addressIsPrivate(faqTopics().map((topic) => topic.text));
+
+    // Prices Maya may say: all service labels and values, the owner's FAQ
+    // and policy text, client-history amounts, per-unit × client quantity.
+    function priceAllowList(session, clientMessage) {
+      return rules.buildPriceAllowList({
+        services: allServices(),
+        faqTexts: faqTopics().map((topic) => topic.text),
+        extra: session.state.quotedPrices || [],
+        clientMessage
+      });
+    }
+
+    function unknownPricesIn(session, reply, clientMessage) {
+      const allowed = priceAllowList(session, clientMessage);
+      return extractPriceNumbers(reply).filter((price) => !allowed.has(Math.round(price * 100) / 100));
+    }
+
+    // "Balayage is $220–$320 depending on length." — a deterministic price
+    // answer from the services table, for when the model got a price wrong.
+    function priceAnswer(message, lang) {
+      const lower = String(message || "").toLowerCase();
+      const named = allServices().filter((row) => row.name.length >= 3 && lower.includes(row.name.toLowerCase()));
+      const rows = (named.length ? named : resolveServices(message)).slice(0, 3);
+      if (!rows.length) return "";
+      const parts = rows.map((row) => {
+        const kind = rules.priceKind(row.price_label);
+        if (kind === "consultation") {
+          return localized({
+            en: `${row.name} is priced by consultation`,
+            fr: `${row.name} : prix sur consultation`,
+            ru: `${row.name}: цена после консультации`,
+            uk: `${row.name}: ціна після консультації`
+          }, lang);
+        }
+        if (kind === "free") {
+          return localized({ en: `${row.name} is free`, fr: `${row.name} est gratuit`, ru: `${row.name}: бесплатно`, uk: `${row.name}: безкоштовно` }, lang);
+        }
+        return localized({ en: `${row.name}: ${row.price_label}`, fr: `${row.name} : ${row.price_label}`, ru: `${row.name}: ${row.price_label}`, uk: `${row.name}: ${row.price_label}` }, lang);
+      });
+      const tail = localized({
+        en: "Would you like me to find a time?",
+        fr: "Voulez-vous que je vous trouve un moment?",
+        ru: "Подобрать вам время?",
+        uk: "Підібрати вам час?"
+      }, lang);
+      return `${parts.join("; ")}. ${tail}`;
+    }
+
+    // Days a reply calls "closed" while the salon is open that day.
+    function falseClosedDays(reply) {
+      const names = staffNames().map((name) => String(name).split(/\s+/)[0].toLowerCase()).filter((name) => name.length >= 3);
+      const found = [];
+      rules.sentences(reply).forEach((sentence) => {
+        if (!rules.CLOSED_WORD_RE.test(sentence)) return;
+        const lower = sentence.toLowerCase();
+        // "Karim is off Saturday" is about a person, not the salon.
+        if (names.some((name) => lower.includes(name))) return;
+        const offsets = new Set();
+        WEEKDAYS.forEach((day) => {
+          if (!day.re.test(sentence)) return;
+          for (let offset = 0; offset < 7; offset++) if (dayWeekday(offset) === day.index) offsets.add(offset);
+        });
+        dates.findDateExpressions(sentence, todayIso()).forEach((hit) => { if (hit.offset !== undefined) offsets.add(hit.offset); });
+        offsets.forEach((offset) => {
+          const window = hoursForOffset(offset);
+          if (!window) return;
+          if (offset === 0 && salonMinutesNow() >= window[1]) return;
+          found.push({ offset, sentence });
+        });
+      });
+      return found;
+    }
+
+    function openDaySentence(offset, lang) {
+      const day = new Intl.DateTimeFormat(LOCALE[lang] || "en-CA", { weekday: "long", timeZone: "UTC" })
+        .format(new Date(`${dayIso(offset)}T12:00:00Z`));
+      return (OPEN_DAY_LINE[lang] || OPEN_DAY_LINE.en)(day, hoursLabelForOffset(offset));
+    }
+
+    function fixClosedClaims(reply, lang) {
+      const bad = falseClosedDays(reply);
+      if (!bad.length) return reply;
+      let out = String(reply);
+      bad.forEach(({ offset, sentence }) => { out = out.replace(sentence, openDaySentence(offset, lang)); });
+      return out;
+    }
+
+    // Policy lines to add after a committed cancel / move / booking.
+    function policyNote(pending, lang) {
+      const lines = [];
+      if (pending.kind === "cancel" || pending.kind === "reschedule") {
+        const cancel = topicText("cancellation_policy", lang);
+        if (cancel) lines.push(`${localized(POLICY_LEAD.cancel, lang)} ${cancel}`);
+      }
+      if (pending.kind === "book") {
+        const service = allServices().find((row) => row.id === pending.serviceId);
+        if (service && Number(service.requires_deposit)) {
+          const deposit = topicText("deposit_policy", lang) || topicText("deposit_required", lang);
+          if (deposit) lines.push(`${localized(POLICY_LEAD.deposit, lang)} ${deposit}`);
+          faqTopics().filter((topic) => /^custom_/.test(topic.id) && /deposit|dépôt|e-?transfer|депозит|предоплат/i.test(topic.text.split(" — ")[0]))
+            .slice(0, 1)
+            .forEach((topic) => {
+              const parts = topic.text.split(" — ");
+              lines.push(parts.length > 1 ? parts.slice(1).join(" — ") : topic.text);
+            });
+        }
+      }
+      return lines.join(" ");
+    }
+
     function dateContext() {
       return dates.calendarBlock({
         todayIso: todayIso(),
         timezone: TIMEZONE,
         nowLabel: minutesLabel(salonMinutesNow()),
         days: 14,
-        hoursLabel: (offset) => hoursLabelForOffset(offset)
+        hoursLabel: (offset) => {
+          const label = hoursLabelForOffset(offset);
+          if (label === "closed") return label;
+          const rows = store.getStylistRows();
+          if (rows.length <= 1) return label;
+          const working = rows.filter((row) => staffWorksOn(row, offset)).map((row) => row.name);
+          return `${label} (working: ${working.length ? working.join(", ") : "nobody"})`;
+        }
       });
     }
 
@@ -2130,6 +2531,13 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       if (draft.serviceName) parts.push(`service chosen: ${draft.serviceName}`);
       if (draft.dayOffset !== undefined) parts.push(`day chosen: ${dayIso(draft.dayOffset)} (${dates.WEEKDAY_EN[dates.weekdayOf(dayIso(draft.dayOffset))]})`);
       if (draft.startMinutes !== undefined) parts.push(`time chosen: ${minutesLabel(draft.startMinutes)}`);
+      // A visit already booked for this client: cancel / move it directly,
+      // without asking for a phone number.
+      let upcoming = null;
+      try { upcoming = session.client_id || (getConversationRow(session.conversation_id) || {}).client_id ? findClientAppointment(session) : null; } catch (error) { upcoming = null; }
+      if (upcoming && upcoming.appointment_status !== "canceled" && Number(upcoming.day_offset) >= 0) {
+        parts.push(`upcoming visit: ${upcoming.service_name}${upcoming.stylist_name ? ` with ${upcoming.stylist_name}` : ""}, ${dayIso(Number(upcoming.day_offset))} ${minutesLabel(upcoming.start_minutes)} (appointment_id ${upcoming.id}). To cancel or move it, call cancel_appointment / reschedule_appointment right away; no phone number needed`);
+      }
       return parts.join("; ");
     }
 
@@ -2302,6 +2710,18 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       }
       if (trigger) turn.escalateAfter = trigger.reason;
 
+      // A booking made in another app: Maya cannot see it. She says so and
+      // hands the thread to a person (no LLM, so she cannot pretend to look).
+      const external = rules.externalBookingMention(text);
+      if (external && external.booking && !turn.escalateAfter) {
+        const reply = finishIntro((EXTERNAL_BOOKING_REPLY[lang] || EXTERNAL_BOOKING_REPLY.en)(external.app));
+        escalate(session, "external_booking", `${external.app}: ${text}`);
+        persistMessage(session, "outgoing", reply);
+        recordEvent(session, "message_out", { text: reply.slice(0, 300), canned: "external_booking" });
+        saveSession(session);
+        return { reply, state: sessionState(session, { escalated: "external_booking" }) };
+      }
+
       // ---------- daily spend cap (salon-timezone day) ----------
       // Checked AFTER hard triggers: medical and "позовите человека" answer
       // without the LLM and must keep working at cap.
@@ -2371,6 +2791,8 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         clientHint,
         dateContext: dateContext(),
         staff: staffNames(),
+        staffDetails: staffDetails(),
+        hideAddress: ADDRESS_PRIVATE,
         knownClient: knownClientLine(session)
       });
       const messages = [{ role: "system", content: systemPrompt }];
@@ -2389,6 +2811,22 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         messages.push({
           role: "system",
           content: `Checked against the team list: the staff member(s) «${turn.unknownStylists.map((entry) => entry.raw).join("», «")}» do NOT exist at this salon. Real team: ${staffNames().join(", ")}. Say honestly in this reply that nobody by that name works here, with no praise for that name, and offer one of the real team members.`
+        });
+      }
+      // The owner's own answer comes first: walk-ins, address, deposit,
+      // cancellation, parking… matched in code, before any tool.
+      const faqHits = rules.matchFaqTopics(text, faqTopics().filter((topic) => !(ADDRESS_PRIVATE && topic.id === "address"))).slice(0, 3);
+      if (faqHits.length) {
+        turn.faqHits = faqHits.map((topic) => topic.id);
+        messages.push({
+          role: "system",
+          content: `The salon owner already answered this kind of question. Answer from these lines first, before calling any tool, in ${languageName(lang)}; keep their facts and numbers exactly and add no facts they do not contain (no street address, landmark or directions that are not written here):\n${faqHits.map((topic) => `- [${topic.id}] ${topic.text}`).join("\n")}`
+        });
+      }
+      if (external && !external.booking) {
+        messages.push({
+          role: "system",
+          content: `The client mentioned ${external.app}. You cannot see ${external.app} or any other calendar or booking app; never say you can look something up there. Only this chat's own booking tools are yours.`
         });
       }
       const mentions = dates.findDateExpressions(text, todayIso());
@@ -2487,6 +2925,43 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         }
       }
 
+      // Fact guard: a price that is not in the salon's data, or an open day
+      // called "closed", gets one rewrite with the facts spelled out. The
+      // gates below still enforce both if the rewrite fails.
+      if (!llmError && String(reply || "").trim()) {
+        const badPrices = unknownPricesIn(session, reply, text);
+        const badClosed = falseClosedDays(reply);
+        if (badPrices.length || badClosed.length) {
+          preGates.push("fact_regen");
+          const notes = [];
+          if (badPrices.length) {
+            notes.push(`The amount(s) ${badPrices.map((price) => `$${price}`).join(", ")} are not in the salon's data. Quote price labels exactly as the tools and the FAQ give them (ranges like "$220–$320", "from $75", "+$15", "$5/nail", "Free", "By consultation"). Never add prices up and never invent an amount.`);
+          }
+          badClosed.forEach(({ offset }) => {
+            notes.push(`The salon is OPEN on ${dayIso(offset)} (${dates.WEEKDAY_EN[dates.weekdayOf(dayIso(offset))]}, ${hoursLabelForOffset(offset)}). Never say it is closed. If a team member is off that day, say who is off and who works.`);
+          });
+          recordEvent(session, "fact_guard", { prices: badPrices, closed: badClosed.map((entry) => entry.offset), original: String(reply).slice(0, 300) });
+          try {
+            const again = await llm.complete({
+              messages: current.concat([
+                { role: "assistant", content: String(reply) },
+                { role: "system", content: `Correction: ${notes.join(" ")} Rewrite your last reply with these facts, in ${languageName(lang)}. Output only the rewritten reply.` }
+              ]),
+              tools: toolsForTurn
+            });
+            turn.llmCalls += 1;
+            recordLlmCall(session, turn, again);
+            const fixed = again && !(again.tool_calls && again.tool_calls.length) ? String(again.content || "").trim() : "";
+            if (fixed && !unknownPricesIn(session, fixed, text).length && !falseClosedDays(fixed).length &&
+                !replyLanguageMismatch(fixed, lang, keepNames)) {
+              reply = fixed;
+            }
+          } catch (error) {
+            // keep the reply; the gates below replace what is wrong
+          }
+        }
+      }
+
       // Deterministic commit backstop: the client explicitly affirmed a staged
       // action but the model produced nothing (empty reply or LLM error) —
       // commit the staged action in code and confirm honestly.
@@ -2563,6 +3038,14 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         gated.reply = localized(COMPLAINT_REPLY, lang);
       }
 
+      // The same line twice in a row reads like a broken bot: say something
+      // that moves the conversation instead.
+      if (lastOut && normalizeQ(lastOut.text_value) === normalizeQ(gated.reply) && !session.state.pendingAction) {
+        gated.gates.push("repeat_canned");
+        const alt = localized(UNKNOWN_AGAIN, lang);
+        gated.reply = normalizeQ(alt) === normalizeQ(lastOut.text_value) ? localized(FALLBACKS.rephrase, lang) : alt;
+      }
+
       // The first reply of a conversation discloses the AI identity (prompt
       // rule, enforced here as a backstop), once, in the client's language.
       if (needsIntro && !hasAiDisclosure(gated.reply)) {
@@ -2572,8 +3055,11 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       }
       session.state.introduced = true;
 
-      const BENIGN_GATES = new Set(["style_scrub", "markdown_scrub", "complaint_rewrite", "first_turn_disclosure", "language_regen", "readback_template", "name_spelling", "repeat_breaker"]);
-      if (gated.gates.some((gate) => !BENIGN_GATES.has(gate))) {
+      // Only real failures to answer count toward "hand it to a person": a
+      // guard that replaced a wrong price, a false "closed" or an early
+      // "you're booked" never pushes the conversation into human-only mode.
+      const CONFUSION_GATES = new Set(["empty_reply", "language_fallback"]);
+      if (gated.gates.some((gate) => CONFUSION_GATES.has(gate))) {
         session.state.failedUnderstandings = (session.state.failedUnderstandings || 0) + 1;
       }
 
@@ -2803,7 +3289,15 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         recordEvent,
         llmTurnsForDay,
         dailyTurnsCap: DAILY_TURNS_CAP,
-        TOOL_DEFS
+        TOOL_DEFS,
+        staffProblem,
+        staffDetails,
+        falseClosedDays,
+        fixClosedClaims,
+        policyNote,
+        priceAnswer,
+        unknownPricesIn,
+        addressPrivate: ADDRESS_PRIVATE
       }
     };
   }
