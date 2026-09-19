@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta content="noindex, nofollow" name="robots"/>
+<title>AIbeaty — Bookings</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@500;700;800&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+  /* A self-serve salon's Bookings screen. Luminous Core M3 light, mirrored like
+     setup.html and inbox.html. One list primitive: the hairline-ruled ledger
+     row, grouped by day. Only real data from /api/bookings, never fixtures. */
+  :root {
+    --bg: #f5f6f7;
+    --surface-lowest: #ffffff;
+    --surface-low: #eff1f2;
+    --surface-container: #e6e8ea;
+    --surface-variant: #dadddf;
+    --on-surface: #2c2f30;
+    --on-surface-variant: #595c5d;
+    --outline: #757778;
+    --outline-variant: #abadae;
+    --ink: #17181b;
+    --primary: #4d2afa;
+    --primary-dim: #400aef;
+    --primary-tint: rgba(77, 42, 250, .06);
+    --on-primary: #ffffff;
+    --tertiary: #7a25db;
+    --secondary: #006384;
+    --ok: #0b6b3a;
+    --ok-bg: rgba(11, 107, 58, .08);
+    --error: #b41340;
+    --error-bg: rgba(180, 19, 64, .07);
+    --on-error-container: #510017;
+    --r-sm: 0.25rem;
+    --r-xl: 0.5rem;
+    --r-full: 0.75rem;
+    --font-headline: "Manrope", sans-serif;
+    --font-body: "Inter", sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+    --settle: cubic-bezier(.2, 0, 0, 1);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--bg); color: var(--on-surface); font-family: var(--font-body); font-size: 14px; -webkit-font-smoothing: antialiased; }
+  .material-symbols-outlined { font-variation-settings: "FILL" 0, "wght" 400; vertical-align: middle; font-size: 20px; }
+  a { color: var(--primary); }
+  button, input, select { font-family: var(--font-body); }
+  [hidden] { display: none !important; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* ---- top bar (setup.html's bar) ---- */
+  .bar {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 24px; background: rgba(245, 246, 247, .92);
+    backdrop-filter: blur(6px); border-bottom: 1px solid var(--surface-variant);
+  }
+  .disc {
+    width: 34px; height: 34px; border-radius: var(--r-full); flex-shrink: 0;
+    background: linear-gradient(135deg, #4d2afa, #7a25db);
+    display: flex; align-items: center; justify-content: center;
+    font: 800 16px var(--font-headline); color: var(--on-primary);
+  }
+  .bar .salon { font: 800 15px var(--font-headline); color: var(--ink); letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .bar .grow { flex: 1; }
+  .ghost {
+    font: 600 12.5px var(--font-body); color: var(--on-surface-variant); background: none;
+    border: 1px solid var(--surface-variant); border-radius: var(--r-xl); padding: 6px 10px; cursor: pointer; text-decoration: none; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .ghost:hover { border-color: var(--outline); color: var(--on-surface); }
+  .ghost .ico { display: none; font-size: 18px; }
+
+  /* ---- layout ---- */
+  .wrap { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 40px; max-width: 1180px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font: 800 28px/1.12 var(--font-headline); letter-spacing: -0.03em; color: var(--ink); margin: 0 0 8px; }
+  .lede { font-size: 14.5px; line-height: 1.55; color: var(--on-surface-variant); margin: 0 0 22px; max-width: 64ch; }
+  h2 { font: 800 16px var(--font-headline); color: var(--ink); margin: 0 0 10px; letter-spacing: -0.01em; }
+  .status { display: flex; gap: 10px; align-items: flex-start; padding: 14px; border-radius: var(--r-full); margin-bottom: 18px; line-height: 1.5; }
+  .status.ok { background: var(--ok-bg); color: var(--ok); }
+  .status.wait { background: var(--surface-container); color: var(--on-surface); }
+  .status.warn { background: var(--error-bg); color: var(--on-error-container); }
+
+  /* ---- the value line: booked value, never "revenue" ---- */
+  .value { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; padding: 14px 0; border-top: 1px solid var(--surface-variant); border-bottom: 1px solid var(--surface-variant); margin-bottom: 18px; }
+  .value .lbl { font-size: 12px; font-weight: 700; color: var(--on-surface-variant); text-transform: uppercase; letter-spacing: .04em; }
+  .value .sum { font: 800 24px var(--font-headline); color: var(--ink); letter-spacing: -0.02em; }
+  .value .how { font-size: 12.5px; color: var(--on-surface-variant); line-height: 1.45; flex-basis: 100%; }
+  .value .count { font-size: 13px; color: var(--on-surface); font-weight: 600; }
+  .tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -6px 0 18px; font-size: 12.5px; color: var(--on-surface-variant); }
+  .jump { display: none; margin: -4px 0 16px; }
+  .linkbtn { background: none; border: 0; padding: 0; color: var(--primary); font: 600 12.5px var(--font-body); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+  /* ---- days ---- */
+  .day { margin-bottom: 18px; }
+  .dayhead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0 2px 8px; border-bottom: 1px solid var(--outline-variant); }
+  .dayhead b { font: 800 14.5px var(--font-headline); color: var(--ink); letter-spacing: -0.01em; }
+  .dayhead span { font-size: 12px; color: var(--on-surface-variant); white-space: nowrap; }
+  .day.quiet .dayhead { border-bottom-color: var(--surface-variant); }
+  .day.quiet .dayhead b { color: var(--on-surface-variant); font-weight: 700; }
+  .none { font-size: 12.5px; color: var(--outline); padding: 8px 2px 0; }
+  .appt { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: 14px; align-items: start; padding: 12px 2px; border-bottom: 1px solid var(--surface-variant); }
+  .appt .time { font: 600 13px var(--font-body); font-variant-numeric: tabular-nums; color: var(--ink); padding-top: 1px; white-space: nowrap; }
+  .appt .time small { display: block; color: var(--on-surface-variant); font-size: 11.5px; margin-top: 2px; }
+  .appt .who { font-weight: 700; font-size: 14px; color: var(--ink); overflow-wrap: anywhere; }
+  .appt .who a { color: var(--on-surface-variant); font-weight: 500; font-size: 13px; text-decoration: none; margin-left: 6px; white-space: nowrap; }
+  .appt .who a:hover { text-decoration: underline; }
+  .appt .svc { font-size: 13px; color: var(--on-surface); margin-top: 3px; overflow-wrap: anywhere; }
+  .appt .svc .price { color: var(--on-surface-variant); }
+  .appt .meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: var(--surface-container); color: var(--on-surface-variant); white-space: nowrap; }
+  .chip .material-symbols-outlined { font-size: 14px; }
+  .chip.maya { background: var(--primary-tint); color: var(--primary); }
+  .chip.cancelled { background: var(--error-bg); color: var(--error); }
+  .chip.done { background: var(--ok-bg); color: var(--ok); }
+  .chip.test { background: rgba(122, 37, 219, .08); color: var(--tertiary); }
+  .appt.off .who, .appt.off .svc, .appt.off .time { color: var(--outline); }
+  .appt.off .who { text-decoration: line-through; text-decoration-color: var(--outline-variant); }
+  .appt.block { grid-template-columns: 92px minmax(0, 1fr); background: repeating-linear-gradient(135deg, transparent 0 7px, rgba(117,119,120,.07) 7px 8px); }
+  .appt.block .who { font-weight: 600; color: var(--on-surface-variant); }
+  .btn {
+    font: 700 13px var(--font-body); color: var(--on-primary); background: var(--primary);
+    border: 1px solid var(--primary); border-radius: var(--r-xl); padding: 9px 14px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; text-decoration: none;
+    transition: background 150ms var(--settle), transform 120ms var(--settle);
+  }
+  .btn:hover { background: var(--primary-dim); }
+  .btn:active { transform: scale(.985); }
+  .btn[disabled] { opacity: .55; cursor: default; }
+  .btn.quiet { background: var(--surface-lowest); color: var(--on-surface); border-color: var(--outline-variant); }
+  .btn.quiet:hover { border-color: var(--outline); background: var(--surface-low); }
+  .btn.small { padding: 6px 10px; font-size: 12.5px; }
+  .btn.danger { background: var(--error); border-color: var(--error); }
+  .btn.danger:hover { background: #950e34; }
+  .btn .material-symbols-outlined { font-size: 17px; }
+
+  /* ---- side: block time ---- */
+  .side { position: sticky; top: 84px; align-self: start; }
+  .card { background: var(--surface-lowest); border: 1px solid var(--surface-variant); border-radius: var(--r-full); padding: 18px; margin-bottom: 18px; }
+  .card p.hint { margin: -4px 0 14px; }
+  .field { display: grid; gap: 6px; margin-bottom: 12px; }
+  .field > label, .lbl2 { font-size: 12px; font-weight: 700; color: var(--on-surface-variant); text-transform: uppercase; letter-spacing: .04em; }
+  .hint { font-size: 12.5px; color: var(--on-surface-variant); line-height: 1.45; }
+  input, select {
+    width: 100%; font-size: 14px; color: var(--ink); background: var(--surface-lowest);
+    border: 1px solid var(--outline-variant); border-radius: var(--r-xl); padding: 9px 11px; min-height: 40px;
+  }
+  input:focus, select:focus { outline: 2px solid var(--primary); outline-offset: -1px; border-color: var(--primary); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .check { display: flex; gap: 8px; align-items: center; font-size: 13.5px; margin: 0 0 12px; cursor: pointer; }
+  .check input { width: 16px; height: 16px; min-height: 0; accent-color: var(--primary); }
+  .note { display: none; margin-top: 12px; font-size: 13px; line-height: 1.45; padding: 10px 12px; border-radius: var(--r-xl); }
+  .note.on { display: block; }
+  .note.ok { background: var(--ok-bg); color: var(--ok); }
+  .note.err { background: var(--error-bg); color: var(--on-error-container); }
+  .blocks { border-top: 1px solid var(--surface-variant); }
+  .brow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--surface-variant); }
+  .brow .t { font-size: 13px; font-weight: 700; color: var(--ink); }
+  .brow .d { font-size: 12px; color: var(--on-surface-variant); margin-top: 2px; overflow-wrap: anywhere; }
+  .iconbtn { background: none; border: 1px solid transparent; border-radius: var(--r-xl); padding: 5px; color: var(--on-surface-variant); cursor: pointer; display: inline-flex; }
+  .iconbtn:hover { border-color: var(--surface-variant); color: var(--error); }
+  .links { display: grid; gap: 8px; }
+
+  dialog { border: 0; border-radius: var(--r-full); padding: 0; max-width: 440px; width: calc(100% - 32px); box-shadow: 0 24px 60px rgba(23,24,27,.22); }
+  dialog::backdrop { background: rgba(23,24,27,.36); }
+  dialog .in { padding: 22px; }
+  dialog h3 { font: 800 18px var(--font-headline); color: var(--ink); margin: 0 0 6px; letter-spacing: -0.01em; }
+  dialog p { margin: 0 0 14px; line-height: 1.5; color: var(--on-surface-variant); }
+  dialog .acts { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+  .toast { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; background: var(--ink); color: #fff; padding: 10px 16px; border-radius: var(--r-xl); font-size: 13px; transition: all 220ms var(--settle); max-width: calc(100% - 32px); z-index: 20; }
+  .toast.on { opacity: 1; transform: translate(-50%, 0); }
+  .spin { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 99px; display: inline-block; animation: spin 700ms linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading { color: var(--on-surface-variant); padding: 30px 0; }
+
+  @media (max-width: 900px) {
+    .wrap { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 22px 16px 60px; }
+    .side { position: static; }
+  }
+  @media (max-width: 560px) {
+    .bar { padding: 10px 16px; gap: 8px; }
+    .ghost { padding: 6px 8px; }
+    .ghost .ico { display: inline; }
+    .ghost .lbl { display: none; }
+    h1 { font-size: 24px; }
+    .appt { grid-template-columns: 70px minmax(0, 1fr); gap: 10px; }
+    .jump { display: inline-flex; }
+    .appt .acts { grid-column: 2 / 3; }
+    .appt.block { grid-template-columns: 70px minmax(0, 1fr); }
+    .appt .time { font-size: 12.5px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .spin { animation: none; }
+    * { transition-duration: 1ms !important; }
+  }
+</style>
+</head>
+<body id="bookings-screen">
+<header class="bar">
+  <div class="disc" aria-hidden="true">M</div>
+  <div class="salon" id="salonName">…</div>
+  <div class="grow"></div>
+  <a class="ghost" href="/screens/inbox.html" id="inboxLink"><span class="material-symbols-outlined ico" aria-hidden="true">forum</span><span class="lbl">Inbox</span></a>
+  <a class="ghost" href="/screens/setup.html" id="setupLink"><span class="material-symbols-outlined ico" aria-hidden="true">tune</span><span class="lbl">Setup</span></a>
+  <button class="ghost" id="logout" type="button"><span class="material-symbols-outlined ico" aria-hidden="true">logout</span><span class="lbl">Sign out</span></button>
+</header>
+
+<div class="wrap">
+  <main>
+    <h1 id="title">Bookings</h1>
+    <p class="lede" id="lede"></p>
+    <div id="banner"></div>
+    <div class="value" id="value" hidden></div>
+    <div class="tools" id="tools"></div>
+    <a class="btn quiet small jump" href="#blockTitle" id="jump"><span class="material-symbols-outlined" aria-hidden="true">block</span><span class="lbl">Block time</span></a>
+    <div id="days"><div class="loading" id="loading">Loading…</div></div>
+  </main>
+  <aside class="side">
+    <section class="card" aria-labelledby="blockTitle">
+      <h2 id="blockTitle">Block time</h2>
+      <p class="hint" id="blockLead"></p>
+      <form id="blockForm" novalidate>
+        <div class="field"><label for="bWho" id="lWho">Who</label><select id="bWho"></select></div>
+        <div class="field"><label for="bDate" id="lDate">Day</label><input id="bDate" type="date" required/></div>
+        <label class="check"><input type="checkbox" id="bAllDay"/><span id="lAllDay">All day</span></label>
+        <div class="two" id="bTimes">
+          <div class="field"><label for="bFrom" id="lFrom">From</label><input id="bFrom" type="time" value="12:00" step="900"/></div>
+          <div class="field"><label for="bTo" id="lTo">To</label><input id="bTo" type="time" value="13:00" step="900"/></div>
+        </div>
+        <div class="field"><label for="bReason" id="lReason">Reason</label><input id="bReason" maxlength="120"/></div>
+        <button class="btn" type="submit" id="bGo" style="width:100%"><span class="material-symbols-outlined" aria-hidden="true">block</span><span id="bGoLbl">Block time</span></button>
+        <div class="note" id="bNote" role="status"></div>
+      </form>
+    </section>
+    <section class="card" aria-labelledby="blocksTitle">
+      <h2 id="blocksTitle">Blocked time</h2>
+      <div class="blocks" id="blocks"></div>
+    </section>
+    <div class="links">
+      <a class="btn quiet" href="/screens/inbox.html" id="inboxBig"><span class="material-symbols-outlined" aria-hidden="true">forum</span><span class="lbl">Inbox</span></a>
+      <a class="btn quiet" href="/screens/setup.html" id="setupBig"><span class="material-symbols-outlined" aria-hidden="true">tune</span><span class="lbl">Setup</span></a>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<dialog id="cancelDlg" aria-labelledby="cancelTitle">
+  <form class="in" method="dialog" id="cancelForm">
+    <h3 id="cancelTitle"></h3>
+    <p id="cancelLead"></p>
+    <div class="field"><label for="cancelReason" id="lCancelReason">Note for the client</label><input id="cancelReason" maxlength="200"/></div>
+    <div class="acts">
+      <button class="btn quiet" type="button" id="cancelNo"></button>
+      <button class="btn danger" type="submit" id="cancelYes"></button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(function () {
+  "use strict";
+  var TEXT = {
+    en: {
+      title: "Bookings", inbox: "Inbox", setup: "Setup", signOut: "Sign out", loading: "Loading…",
+      lede: function (n) { return "The next " + n + " days of appointments, from Maya and from you. Cancel a visit or block time here and Maya works around it."; },
+      notLive: "Maya is not live yet, so clients cannot book. Finish setup and press Go live.", openSetup: "Open setup",
+      valueLbl: "Booked value", valueAtLeast: "at least",
+      valueHow: function (counted, skipped) { return "Sum of the listed prices of " + counted + (counted === 1 ? " booking" : " bookings") + " that are still on. Cancelled visits and your own test chats are left out; “from” prices count at their lowest amount" + (skipped ? "; " + skipped + (skipped === 1 ? " booking has" : " bookings have") + " no fixed price (add-on, per-unit or consultation) and is not counted" : "") + ". It is not money received."; },
+      count: function (n) { return n + (n === 1 ? " booking" : " bookings"); },
+      tests: function (n) { return n + (n === 1 ? " booking from your test chats is hidden." : " bookings from your test chats are hidden."); },
+      showTests: "Show them", hideTests: "Hide them",
+      today: "Today", tomorrow: "Tomorrow", none: "No bookings",
+      maya: "Booked by Maya", owner: "Added by the salon", telegram: "Telegram", web: "Web chat",
+      booked: "Booked", cancelled: "Cancelled", done: "Done", no_show: "No-show", test: "Test",
+      addon: "add-on", cancel: "Cancel visit",
+      blockRow: function (who) { return "Blocked · " + who; }, wholeSalon: "Whole salon", allDay: "All day",
+      blockTitle: "Block time", blockLead: "Lunch, a day off, a dentist visit. Maya will not offer or book that time.",
+      who: "Who", day: "Day", allDayL: "All day", from: "From", to: "To", reason: "Reason", reasonPh: "e.g. Lunch, day off (only you see it)",
+      blockGo: "Block time", blocking: "Saving…",
+      blocked: "Blocked. Maya will not offer that time.",
+      overlap: function (n) { return n + (n === 1 ? " booking is" : " bookings are") + " already in that time. It stays booked; cancel it here if the client has to move."; },
+      blocksTitle: "Blocked time", noBlocks: "Nothing blocked. Maya offers every open time in your hours.",
+      remove: "Remove", removed: "Removed. Maya can offer that time again.",
+      cancelTitle: function (client) { return "Cancel " + client + "’s visit?"; },
+      cancelTg: function (client) { return "We tell " + client + " in Telegram, from your salon’s bot, and Maya offers another time."; },
+      cancelWeb: function (client) { return client + " sees the message in your web chat the next time they open it, and Maya offers another time."; },
+      cancelCall: function (client, phone) { return "This booking was not made in a chat, so we cannot message " + client + ". Call them" + (phone ? " at " + phone : "") + "."; },
+      cancelNoBot: function (client, phone) { return "Your Telegram bot is not connected right now, so we cannot message " + client + ". Call them" + (phone ? " at " + phone : "") + "."; },
+      reasonLbl: "Note for the client (optional)", reasonPh2: "e.g. Olena is sick today.",
+      keep: "Keep it", confirmCancel: "Cancel visit", cancelling: "Cancelling…",
+      cancelledTg: "Cancelled. The client got a Telegram message.", cancelledWeb: "Cancelled. The client sees it in the web chat.", cancelledPlain: "Cancelled. Remember to let the client know.",
+      loadFail: "Could not load bookings. Refresh the page.", offline: "Not saved. Check your connection.",
+      managed: "This salon is managed by the AIbeaty team."
+    },
+    fr: {
+      title: "Rendez-vous", inbox: "Boîte de réception", setup: "Configuration", signOut: "Se déconnecter", loading: "Chargement…",
+      lede: function (n) { return "Les rendez-vous des " + n + " prochains jours, pris par Maya ou par vous. Annulez une visite ou bloquez du temps ici, et Maya en tient compte."; },
+      notLive: "Maya n’est pas encore en ligne : les clients ne peuvent pas réserver. Terminez la configuration et appuyez sur Mettre en ligne.", openSetup: "Ouvrir la configuration",
+      valueLbl: "Valeur réservée", valueAtLeast: "au moins",
+      valueHow: function (counted, skipped) { return "Somme des prix affichés de " + counted + (counted === 1 ? " réservation active" : " réservations actives") + ". Les visites annulées et vos chats de test ne comptent pas; les prix « à partir de » comptent à leur montant le plus bas" + (skipped ? "; " + skipped + (skipped === 1 ? " réservation n’a" : " réservations n’ont") + " pas de prix fixe (supplément, prix à l’unité ou consultation) et ne compte pas" : "") + ". Ce n’est pas de l’argent encaissé."; },
+      count: function (n) { return n + (n === 1 ? " réservation" : " réservations"); },
+      tests: function (n) { return n + (n === 1 ? " réservation de vos chats de test est masquée." : " réservations de vos chats de test sont masquées."); },
+      showTests: "Les afficher", hideTests: "Les masquer",
+      today: "Aujourd’hui", tomorrow: "Demain", none: "Aucun rendez-vous",
+      maya: "Réservé par Maya", owner: "Ajouté par le salon", telegram: "Telegram", web: "Chat web",
+      booked: "Réservé", cancelled: "Annulé", done: "Terminé", no_show: "Absent", test: "Test",
+      addon: "supplément", cancel: "Annuler la visite",
+      blockRow: function (who) { return "Bloqué · " + who; }, wholeSalon: "Tout le salon", allDay: "Toute la journée",
+      blockTitle: "Bloquer du temps", blockLead: "Dîner, congé, rendez-vous chez le dentiste. Maya n’offrira pas ce moment et ne le réservera pas.",
+      who: "Qui", day: "Jour", allDayL: "Toute la journée", from: "De", to: "À", reason: "Motif", reasonPh: "ex. Dîner, congé (vous seul le voyez)",
+      blockGo: "Bloquer", blocking: "Enregistrement…",
+      blocked: "Bloqué. Maya n’offrira pas ce moment.",
+      overlap: function (n) { return n + (n === 1 ? " rendez-vous est" : " rendez-vous sont") + " déjà dans ce créneau. Il reste réservé; annulez-le ici si la cliente doit changer."; },
+      blocksTitle: "Temps bloqué", noBlocks: "Rien de bloqué. Maya offre toutes les heures libres de votre horaire.",
+      remove: "Retirer", removed: "Retiré. Maya peut de nouveau offrir ce moment.",
+      cancelTitle: function (client) { return "Annuler la visite de " + client + "?"; },
+      cancelTg: function (client) { return "Nous prévenons " + client + " sur Telegram, par le robot de votre salon, et Maya propose un autre moment."; },
+      cancelWeb: function (client) { return client + " verra le message dans votre chat web à sa prochaine visite, et Maya proposera un autre moment."; },
+      cancelCall: function (client, phone) { return "Ce rendez-vous n’a pas été pris dans un chat : nous ne pouvons pas écrire à " + client + ". Appelez" + (phone ? " au " + phone : "") + "."; },
+      cancelNoBot: function (client, phone) { return "Votre robot Telegram n’est pas connecté : nous ne pouvons pas écrire à " + client + ". Appelez" + (phone ? " au " + phone : "") + "."; },
+      reasonLbl: "Note pour la cliente (facultatif)", reasonPh2: "ex. Olena est malade aujourd’hui.",
+      keep: "Garder", confirmCancel: "Annuler la visite", cancelling: "Annulation…",
+      cancelledTg: "Annulé. La cliente a reçu un message Telegram.", cancelledWeb: "Annulé. La cliente le verra dans le chat web.", cancelledPlain: "Annulé. Pensez à prévenir la cliente.",
+      loadFail: "Impossible de charger les rendez-vous. Actualisez la page.", offline: "Non enregistré. Vérifiez la connexion.",
+      managed: "Ce salon est géré par l’équipe AIbeaty."
+    },
+    ru: {
+      title: "Записи", inbox: "Входящие", setup: "Настройка", signOut: "Выйти", loading: "Загружаю…",
+      lede: function (n) { return "Записи на ближайшие " + n + " дней, от Майи и от вас. Отмените визит или закройте время здесь, и Майя это учтёт."; },
+      notLive: "Майя ещё не запущена, клиенты пока не могут записаться. Закончите настройку и нажмите «Запустить».", openSetup: "Открыть настройку",
+      valueLbl: "Сумма записей", valueAtLeast: "не меньше",
+      valueHow: function (counted, skipped) { return "Сумма цен из прайса по " + counted + " активным записям. Отменённые визиты и ваши тестовые чаты не считаются; цены «от» считаются по нижней границе" + (skipped ? "; " + skipped + " без фиксированной цены (дополнение, цена за единицу или консультация) не посчитаны" : "") + ". Это не полученные деньги."; },
+      count: function (n) { return n + " " + (n % 10 === 1 && n % 100 !== 11 ? "запись" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? "записи" : "записей"); },
+      tests: function (n) { return "Скрыто записей из ваших тестовых чатов: " + n + "."; },
+      showTests: "Показать", hideTests: "Скрыть",
+      today: "Сегодня", tomorrow: "Завтра", none: "Записей нет",
+      maya: "Записала Майя", owner: "Добавил салон", telegram: "Telegram", web: "Веб-чат",
+      booked: "Записан", cancelled: "Отменена", done: "Завершена", no_show: "Не пришёл", test: "Тест",
+      addon: "дополнение", cancel: "Отменить визит",
+      blockRow: function (who) { return "Закрыто · " + who; }, wholeSalon: "Весь салон", allDay: "Весь день",
+      blockTitle: "Закрыть время", blockLead: "Обед, выходной, визит к врачу. Майя не предложит и не запишет на это время.",
+      who: "Кто", day: "День", allDayL: "Весь день", from: "С", to: "До", reason: "Причина", reasonPh: "напр. Обед, выходной (видите только вы)",
+      blockGo: "Закрыть время", blocking: "Сохраняю…",
+      blocked: "Готово. Майя не предложит это время.",
+      overlap: function (n) { return "На это время уже есть записи: " + n + ". Они остаются; отмените здесь, если клиенту нужно перенести визит."; },
+      blocksTitle: "Закрытое время", noBlocks: "Ничего не закрыто. Майя предлагает всё свободное время в ваших часах работы.",
+      remove: "Убрать", removed: "Убрано. Майя снова может предлагать это время.",
+      cancelTitle: function (client) { return "Отменить визит: " + client + "?"; },
+      cancelTg: function (client) { return "Мы сообщим клиенту (" + client + ") в Telegram от бота салона, и Майя предложит другое время."; },
+      cancelWeb: function (client) { return "Клиент (" + client + ") увидит сообщение в веб-чате, когда откроет его, и Майя предложит другое время."; },
+      cancelCall: function (client, phone) { return "Эта запись сделана не в чате, написать клиенту (" + client + ") мы не можем. Позвоните" + (phone ? ": " + phone : "") + "."; },
+      cancelNoBot: function (client, phone) { return "Telegram-бот сейчас не подключён, написать клиенту (" + client + ") мы не можем. Позвоните" + (phone ? ": " + phone : "") + "."; },
+      reasonLbl: "Сообщение клиенту (необязательно)", reasonPh2: "напр. Олена сегодня заболела.",
+      keep: "Оставить", confirmCancel: "Отменить визит", cancelling: "Отменяю…",
+      cancelledTg: "Отменено. Клиент получил сообщение в Telegram.", cancelledWeb: "Отменено. Клиент увидит это в веб-чате.", cancelledPlain: "Отменено. Не забудьте предупредить клиента.",
+      loadFail: "Не удалось загрузить записи. Обновите страницу.", offline: "Не сохранено. Проверьте соединение.",
+      managed: "Этим салоном управляет команда AIbeaty."
+    }
+  };
+  var LOCALE = { en: "en-CA", fr: "fr-CA", ru: "ru-RU" };
+  // en-CA writes "10:00 a.m."; salons read "10:00 AM" faster.
+  var TIME_LOCALE = { en: "en-US", fr: "fr-CA", ru: "ru-RU" };
+  var lang = "en";
+  var T = TEXT.en;
+  var data = null;
+  var showTests = false;
+  var cancelTarget = null;
+
+  function $(id) { return document.getElementById(id); }
+  function esc(value) {
+    return String(value === undefined || value === null ? "" : value)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function toast(text) {
+    var node = $("toast");
+    node.textContent = text;
+    node.classList.add("on");
+    clearTimeout(node._timer);
+    node._timer = setTimeout(function () { node.classList.remove("on"); }, 3200);
+  }
+  function api(method, url, body) {
+    return fetch(url, {
+      method: method,
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      credentials: "same-origin"
+    }).then(function (response) {
+      if (response.status === 401) { location.replace("/screens/login.html?next=/screens/bookings.html"); throw new Error("signed out"); }
+      return response.json().then(function (json) { return { status: response.status, data: json }; });
+    });
+  }
+  function busy(button, label) { button.disabled = true; button.dataset.label = button.innerHTML; button.innerHTML = '<span class="spin" aria-hidden="true"></span> ' + esc(label); }
+  function idle(button) { button.disabled = false; if (button.dataset.label) button.innerHTML = button.dataset.label; }
+
+  function money(amount) {
+    var text = Number(amount).toLocaleString(LOCALE[lang], { minimumFractionDigits: amount % 1 ? 2 : 0, maximumFractionDigits: 2 });
+    return lang === "fr" ? text + " $" : "$" + text;
+  }
+  function clock(minutes) {
+    var d = new Date(Date.UTC(2000, 0, 1, Math.floor(minutes / 60), minutes % 60));
+    try { return new Intl.DateTimeFormat(TIME_LOCALE[lang], { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(d); } catch (e) { return Math.floor(minutes / 60) + ":" + String(minutes % 60).padStart(2, "0"); }
+  }
+  function isoAdd(iso, days) { var d = new Date(iso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); }
+  function dayName(iso) {
+    try { return new Intl.DateTimeFormat(LOCALE[lang], { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" }).format(new Date(iso + "T12:00:00Z")); } catch (e) { return iso; }
+  }
+  function cap(text) { return text ? text.charAt(0).toUpperCase() + text.slice(1) : text; }
+  // "+$15" / "+15 $" is an add-on price: shown with its label, never read as a price.
+  function priceText(label) {
+    var text = String(label || "").trim();
+    if (!text) return "";
+    if (/^\+/.test(text)) return text + " " + T.addon;
+    return text;
+  }
+
+  function applyChrome() {
+    document.documentElement.lang = lang === "fr" ? "fr-CA" : lang;
+    document.title = "AIbeaty — " + T.title;
+    $("salonName").textContent = (data && data.salon.name) || "";
+    [["inboxLink", T.inbox], ["setupLink", T.setup], ["logout", T.signOut], ["inboxBig", T.inbox], ["setupBig", T.setup], ["jump", T.blockTitle]].forEach(function (pair) {
+      var node = $(pair[0]);
+      node.querySelector(".lbl").textContent = pair[1];
+      node.setAttribute("aria-label", pair[1]);
+    });
+    $("title").textContent = T.title;
+    $("lede").textContent = T.lede(data ? data.days : 14);
+    $("blockTitle").textContent = T.blockTitle;
+    $("blockLead").textContent = T.blockLead;
+    $("lWho").textContent = T.who; $("lDate").textContent = T.day; $("lAllDay").textContent = T.allDayL;
+    $("lFrom").textContent = T.from; $("lTo").textContent = T.to; $("lReason").textContent = T.reason;
+    $("bReason").placeholder = T.reasonPh;
+    $("bGoLbl").textContent = T.blockGo;
+    $("blocksTitle").textContent = T.blocksTitle;
+    $("lCancelReason").textContent = T.reasonLbl;
+    $("cancelReason").placeholder = T.reasonPh2;
+    $("cancelNo").textContent = T.keep;
+    $("cancelYes").textContent = T.confirmCancel;
+  }
+
+  function renderValue() {
+    var box = $("value");
+    var v = data.bookedValue;
+    var active = data.bookings.filter(function (b) { return !b.test && (b.status === "booked" || b.status === "done"); }).length;
+    box.hidden = false;
+    box.innerHTML = '<div><div class="lbl">' + esc(T.valueLbl) + '</div>' +
+      '<div class="sum">' + (v.atLeast && v.counted ? '<small style="font:600 13px var(--font-body);color:var(--on-surface-variant);margin-right:6px">' + esc(T.valueAtLeast) + '</small>' : "") + esc(money(v.amount)) + '</div></div>' +
+      '<div class="count">' + esc(T.count(active)) + '</div>' +
+      '<div class="how">' + esc(T.valueHow(v.counted, v.notCounted)) + '</div>';
+    var tools = "";
+    if (data.testCount) tools = '<span>' + esc(T.tests(data.testCount)) + '</span> <button class="linkbtn" type="button" id="toggleTests">' + esc(showTests ? T.hideTests : T.showTests) + '</button>';
+    $("tools").innerHTML = tools;
+  }
+
+  function apptRow(b) {
+    var off = b.status === "cancelled" || b.status === "no_show";
+    var chips = [];
+    chips.push(b.bookedBy === "maya"
+      ? '<span class="chip maya"><span class="material-symbols-outlined" aria-hidden="true">auto_awesome</span>' + esc(T.maya) + '</span>'
+      : '<span class="chip"><span class="material-symbols-outlined" aria-hidden="true">storefront</span>' + esc(T.owner) + '</span>');
+    if (b.channel) chips.push('<span class="chip"><span class="material-symbols-outlined" aria-hidden="true">' + (b.channel === "telegram" ? "send" : "chat") + '</span>' + esc(T[b.channel] || b.channel) + '</span>');
+    if (b.staff) chips.push('<span class="chip"><span class="material-symbols-outlined" aria-hidden="true">person</span>' + esc(b.staff) + '</span>');
+    if (b.status !== "booked") chips.push('<span class="chip ' + esc(b.status === "no_show" ? "cancelled" : b.status) + '">' + esc(T[b.status] || b.status) + '</span>');
+    if (b.test) chips.push('<span class="chip test">' + esc(T.test) + '</span>');
+    var price = priceText(b.price);
+    return '<div class="appt' + (off ? " off" : "") + '">' +
+      '<div class="time">' + esc(clock(b.start)) + '<small>' + esc(clock(b.end)) + '</small></div>' +
+      '<div><div class="who">' + esc(b.client || "—") + (b.phone ? '<a href="tel:' + esc(b.phone.replace(/[^\d+]/g, "")) + '">' + esc(b.phone) + '</a>' : "") + '</div>' +
+      '<div class="svc">' + esc(b.service) + (price ? ' <span class="price">· ' + esc(price) + '</span>' : "") + '</div>' +
+      '<div class="meta">' + chips.join("") + '</div></div>' +
+      (b.status === "booked" ? '<div class="acts"><button class="btn quiet small" type="button" data-cancel="' + esc(b.id) + '">' + esc(T.cancel) + '</button></div>' : "") +
+      '</div>';
+  }
+  function staffName(id) {
+    var found = (data.staff || []).filter(function (s) { return s.id === id; })[0];
+    return found ? found.name : "";
+  }
+  function blockRange(block) {
+    return block.start === 0 && block.end >= 1440 ? T.allDay : clock(block.start) + " – " + clock(block.end);
+  }
+  function blockRow(block) {
+    var who = block.staffId ? (block.staff || staffName(block.staffId)) : T.wholeSalon;
+    var full = block.start === 0 && block.end >= 1440;
+    return '<div class="appt block">' +
+      '<div class="time">' + (full ? esc(T.allDay) : esc(clock(block.start)) + '<small>' + esc(clock(block.end)) + '</small>') + '</div>' +
+      '<div><div class="who">' + esc(T.blockRow(who)) + '</div>' + (block.reason ? '<div class="svc">' + esc(block.reason) + '</div>' : "") + '</div></div>';
+  }
+
+  function renderDays() {
+    var html = "";
+    for (var i = 0; i < data.days; i += 1) {
+      var iso = isoAdd(data.today, i);
+      var list = data.bookings.filter(function (b) { return b.date === iso && (showTests || !b.test); });
+      var blocks = (data.blocks || []).filter(function (b) { return b.date === iso; });
+      var items = list.map(function (b) { return { at: b.start, html: apptRow(b) }; })
+        .concat(blocks.map(function (b) { return { at: b.start, html: blockRow(b) }; }))
+        .sort(function (a, b) { return a.at - b.at; });
+      var active = list.filter(function (b) { return b.status === "booked" || b.status === "done"; }).length;
+      var label = i === 0 ? T.today + " · " + dayName(iso) : i === 1 ? T.tomorrow + " · " + dayName(iso) : cap(dayName(iso));
+      html += '<section class="day' + (items.length ? "" : " quiet") + '" aria-label="' + esc(label) + '">' +
+        '<div class="dayhead"><b>' + esc(label) + '</b>' + (active ? '<span>' + esc(T.count(active)) + '</span>' : "") + '</div>' +
+        (items.length ? items.map(function (item) { return item.html; }).join("") : '<div class="none">' + esc(T.none) + '</div>') +
+        '</section>';
+    }
+    $("days").innerHTML = html;
+  }
+
+  function renderBlocks() {
+    var blocks = data.blocks || [];
+    $("blocks").innerHTML = blocks.length ? blocks.map(function (block) {
+      var who = block.staffId ? (block.staff || staffName(block.staffId)) : T.wholeSalon;
+      return '<div class="brow"><div><div class="t">' + esc(cap(dayName(block.date))) + ' · ' + esc(blockRange(block)) + '</div>' +
+        '<div class="d">' + esc(who) + (block.reason ? " · " + esc(block.reason) : "") + '</div></div>' +
+        '<button class="iconbtn" type="button" data-remove="' + esc(block.id) + '" aria-label="' + esc(T.remove) + '" title="' + esc(T.remove) + '"><span class="material-symbols-outlined" aria-hidden="true">delete</span></button></div>';
+    }).join("") : '<p class="hint" style="margin:12px 0 0">' + esc(T.noBlocks) + '</p>';
+  }
+
+  function renderForm() {
+    var who = $("bWho");
+    var current = who.value;
+    who.innerHTML = '<option value="">' + esc(T.wholeSalon) + '</option>' + (data.staff || []).map(function (s) {
+      return '<option value="' + esc(s.id) + '">' + esc(s.name) + '</option>';
+    }).join("");
+    if (current) who.value = current;
+    var date = $("bDate");
+    date.min = data.today;
+    date.max = isoAdd(data.today, 180);
+    if (!date.value) date.value = data.today;
+  }
+
+  function render() {
+    applyChrome();
+    if (!data) return;
+    $("banner").innerHTML = data.launched ? "" :
+      '<div class="status wait"><span class="material-symbols-outlined" aria-hidden="true">rocket_launch</span><div>' + esc(T.notLive) + ' <a href="/screens/setup.html">' + esc(T.openSetup) + '</a></div></div>';
+    renderValue();
+    renderDays();
+    renderBlocks();
+    renderForm();
+  }
+
+  function load() {
+    return api("GET", "/api/bookings" + (showTests ? "?tests=1" : "")).then(function (result) {
+      if (result.status === 409) { $("days").innerHTML = '<div class="status wait">' + esc(T.managed) + '</div>'; return; }
+      if (result.status !== 200) throw new Error("load");
+      data = result.data;
+      lang = TEXT[data.language] ? data.language : "en";
+      T = TEXT[lang];
+      render();
+    }).catch(function (error) {
+      if (error && error.message === "signed out") return;
+      if (!data) $("days").innerHTML = '<div class="status warn">' + esc(T.loadFail) + '</div>';
+    });
+  }
+
+  // ---- actions ----
+  document.addEventListener("click", function (event) {
+    var toggle = event.target.closest("#toggleTests");
+    if (toggle) { showTests = !showTests; load(); return; }
+    var cancel = event.target.closest("[data-cancel]");
+    if (cancel) return openCancel(cancel.getAttribute("data-cancel"));
+    var remove = event.target.closest("[data-remove]");
+    if (remove) {
+      remove.disabled = true;
+      api("DELETE", "/api/bookings/blocks/" + encodeURIComponent(remove.getAttribute("data-remove"))).then(function (result) {
+        if (result.status !== 200) { remove.disabled = false; return toast(T.offline); }
+        toast(T.removed);
+        return load();
+      }).catch(function () { remove.disabled = false; toast(T.offline); });
+    }
+  });
+
+  function openCancel(id) {
+    var booking = data.bookings.filter(function (b) { return b.id === id; })[0];
+    if (!booking) return;
+    cancelTarget = booking;
+    var client = booking.client || "—";
+    $("cancelTitle").textContent = T.cancelTitle(client);
+    $("cancelLead").textContent = booking.channel === "telegram" && data.telegram ? T.cancelTg(client)
+      : booking.channel === "web" ? T.cancelWeb(client)
+      : booking.channel === "telegram" ? T.cancelNoBot(client, booking.phone)
+      : T.cancelCall(client, booking.phone);
+    $("cancelReason").value = "";
+    if (typeof $("cancelDlg").showModal === "function") $("cancelDlg").showModal();
+    else if (window.confirm(T.cancelTitle(client))) submitCancel();
+  }
+  $("cancelNo").addEventListener("click", function () { $("cancelDlg").close(); });
+  $("cancelForm").addEventListener("submit", function (event) {
+    event.preventDefault();
+    submitCancel();
+  });
+  function submitCancel() {
+    if (!cancelTarget) return;
+    var button = $("cancelYes");
+    busy(button, T.cancelling);
+    api("POST", "/api/bookings/" + encodeURIComponent(cancelTarget.id) + "/cancel", { reason: $("cancelReason").value.trim() }).then(function (result) {
+      idle(button);
+      if ($("cancelDlg").open) $("cancelDlg").close();
+      if (result.status !== 200) return toast((result.data && result.data.message) || T.offline);
+      var told = result.data.told || {};
+      toast(told.channel === "telegram" && told.delivery !== "failed" ? T.cancelledTg : told.channel === "web" ? T.cancelledWeb : T.cancelledPlain);
+      cancelTarget = null;
+      return load();
+    }).catch(function () { idle(button); toast(T.offline); });
+  }
+
+  $("bAllDay").addEventListener("change", function () { $("bTimes").hidden = this.checked; });
+  $("blockForm").addEventListener("submit", function (event) {
+    event.preventDefault();
+    var note = $("bNote");
+    var button = $("bGo");
+    busy(button, T.blocking);
+    api("POST", "/api/bookings/blocks", {
+      staffId: $("bWho").value, date: $("bDate").value, allDay: $("bAllDay").checked,
+      from: $("bFrom").value, to: $("bTo").value, reason: $("bReason").value.trim()
+    }).then(function (result) {
+      idle(button);
+      if (result.status !== 201) {
+        note.className = "note on err";
+        note.textContent = (result.data && result.data.message) || T.offline;
+        return;
+      }
+      note.className = "note on ok";
+      note.textContent = T.blocked + (result.data.overlapping ? " " + T.overlap(result.data.overlapping) : "");
+      $("bReason").value = "";
+      return load();
+    }).catch(function () { idle(button); note.className = "note on err"; note.textContent = T.offline; });
+  });
+
+  $("logout").addEventListener("click", function () {
+    fetch("/api/auth/logout", { method: "POST" }).then(function () { location.replace("/screens/login.html"); });
+  });
+
+  applyChrome();
+  $("loading").textContent = T.loading;
+  load();
+  setInterval(function () { if (document.visibilityState === "visible" && !($("cancelDlg").open)) load(); }, 30000);
+})();
+</script>
+</body>
+</html>

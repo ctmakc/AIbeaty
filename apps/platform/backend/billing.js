@@ -25,6 +25,8 @@ const CURRENCY = "CAD";
 const ANNUAL_MONTHS_BILLED = 10;
 const PENDING_TRIAL_EXTENSION_DAYS = 7;
 const SELLER = "INNOVA CONSULT LTD";
+// Shown next to the seller on sign-up and in step 7: who bills, and from where.
+const SELLER_PLACE = "Ottawa, Canada";
 
 const PLANS = [
   {
@@ -361,6 +363,7 @@ function catalog(language = "en") {
     currency: CURRENCY,
     annualMonthsBilled: ANNUAL_MONTHS_BILLED,
     seller: SELLER,
+    sellerPlace: SELLER_PLACE,
     trialExtensionDays: PENDING_TRIAL_EXTENSION_DAYS,
     plans: PLANS.map((plan) => ({ key: plan.key, price: plan.price, staffLimit: plan.staffLimit, title: pick(plan.title), staff: pick(plan.staff), blurb: pick(plan.blurb) })),
     addons: PAID_ADDONS.map((addon) => ({ key: addon.key, price: addon.price, title: pick(addon.title), detail: pick(addon.detail) }))
@@ -372,6 +375,7 @@ module.exports = {
   PAID_ADDONS,
   CURRENCY,
   SELLER,
+  SELLER_PLACE,
   ANNUAL_MONTHS_BILLED,
   PENDING_TRIAL_EXTENSION_DAYS,
   planByKey,

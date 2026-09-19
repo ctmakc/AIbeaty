@@ -108,6 +108,18 @@ messages and owner alerts. Maya answers in the client's language.
 - Appointments carry `appt_date`; offsets are rebased on the first touch of a new
   salon day (`syncDayAnchor`). The demo salon is exempt.
 
+## Owner surfaces
+- `/screens/bookings.html` (`/api/bookings*`): next 14 days of real bookings,
+  cancel (client told in Telegram / web chat), busy blocks (`tenant_busy_blocks`,
+  fed to Maya through `busyBlocksFor`). "Booked value" counts only real,
+  non-test, not-cancelled bookings; `+$15` add-ons and consultations are skipped.
+- Demo Luminous Core screens redirect a self-serve owner to Bookings; `/` goes
+  to Bookings after Go live, to setup before. The demo salon keeps them.
+- `/c/<slug>` (public) redirects to the salon chat; step 6 shows it with the QR.
+- Billed by INNOVA CONSULT LTD, Ottawa, Canada (sign-up, step 7, the plan
+  confirmation on screen and in the owner's Telegram).
+- Tests: `node apps/platform/tests/owner-surfaces.test.js`.
+
 ## Env
 `PUBLIC_BASE_URL` (webhook + widget base), `LLM_MODEL` as a comma chain
 (prod: `gpt-oss:120b,nemotron-3-super,deepseek-v4-pro:0813`), `TENANCY_TICKER=0`

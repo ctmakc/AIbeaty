@@ -199,6 +199,7 @@
   <span class="where hide-sm" id="where">Inbox</span>
   <div class="grow"></div>
   <span class="who hide-sm" id="who"></span>
+  <a class="ghost" href="/screens/bookings.html" id="bookingsLink"><span class="material-symbols-outlined ico" aria-hidden="true">event</span><span class="lbl">Bookings</span></a>
   <a class="ghost" href="/screens/setup.html" id="setupLink"><span class="material-symbols-outlined ico" aria-hidden="true">tune</span><span class="lbl">Setup</span></a>
   <button class="ghost" id="logout" type="button"><span class="material-symbols-outlined ico" aria-hidden="true">logout</span><span class="lbl">Sign out</span></button>
 </header>
@@ -225,7 +226,7 @@
   var TEXT = {
     en: {
       colon: ": ",
-      inbox: "Inbox", conversations: "Conversations", all: "All", need: "Needs you", setup: "Setup", signOut: "Sign out",
+      inbox: "Inbox", conversations: "Conversations", all: "All", need: "Needs you", setup: "Setup", bookings: "Bookings", signOut: "Sign out",
       telegram: "Telegram client", web: "Web client", other: "Client",
       viaTelegram: "Telegram", viaWeb: "Web chat", noChannel: "No live channel",
       stateMaya: "Maya is answering", stateNeed: "Needs you", stateYou: "You are answering",
@@ -251,7 +252,7 @@
     },
     fr: {
       colon: "\u00a0: ",
-      inbox: "Boîte de réception", conversations: "Conversations", all: "Toutes", need: "À traiter", setup: "Configuration", signOut: "Se déconnecter",
+      inbox: "Boîte de réception", conversations: "Conversations", all: "Toutes", need: "À traiter", setup: "Configuration", bookings: "Rendez-vous", signOut: "Se déconnecter",
       telegram: "Client Telegram", web: "Client web", other: "Client",
       viaTelegram: "Telegram", viaWeb: "Clavardage web", noChannel: "Aucun canal actif",
       stateMaya: "Maya répond", stateNeed: "À traiter", stateYou: "Vous répondez",
@@ -277,7 +278,7 @@
     },
     ru: {
       colon: ": ",
-      inbox: "Входящие", conversations: "Переписки", all: "Все", need: "Ждут вас", setup: "Настройка", signOut: "Выйти",
+      inbox: "Входящие", conversations: "Переписки", all: "Все", need: "Ждут вас", setup: "Настройка", bookings: "Записи", signOut: "Выйти",
       telegram: "Клиент из Telegram", web: "Клиент с сайта", other: "Клиент",
       viaTelegram: "Telegram", viaWeb: "Чат на сайте", noChannel: "Нет канала связи",
       stateMaya: "Отвечает Майя", stateNeed: "Ждёт вас", stateYou: "Отвечаете вы",
@@ -379,6 +380,8 @@
     document.title = data.salon.name + " — " + T.inbox;
     $("where").textContent = T.inbox;
     $("listTitle").textContent = T.conversations;
+    $("bookingsLink").querySelector(".lbl").textContent = T.bookings;
+    $("bookingsLink").setAttribute("aria-label", T.bookings);
     $("setupLink").querySelector(".lbl").textContent = T.setup;
     $("setupLink").setAttribute("aria-label", T.setup);
     $("logout").querySelector(".lbl").textContent = T.signOut;
