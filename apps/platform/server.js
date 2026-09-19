@@ -779,6 +779,11 @@ async function handleAssistantRoutes(request, requestUrl, response) {
     // The salon's own signed-in owner may test Maya before launch.
     const viewer = auth.readSession(request);
     const preview = Boolean(viewer && viewer.salonSlug === salonSlug);
+    // Trusted-proxy client IP (Cloudflare/nginx sits in front): a per-IP key the
+    // attacker cannot rotate the way they can rotate body.sessionId. Powers the
+    // per-IP chat throttle and the per-visitor booking quota in the assistant.
+    const clientKey = String(request.headers["x-forwarded-for"] || "").split(",")[0].trim()
+      || (request.socket && request.socket.remoteAddress) || "";
     const result = await tenancy.chat(salonSlug, {
       sessionId: body.sessionId,
       message: body.message,
@@ -786,7 +791,8 @@ async function handleAssistantRoutes(request, requestUrl, response) {
       clientPhone: body.clientPhone,
       // Browser/UI language: a fallback only; Maya answers in the language
       // the client writes in.
-      languageHint: typeof body.language === "string" ? body.language.slice(0, 12) : ""
+      languageHint: typeof body.language === "string" ? body.language.slice(0, 12) : "",
+      clientKey
     }, { preview });
     if (result.error === "unknown_salon") return jsonCors(request, response, 404, result);
     if (result.error === "bad_request") return jsonCors(request, response, 400, result);

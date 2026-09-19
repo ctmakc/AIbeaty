@@ -18,6 +18,21 @@ const { detectLanguage, resolveTurnLanguage, replyLanguageMismatch, languageName
 const MAX_TOOL_ROUNDS = 6;
 const RATE_LIMIT_MAX = 20;
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+// Per-IP guards (untrusted sessionId can be rotated to defeat the per-session cap).
+const IP_RATE_LIMIT_MAX = Number(process.env.ASSISTANT_IP_RATE_LIMIT || 40);
+const BOOKING_QUOTA_MAX = Number(process.env.ASSISTANT_BOOKING_QUOTA || 5);
+const BOOKING_QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;
+// Channels where the caller's identity is server-verified (e.g. an authenticated
+// staff console, or telephony that supplies a trusted caller-id). ONLY on these
+// channels may Maya disclose or act on a returning client's data from a phone.
+// The public webchat is never verified, so a client-supplied phone there is not
+// treated as proof of ownership. Empty by default → fail closed everywhere.
+const VERIFIED_CHANNELS = new Set(
+  String(process.env.ASSISTANT_VERIFIED_CHANNELS || "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean)
+);
 const SLOT_STEP_MINUTES = 30;
 const HISTORY_LIMIT = 16;
 
@@ -672,7 +687,20 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
   const ALERT_ORIGIN = String(process.env.ALERT_ORIGIN || "https://aibeaty.pages.dev").replace(/\/+$/, "");
   const alertHttp = alertFetch || ((...args) => fetch(...args));
   const alertLastSent = new Map(); // conversationId → last alert ms (in-memory throttle)
-  const rateBuckets = new Map();   // `${salonId}:${sessionId}` → recent turn timestamps
+  const rateBuckets = new Map();   // `${salonId}:${sessionId}` / `${salonId}:ip:${ip}` → recent turn timestamps
+  const bookingBuckets = new Map(); // `ip:${ip}` / `sid:${sessionId}` → recent booking timestamps
+
+  function isVerifiedChannel(channel) {
+    return VERIFIED_CHANNELS.has(String(channel || "").trim().toLowerCase());
+  }
+
+  // Canonical national number: exact-match only, no suffix/partial matching, so
+  // callers cannot enumerate clients with fragments of a phone number.
+  function normalizePhone(value) {
+    let digits = digitsOnly(value);
+    if (digits.length === 11 && digits.startsWith("1")) digits = digits.slice(1); // drop NA country code
+    return digits;
+  }
   // Spend guard: hard cap on LLM turns per salon-timezone day (shared Ollama
   // Cloud quota protection). One "turn" = one chat() invocation that reached
   // the LLM; hard triggers, canned and silenced turns never count.
@@ -944,22 +972,21 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
     }
 
     function findClientByPhone(phone) {
-      const wanted = digitsOnly(phone);
-      if (wanted.length < 7) return null;
+      const wanted = normalizePhone(phone);
+      if (wanted.length < 10) return null; // require a full national number, exact match only
       const rows = db.prepare(`SELECT * FROM clients
       WHERE salon_id = ?
     `).all(salonId);
-      return rows.find((row) => {
-        const have = digitsOnly(row.phone);
-        return have.length >= 7 && (have === wanted || have.endsWith(wanted) || wanted.endsWith(have));
-      }) || null;
+      return rows.find((row) => normalizePhone(row.phone) === wanted) || null;
     }
 
     function ensureSession({ sessionId, channel, clientPhone, language, clientName }) {
       let session = loadSession(sessionId);
       if (session) return session;
       const now = new Date().toISOString();
-      const knownClient = clientPhone ? findClientByPhone(clientPhone) : null;
+      // Only auto-link a session to an existing client when the channel verifies the
+      // caller: a client-supplied phone on the public webchat is not proof of ownership.
+      const knownClient = (clientPhone && isVerifiedChannel(channel)) ? findClientByPhone(clientPhone) : null;
       const channelName = String(clientName || "").trim().slice(0, 80);
       // Stored names are neutral English; the owner's inbox localises the
       // "Web client" / "Telegram client" label and swaps in the client's own
@@ -1019,17 +1046,59 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       }));
     }
 
-    function rateLimited(sessionId) {
+    function takeToken(key, max) {
       const now = Date.now();
-      const key = `${salonId}:${sessionId}`;
       const bucket = (rateBuckets.get(key) || []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
-      if (bucket.length >= RATE_LIMIT_MAX) {
+      if (bucket.length >= max) {
         rateBuckets.set(key, bucket);
         return true;
       }
       bucket.push(now);
       rateBuckets.set(key, bucket);
+      // Bound the map so rotating sessionIds/IPs cannot grow it without limit.
+      if (rateBuckets.size > 5000) {
+        for (const [k, v] of rateBuckets) {
+          const live = v.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+          if (live.length) rateBuckets.set(k, live);
+          else rateBuckets.delete(k);
+        }
+      }
       return false;
+    }
+
+    // Per-session cap (kept as a secondary check; sessionId is client-controlled).
+    function rateLimited(sessionId) {
+      return takeToken(`${salonId}:sid:${String(sessionId || "")}`, RATE_LIMIT_MAX);
+    }
+
+    // Per-IP cap the attacker cannot rotate. Keyed on the trusted-proxy client IP.
+    function rateLimitedByIp(ip) {
+      if (!ip) return false;
+      return takeToken(`${salonId}:ip:${ip}`, IP_RATE_LIMIT_MAX);
+    }
+
+    // Rolling 24h booking quota per client key (IP), to bound calendar-fill abuse.
+    function bookingQuotaExceeded(clientKey) {
+      if (!clientKey) return false;
+      const now = Date.now();
+      const bucket = (bookingBuckets.get(clientKey) || []).filter((t) => now - t < BOOKING_QUOTA_WINDOW_MS);
+      bookingBuckets.set(clientKey, bucket);
+      return bucket.length >= BOOKING_QUOTA_MAX;
+    }
+
+    function noteBooking(clientKey) {
+      if (!clientKey) return;
+      const now = Date.now();
+      const bucket = (bookingBuckets.get(clientKey) || []).filter((t) => now - t < BOOKING_QUOTA_WINDOW_MS);
+      bucket.push(now);
+      bookingBuckets.set(clientKey, bucket);
+      if (bookingBuckets.size > 5000) {
+        for (const [k, v] of bookingBuckets) {
+          const live = v.filter((t) => now - t < BOOKING_QUOTA_WINDOW_MS);
+          if (live.length) bookingBuckets.set(k, live);
+          else bookingBuckets.delete(k);
+        }
+      }
     }
 
     // ---------- domain resolution ----------
@@ -1779,16 +1848,21 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
     }
 
     function findClientAppointment(session, appointmentId) {
+      // Must be a session linked to a client (via a verified channel or its own
+      // booking) before it can read/act on an appointment — no acting while unlinked.
+      const conversation = getConversationRow(session.conversation_id);
+      const clientId = session.client_id || (conversation && conversation.client_id) || null;
+      if (!clientId) return null;
       if (appointmentId) {
+        // Scope the by-id lookup to the linked client: closes the cross-client IDOR
+        // where any appointment_id could be canceled/rescheduled.
         return db.prepare(`
           SELECT a.*, s.name AS stylist_name FROM appointments a
-          JOIN stylists s ON s.id = a.stylist_id WHERE a.salon_id = ? AND a.id = ?
-        `).get(salonId, appointmentId) || null;
+          JOIN stylists s ON s.id = a.stylist_id
+          WHERE a.salon_id = ? AND a.id = ? AND a.client_id = ?
+        `).get(salonId, appointmentId, clientId) || null;
       }
-      if (session.client_id) return store.getActiveAppointmentForClient(session.client_id) || null;
-      const conversation = getConversationRow(session.conversation_id);
-      if (conversation && conversation.client_id) return store.getActiveAppointmentForClient(conversation.client_id) || null;
-      return null;
+      return store.getActiveAppointmentForClient(clientId) || null;
     }
 
     function linkConversationToClient(session, clientId) {
@@ -1921,6 +1995,12 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         }
 
         case "get_client_context": {
+          // A phone typed into the public webchat is not proof of ownership. Only
+          // disclose/act on a returning client's data on a channel where the caller
+          // is server-verified; otherwise treat everyone as a new guest.
+          if (!isVerifiedChannel(session.channel)) {
+            return { found: false, note: "Cannot look up accounts by phone in this channel. Ask the client for their name and help them as a new guest." };
+          }
           const client = findClientByPhone(args.phone);
           if (!client) return { found: false, note: "No client with this phone. Treat as a new client; ask for their name." };
           linkConversationToClient(session, client.id);
@@ -2066,6 +2146,11 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
             };
           }
           // commit — the only path that writes the appointment
+          const bookingKey = turn.clientKey || ("sid:" + session.id);
+          if (bookingQuotaExceeded(bookingKey)) {
+            leaveOwnerMessage(session, `Достигнут лимит записей от одного посетителя — возможное злоупотребление. Последний запрос: ${service.name}, ${dayLabel(day.offset)} ${proposal.timeLabel}.`, "booking_quota");
+            return { status: "failed", note: "Too many bookings from this visitor recently. Tell the client honestly the booking is NOT confirmed and the owner will follow up within the hour." };
+          }
           const appointmentId = store.createAppointment({
             clientId: session.client_id || undefined,
             client: clientName,
@@ -2089,6 +2174,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
           turn.committedPending = proposal;
           session.state.pendingAction = null;
           turn.actionCommitted = true;
+          noteBooking(bookingKey);
           linkConversationToClient(session, row.client_id);
           db.prepare(`
             UPDATE conversations SET status = ?, today_service = ?, today_time = ?, today_amount = ?, today_stylist = ?, updated_at = ? WHERE id = ? AND salon_id = ?
@@ -2990,7 +3076,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       return result;
     }
 
-    async function chatTurn({ sessionId, message, channel, clientPhone, languageHint, clientName, greeted, test }) {
+    async function chatTurn({ sessionId, message, channel, clientPhone, languageHint, clientName, greeted, test, clientKey }) {
       const text = String(message || "").trim().slice(0, 2000);
       const sid = String(sessionId || "").trim();
       if (!sid || !text) return { error: "bad_request", message: "sessionId and message are required." };
@@ -3001,6 +3087,8 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         return { reply: "pong", watchdog: true };
       }
 
+      // Per-IP cap first — a rotating sessionId cannot bypass it.
+      if (clientKey && rateLimitedByIp(clientKey)) return { error: "rate_limited", message: "Too many messages; slow down a little." };
       if (rateLimited(sid)) return { error: "rate_limited", message: "Too many messages; slow down a little." };
 
       const session = ensureSession({ sessionId: sid, channel, clientPhone, language: detectLanguage(text), clientName });
@@ -3109,6 +3197,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         actionCommitted: false,
         handoffRequested: false,
         escalateAfter: null,
+        clientKey: clientKey ? "ip:" + clientKey : null,
         unknownStylists: detectUnknownStylists(text, [(session.state.client || {}).name || ""])
       };
 
@@ -3736,6 +3825,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         loadSession,
         saveSession,
         rateLimited,
+        rateLimitedByIp,
         recordEvent,
         llmTurnsForDay,
         dailyTurnsCap: DAILY_TURNS_CAP,
