@@ -290,7 +290,7 @@
 
   // --- UI locale (AIBEATY_L10N) ---
   // Maya mirrors the language of the guest's messages; the chrome follows the
-  // browser: ru → Russian (source markup), uk → Ukrainian, anything else → English.
+  // browser (or ?lang= on the link): fr, ru, uk, anything else → English.
   // Labels, placeholders, quick chips and error states only — no layout, no logic.
   var AIBEATY_L10N = {
     ru: {
@@ -373,21 +373,57 @@
       placeholder: "Type a message…",
       inputAria: "Message for Maya",
       sendAria: "Send",
-      disclaimer: "Maya is an AI assistant. Bookings are confirmed in the salon’s system.",
+      disclaimer: "Maya is an AI assistant. The salon team can join this chat at any time.",
       metaName: "Maya",
       errRate: "Too many messages in a row — give it a minute and try again.",
       errTeam: "The salon team has this conversation — they will reply right here.",
       errFail: "Maya stepped away for a minute — please try again.",
       retry: "Retry"
+    },
+    fr: {
+      title: "Maya — clavardage avec le salon",
+      name: "Maya",
+      sub: "Assistante IA du salon",
+      subPrefix: "Assistante IA · ",
+      restartTitle: "Recommencer",
+      restartAria: "Recommencer la conversation",
+      closeTitle: "Réduire le clavardage",
+      introTitle: "Maya est là",
+      introText: "Réservation, prix, changement de rendez-vous : je réponds tout de suite, à toute heure. Je suis l’assistante IA du salon, et vous pouvez demander à parler à une personne à tout moment.",
+      introHint: "Choisissez une question ou écrivez votre message",
+      typingAria: "Maya écrit",
+      chipsAria: "Questions rapides",
+      chips: [
+        { label: "Réserver", say: "Bonjour! J’aimerais prendre rendez-vous." },
+        { label: "Prix", say: "Pouvez-vous me donner vos prix, s’il vous plaît?" },
+        { label: "Changer l’heure", say: "J’aimerais déplacer mon rendez-vous." },
+        { label: "Parler à une personne", say: "Est-ce que je peux parler à une personne, s’il vous plaît?" }
+      ],
+      placeholder: "Écrivez un message…",
+      inputAria: "Message pour Maya",
+      sendAria: "Envoyer",
+      disclaimer: "Maya est une assistante IA. L’équipe du salon peut intervenir à tout moment.",
+      metaName: "Maya",
+      errRate: "Beaucoup de messages d’un coup : attendez une minute et réessayez.",
+      errTeam: "L’équipe du salon a pris la conversation : on vous répondra ici.",
+      errFail: "Maya s’est absentée une minute, réessayez s’il vous plaît.",
+      retry: "Réessayer"
     }
   };
+  // Chrome language: ?lang= on the salon's chat link, else the browser.
+  // English and French by default; Russian/Ukrainian only for ru/uk browsers.
+  // Maya herself always answers in the language the client writes in.
+  var BROWSER_LANG = "";
+  try { BROWSER_LANG = String(navigator.language || (navigator.languages && navigator.languages[0]) || ""); } catch (e) {}
   var LOCALE = (function () {
-    var raw = "";
-    try { raw = String(navigator.language || (navigator.languages && navigator.languages[0]) || ""); } catch (e) {}
-    raw = raw.toLowerCase();
+    var forced = "";
+    try { forced = String(new URLSearchParams(location.search).get("lang") || "").toLowerCase().slice(0, 2); } catch (e) {}
+    if (AIBEATY_L10N[forced]) return forced;
+    var raw = BROWSER_LANG.toLowerCase();
     if (raw.indexOf("ru") === 0) return "ru";
     if (raw.indexOf("uk") === 0) return "uk";
-    return raw ? "en" : "ru";
+    if (raw.indexOf("fr") === 0) return "fr";
+    return "en";
   })();
   var T = AIBEATY_L10N[LOCALE];
 
@@ -520,7 +556,7 @@
     fetch(API_BASE + "/api/assistant/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: sessionId, message: text, channel: "Webchat", salon: SALON || undefined })
+      body: JSON.stringify({ sessionId: sessionId, message: text, channel: "Webchat", salon: SALON || undefined, language: LOCALE !== "en" ? LOCALE : (BROWSER_LANG || "en") })
     }).then(function (response) {
       return response.json().then(function (data) { return { status: response.status, data: data }; });
     }).then(function (result) {

@@ -732,7 +732,10 @@ async function handleAssistantRoutes(request, requestUrl, response) {
       sessionId: body.sessionId,
       message: body.message,
       channel: body.channel,
-      clientPhone: body.clientPhone
+      clientPhone: body.clientPhone,
+      // Browser/UI language: a fallback only; Maya answers in the language
+      // the client writes in.
+      languageHint: typeof body.language === "string" ? body.language.slice(0, 12) : ""
     }, { preview });
     if (result.error === "unknown_salon") return jsonCors(request, response, 404, result);
     if (result.error === "bad_request") return jsonCors(request, response, 400, result);
