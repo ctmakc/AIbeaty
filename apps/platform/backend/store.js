@@ -529,6 +529,13 @@ function createPlatformStore() {
     // whether the bot may speak ('' / 'active' = yes, 'escalated' / 'takeover' = silent).
     ensureColumn("conversations", "assistant_session_id", "TEXT NOT NULL DEFAULT ''");
     ensureColumn("conversations", "assistant_state", "TEXT NOT NULL DEFAULT ''");
+    // Who wrote a thread message ('client' / 'maya' / 'staff'; '' = legacy row)
+    // and, for staff replies, whether it reached the client's chat:
+    // 'delivered' (Telegram accepted it), 'failed', 'waiting' (web chat, the
+    // client has not opened it yet) or 'seen' (the web chat fetched it).
+    ensureColumn("conversation_messages", "author", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn("conversation_messages", "delivery", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn("conversation_messages", "delivery_note", "TEXT NOT NULL DEFAULT ''");
 
     // --- multi-salon migration -------------------------------------------
     // Every pre-existing row belongs to the original salon, so salon_id
@@ -2130,15 +2137,29 @@ function createPlatformStore() {
 
     function getConversationMessages(conversationId) {
       return db.prepare(`
-        SELECT type, text_value, meta
+        SELECT id, type, text_value, meta, author, delivery, delivery_note, created_at
         FROM conversation_messages
         WHERE salon_id = ? AND conversation_id = ?
         ORDER BY sort_order ASC
       `).all(salonId, conversationId).map((row) => ({
+        id: row.id,
         type: row.type,
         text: row.text_value,
-        meta: row.meta
+        meta: row.meta,
+        author: row.author || "",
+        delivery: row.delivery || "",
+        deliveryNote: row.delivery_note || "",
+        createdAt: row.created_at
       }));
+    }
+
+    // Staff replies: records whether the message reached the client's chat.
+    function setMessageDelivery(messageId, delivery, note) {
+      const result = db.prepare(`
+        UPDATE conversation_messages SET delivery = ?, delivery_note = ? WHERE salon_id = ? AND id = ?
+      `).run(String(delivery || ""), String(note || "").slice(0, 200), salonId, String(messageId || ""));
+      if (result.changes) touch();
+      return result.changes > 0;
     }
 
     function getConversationSuggestions(conversationId) {
@@ -3249,15 +3270,18 @@ function createPlatformStore() {
       if (!text) return { error: "Message text is required." };
       const type = payload.type === "incoming" ? "incoming" : payload.type === "system" ? "system" : "outgoing";
       const meta = type === "outgoing" ? "Just now • Sent" : "Just now";
+      const author = ["client", "maya", "staff"].includes(payload.author) ? payload.author : "";
+      const delivery = ["waiting", "delivered", "failed", "sending", "seen"].includes(payload.delivery) ? payload.delivery : "";
+      const messageId = typeof payload.id === "string" && /^[\w-]{6,80}$/.test(payload.id) ? payload.id : createId("message", id);
       const currentMax = db.prepare(`
         SELECT COALESCE(MAX(sort_order), -1) AS max_sort_order
         FROM conversation_messages
         WHERE salon_id = ? AND conversation_id = ?
       `).get(salonId, id).max_sort_order;
       db.prepare(`
-        INSERT INTO conversation_messages (salon_id, id, conversation_id, type, text_value, meta, sort_order, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(salonId, createId("message", id), id, type, text, meta, currentMax + 1, new Date().toISOString());
+        INSERT INTO conversation_messages (salon_id, id, conversation_id, type, text_value, meta, sort_order, created_at, author, delivery)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(salonId, messageId, id, type, text, meta, currentMax + 1, new Date().toISOString(), author, delivery);
       db.prepare(`
         UPDATE conversations
         SET preview = ?, time_label = 'Now', status = ?, updated_at = ?
@@ -3578,6 +3602,8 @@ function createPlatformStore() {
       deleteConversation,
       sendRecoveryOffer,
       createConversationMessage,
+      getConversationMessages,
+      setMessageDelivery,
       createConversationBooking,
       replaceCatalog,
       rebaseDayOffsets,

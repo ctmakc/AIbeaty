@@ -97,7 +97,7 @@ function digitsOnly(value) {
 
 // --- escalation triggers (checked in code, before/independent of the LLM) ---
 const TRIGGERS = [
-  { reason: "explicit_request", hard: true, re: /(позов[иі]те|позвать|зовите|позови|покличте|покликати|поклич)\s+(человека|людину|менеджера|адміністратора|администратора)|живо[йг]о? человек|жив(у|ою) людин|хочу (поговорить|говорить) с человеком|соедините с|talk to a human|real person|human,? please|speak (to|with) (a )?(human|person|manager|someone real)|передай(те)? человеку|parler (à|a|avec) (un|une|quelqu'un|quelqu’un)( (humain|vrai|vraie|personne|conseill|employ))?|un(e)? (vrai(e)? )?(humain|personne r[ée]elle)|^\s*(human|humain|person|une personne|человек|человека|людина|людину|оператор|operator|agent)\s*[.!]*\s*$/i },
+  { reason: "explicit_request", hard: true, re: /(позов[иі]те|позвать|зовите|позови|покличте|покликати|поклич)\s+(человека|людину|менеджера|адміністратора|администратора)|живо[йг]о? человек|жив(у|ою) людин|хочу (поговорить|говорить) с человеком|соедините с|talk to a human|(talk|speak|chat) (to|with) (a |an |some )?(person|human|real person|someone)|real person|human,? please|speak (to|with) (a )?(human|person|manager|someone real)|передай(те)? человеку|parler (à|a|avec) (un|une|quelqu'un|quelqu’un)( (humain|vrai|vraie|personne|conseill|employ))?|un(e)? (vrai(e)? )?(humain|personne r[ée]elle)|^\s*(human|humain|person|une personne|человек|человека|людина|людину|оператор|operator|agent)\s*[.!]*\s*$/i },
   { reason: "medical", hard: true, re: /жжени|жж[её]т|печ[её]т|аллерги|алерг|беремен|вагітн|зуд|сыпь|свербіж|висип|ожог|опік|раздражение кожи|подразнення|кожа болит|allerg|pregnan|burn(ing|ed|s)?\b|rash|itch|scalp (pain|hurts)|chemical reaction|enceinte|grossesse|allaite|br[uû]l(ure|e|ait)|d[ée]mang|rougeur|irritation|eczéma|eczema|m[ée]dicament|antid[ée]presseur|sertraline|botox.*(enceinte|pregnan)/i },
   { reason: "complaint", hard: false, re: /испортил|зіпсував|сожгли|спалили|ужасн|жахлив|отвратительн|кошмар|верн[иу]те (мне )?деньги|возврат денег|повернить гроші|жалоб|скарг|плохо (по)?(стригли|красили)|ruined|terrible|awful|worst|complain|refund|botched|plainte|rembours|catastroph|rat[ée] ma|g[aâ]ch[ée]/i },
   { reason: "price_dispute", hard: false, re: /слишком дорого|почему так дорого|это грабёж|занадто дорого|чому так дорого|too expensive|overpriced|rip[- ]?off|why so expensive|trop cher|c'est du vol/i },
@@ -487,7 +487,7 @@ const SELF_CONFIRM_RE = /(shall i (book|go ahead)|should i book|want me to (book
 
 // Names the engine invents for a conversation before it knows the client.
 function isPlaceholderName(name) {
-  return /^(веб-гость|web guest|guest|invité|invitée|гость|гість|telegram client|client telegram|клиент telegram)(\s|$)/i.test(String(name || "").trim());
+  return /^(веб-гость|web guest|web client|client web|guest|invité|invitée|гость|гість|telegram client|client telegram|клиент telegram)(\s|$)/i.test(String(name || "").trim());
 }
 
 function parseClientIdentity(text) {
@@ -868,16 +868,20 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       const now = new Date().toISOString();
       const knownClient = clientPhone ? findClientByPhone(clientPhone) : null;
       const channelName = String(clientName || "").trim().slice(0, 80);
-      const placeholder = /telegram/i.test(String(channel || "")) ? `Telegram client ${sessionId.slice(-4)}` : `Web guest ${sessionId.slice(-4)}`;
+      // Stored names are neutral English; the owner's inbox localises the
+      // "Web client" / "Telegram client" label and swaps in the client's own
+      // name as soon as we learn it.
+      const isTelegram = /^tg:/.test(String(sessionId)) || /telegram/i.test(String(channel || ""));
+      const placeholder = `${isTelegram ? "Telegram client" : "Web client"} ${String(sessionId).replace(/[^a-z0-9]/gi, "").slice(-4)}`;
       const guestName = knownClient ? knownClient.name : (channelName || placeholder);
       const conversationId = store.createConversation({
         name: guestName,
         clientId: knownClient ? knownClient.id : undefined,
         channel: channel || "Webchat",
-        preview: "Conversation with Maya (AI assistant)",
+        preview: "Chat with Maya",
         status: "Maya AI · active",
         contact: clientPhone ? { phone: clientPhone } : undefined,
-        suggestions: ["Hand to a person", "Book", "Prices & services"]
+        suggestions: ["Book a visit", "Prices and services"]
       });
       db.prepare(`
         UPDATE conversations SET assistant_session_id = ?, assistant_state = 'active' WHERE id = ? AND salon_id = ?
@@ -903,7 +907,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
     }
 
     function persistMessage(session, type, text) {
-      store.createConversationMessage(session.conversation_id, { text, type });
+      store.createConversationMessage(session.conversation_id, { text, type, author: type === "incoming" ? "client" : "maya" });
     }
 
     function addSystemThreadNote(session, text) {
@@ -1135,6 +1139,12 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
     function dayLabel(offset) {
       return new Date(refDayUtcMs() + offset * 86400000)
         .toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+    }
+
+    // ISO date (salon calendar) for a day offset: alerts format it in the
+    // owner's language instead of the English dayLabel.
+    function isoDateForOffset(offset) {
+      return new Date(refDayUtcMs() + offset * 86400000).toISOString().slice(0, 10);
     }
 
     function dayWeekday(offset) {
@@ -1898,7 +1908,10 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
             stylist: stylist.name,
             day: dayLabel(day.offset),
             time: proposal.timeLabel,
-            price: service.price_label
+            price: service.price_label,
+            date: isoDateForOffset(day.offset),
+            startMinutes: proposal.startMinutes,
+            phone: clientPhone
           });
           return {
             status: "booked",
@@ -2011,7 +2024,12 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
             service: target.service_name,
             stylist: stylist.name,
             day: dayLabel(day.offset),
-            time: proposal.timeLabel
+            time: proposal.timeLabel,
+            date: isoDateForOffset(day.offset),
+            startMinutes,
+            fromDate: isoDateForOffset(target.day_offset),
+            fromStartMinutes: target.start_minutes,
+            phone: session.client_phone || ""
           });
           const movePolicy = policyNote(proposal, session.language);
           return Object.assign({ status: "rescheduled", appointment: { id: target.id, service: target.service_name, stylist: stylist.name, day: dayLabel(day.offset), time: proposal.timeLabel } },
@@ -2061,7 +2079,14 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
           session.state.pendingAction = null;
           turn.actionCommitted = true;
           addSystemThreadNote(session, `Maya canceled: ${target.service_name}, ${store.formatTimeRange(target.start_minutes, target.end_minutes)}.`);
-          recordEvent(session, "cancellation", { appointmentId: target.id, client: target.client_name, service: target.service_name });
+          recordEvent(session, "cancellation", {
+            appointmentId: target.id,
+            client: target.client_name,
+            service: target.service_name,
+            date: isoDateForOffset(target.day_offset),
+            startMinutes: target.start_minutes,
+            phone: session.client_phone || ""
+          });
           const cancelPolicy = policyNote(proposal, session.language);
           return Object.assign({ status: "canceled", appointment: { id: target.id, service: target.service_name } },
             cancelPolicy ? { policy: cancelPolicy, instruction: "First tell the client the appointment is cancelled, then quote this policy text." } : {});

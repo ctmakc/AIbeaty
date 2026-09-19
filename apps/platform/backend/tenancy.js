@@ -52,6 +52,209 @@ const ADDONS = [
   { key: "continue_after_trial", auto: false, title: { en: "Keep the assistant after the trial", ru: "Оставить ассистента после пробного периода" } }
 ];
 
+// ---------------------------------------------------------------------------
+// Owner alerts: one readable Telegram message per event, in the owner's own
+// UI language (tenant.language), with no internal codes.
+// ---------------------------------------------------------------------------
+
+const OWNER_LANGS = ["en", "fr", "ru"];
+const LOCALE_OF = { en: "en-CA", fr: "fr-CA", ru: "ru-RU" };
+// Two attention alerts (needs a human / Maya's note) about one conversation
+// within this window are one alert: the owner already knows to look.
+const ATTENTION_QUIET_MS = 60 * 1000;
+
+function ownerLang(tenant) {
+  const lang = String((tenant && tenant.language) || "en").slice(0, 2).toLowerCase();
+  if (lang === "uk") return "ru";
+  return OWNER_LANGS.includes(lang) ? lang : "en";
+}
+
+function isMedspa(tenant) {
+  return /^(medspa|clinic|medical)/.test(String((tenant && tenant.businessType) || ""));
+}
+
+// "Web client 1a2b", "Telegram client 1a2b" and the legacy "Веб-гость 1a2b"
+// are placeholders, not names.
+const GENERIC_NAME_RE = /^(web client|telegram client|веб-гость|client web|client telegram|веб-клиент|telegram-клиент)(\s|$)/i;
+// store.createConversation fills a new thread's implicit client with these
+// placeholders; they are not contact details and never reach an owner.
+function realPhone(value) {
+  const text = String(value || "").trim();
+  return text && text !== "(555) 000-0000" ? text : "";
+}
+
+const ALERT_TEXT = {
+  en: {
+    booking: "✅ New booking",
+    reschedule: "🔁 Booking moved",
+    cancellation: "❌ Booking cancelled",
+    escalation: (name) => `🔔 ${name} needs a person`,
+    ownerMessage: (name) => `✉️ ${name} is waiting for your answer`,
+    with: (stylist) => `with ${stylist}`,
+    reasons: {
+      explicit_request: "They asked to talk to a person.",
+      medical: "Health or skin question. Maya does not answer these.",
+      complaint: "They are unhappy about a visit.",
+      price_dispute: "They are unhappy about a price.",
+      frustration: "They sound frustrated.",
+      repeated_misunderstanding: "Maya did not understand them twice.",
+      assistant_requested: "Maya passed the conversation to you.",
+      owner_message: "Maya passed the conversation to you."
+    },
+    topics: {
+      price_guard: "Maya was about to quote a price that is not on your list, so she held back and asked them to wait for you.",
+      booking_gate: "Maya could not confirm the booking in the calendar. Please confirm it yourself.",
+      empty_reply: "Maya could not answer this message.",
+      llm_error: "Maya could not answer this message.",
+      reschedule_failed: "Maya could not move this booking. Please move it yourself.",
+      daily_cap: "Maya reached today's message limit and took a note for you."
+    },
+    medicalHidden: "Medical question. Open the conversation to read it.",
+    textHidden: "Open the conversation to read the message.",
+    said: "They wrote",
+    replyHint: (name) => `↩️ Reply to this message and your answer goes to ${name}.`,
+    webHint: (name) => `↩️ Reply to this message: ${name} sees your answer when they open the chat again.`,
+    open: "Open the conversation",
+    test: "Test chat",
+    usage: (threshold, turns, cap) => threshold >= 100
+      ? `⛔ Maya used all of today's ${cap} replies. Clients get a polite note and their messages wait for you in the inbox. The count resets at midnight.`
+      : `⚠️ Maya used ${threshold}% of today's replies (${turns} of ${cap}).`
+  },
+  fr: {
+    booking: "✅ Nouveau rendez-vous",
+    reschedule: "🔁 Rendez-vous déplacé",
+    cancellation: "❌ Rendez-vous annulé",
+    escalation: (name) => `🔔 ${name} veut parler à quelqu'un`,
+    ownerMessage: (name) => `✉️ ${name} attend votre réponse`,
+    with: (stylist) => `avec ${stylist}`,
+    reasons: {
+      explicit_request: "La personne a demandé à parler à quelqu'un.",
+      medical: "Question de santé ou de peau. Maya n'y répond pas.",
+      complaint: "La personne n'est pas satisfaite d'une visite.",
+      price_dispute: "La personne n'est pas d'accord avec un prix.",
+      frustration: "La personne semble agacée.",
+      repeated_misunderstanding: "Maya ne l'a pas comprise deux fois de suite.",
+      assistant_requested: "Maya vous a transmis la conversation.",
+      owner_message: "Maya vous a transmis la conversation."
+    },
+    topics: {
+      price_guard: "Maya allait donner un prix absent de votre liste. Elle s'est retenue et a demandé à la personne d'attendre votre réponse.",
+      booking_gate: "Maya n'a pas pu confirmer le rendez-vous dans l'agenda. Confirmez-le vous-même.",
+      empty_reply: "Maya n'a pas pu répondre à ce message.",
+      llm_error: "Maya n'a pas pu répondre à ce message.",
+      reschedule_failed: "Maya n'a pas pu déplacer ce rendez-vous. Déplacez-le vous-même.",
+      daily_cap: "Maya a atteint la limite de messages du jour et a pris une note pour vous."
+    },
+    medicalHidden: "Question médicale. Ouvrez la conversation pour la lire.",
+    textHidden: "Ouvrez la conversation pour lire le message.",
+    said: "Message",
+    colon: "\u00a0: ",
+    replyHint: (name) => `↩️ Répondez à ce message et votre réponse ira à ${name}.`,
+    webHint: (name) => `↩️ Répondez à ce message : ${name} verra votre réponse en rouvrant le clavardage.`,
+    open: "Ouvrir la conversation",
+    test: "Clavardage test",
+    usage: (threshold, turns, cap) => threshold >= 100
+      ? `⛔ Maya a utilisé les ${cap} réponses du jour. Les clients reçoivent un mot poli et leurs messages vous attendent dans la boîte de réception. Le compteur repart à minuit.`
+      : `⚠️ Maya a utilisé ${threshold} % des réponses du jour (${turns} sur ${cap}).`
+  },
+  ru: {
+    booking: "✅ Новая запись",
+    reschedule: "🔁 Запись перенесена",
+    cancellation: "❌ Запись отменена",
+    escalation: (name) => `🔔 ${name}: нужен человек`,
+    ownerMessage: (name) => `✉️ ${name} ждёт вашего ответа`,
+    with: (stylist) => `мастер ${stylist}`,
+    reasons: {
+      explicit_request: "Клиент попросил живого человека.",
+      medical: "Вопрос о здоровье или коже. Майя на такие не отвечает.",
+      complaint: "Клиент недоволен визитом.",
+      price_dispute: "Клиент недоволен ценой.",
+      frustration: "Клиент раздражён.",
+      repeated_misunderstanding: "Майя дважды не поняла клиента.",
+      assistant_requested: "Майя передала разговор вам.",
+      owner_message: "Майя передала разговор вам."
+    },
+    topics: {
+      price_guard: "Майя чуть не назвала цену, которой нет в вашем прайсе. Она остановилась и попросила клиента дождаться вашего ответа.",
+      booking_gate: "Майя не смогла подтвердить запись в календаре. Подтвердите её сами.",
+      empty_reply: "Майя не смогла ответить на это сообщение.",
+      llm_error: "Майя не смогла ответить на это сообщение.",
+      reschedule_failed: "Майя не смогла перенести запись. Перенесите её сами.",
+      daily_cap: "У Майи закончился дневной лимит сообщений, она записала вопрос для вас."
+    },
+    medicalHidden: "Медицинский вопрос. Откройте переписку, чтобы прочитать.",
+    textHidden: "Откройте переписку, чтобы прочитать сообщение.",
+    said: "Клиент пишет",
+    replyHint: (name) => `↩️ Ответьте на это сообщение, и ваш ответ уйдёт клиенту ${name}.`,
+    webHint: (name) => `↩️ Ответьте на это сообщение: ${name} увидит ответ, когда снова откроет чат.`,
+    open: "Открыть переписку",
+    test: "Тестовый чат",
+    usage: (threshold, turns, cap) => threshold >= 100
+      ? `⛔ Майя израсходовала все ${cap} ответов на сегодня. Клиенты получают вежливую заглушку, их сообщения ждут вас во входящих. Счётчик обнулится в полночь.`
+      : `⚠️ Майя израсходовала ${threshold}% дневных ответов (${turns} из ${cap}).`
+  }
+};
+
+const OWNER_CHAT_TEXT = {
+  en: {
+    linked: (chatLink) => `Done. New bookings, changes, cancellations and clients who need a person will arrive here.\n\nTo answer a client, reply to their alert (swipe left on it, or long-press and choose Reply). I'll send your answer to the client.\n\nMaya does not answer in this chat, because it is yours. To try her as a client, open your test chat while signed in: ${chatLink}`,
+    help: (inbox, chatLink) => `This chat is for your alerts, so Maya does not answer here.\n\n• To answer a client, reply to their alert (swipe left on it, or long-press and choose Reply) and type your message. I'll send it to the client.\n• All conversations: ${inbox}\n• To try Maya as a client, open your test chat while signed in: ${chatLink}`,
+    unknownAlert: (inbox) => `I can't tell which client that message belongs to. Reply to an alert about a client, or answer from the inbox: ${inbox}`,
+    textOnly: "Only text can be forwarded to a client for now.",
+    sent: (name) => `✓ Sent to ${name}.`,
+    waiting: (name) => `✓ Saved. ${name} sees it when they open the chat again.`,
+    failed: (name, inbox) => `Your answer did not reach ${name}: Telegram refused it. It is saved in the inbox: ${inbox}`
+  },
+  fr: {
+    linked: (chatLink) => `C'est fait. Les nouveaux rendez-vous, changements, annulations et les clients qui veulent parler à quelqu'un arriveront ici.\n\nPour répondre à un client, répondez à son alerte (glissez-la vers la gauche, ou appui long puis Répondre). J'envoie votre réponse au client.\n\nMaya ne répond pas dans ce clavardage, il est à vous. Pour l'essayer comme un client, ouvrez votre clavardage test en étant connecté : ${chatLink}`,
+    help: (inbox, chatLink) => `Ce clavardage sert à vos alertes, Maya n'y répond donc pas.\n\n• Pour répondre à un client, répondez à son alerte (glissez-la vers la gauche, ou appui long puis Répondre) et écrivez votre message. Je l'envoie au client.\n• Toutes les conversations : ${inbox}\n• Pour essayer Maya comme un client, ouvrez votre clavardage test en étant connecté : ${chatLink}`,
+    unknownAlert: (inbox) => `Je ne sais pas à quel client ce message s'adresse. Répondez à une alerte sur un client, ou répondez depuis la boîte de réception : ${inbox}`,
+    textOnly: "Pour l'instant, seul le texte peut être transmis à un client.",
+    sent: (name) => `✓ Envoyé à ${name}.`,
+    waiting: (name) => `✓ Enregistré. ${name} le verra en rouvrant le clavardage.`,
+    failed: (name, inbox) => `Votre réponse n'a pas pu être livrée à ${name} : Telegram l'a refusée. Elle est enregistrée dans la boîte de réception : ${inbox}`
+  },
+  ru: {
+    linked: (chatLink) => `Готово. Сюда будут приходить новые записи, переносы, отмены и клиенты, которым нужен человек.\n\nЧтобы ответить клиенту, ответьте на его уведомление (смахните его влево или нажмите и удерживайте → «Ответить»). Я перешлю ваш ответ клиенту.\n\nМайя в этом чате не отвечает: он ваш. Чтобы проверить её как клиент, откройте тестовый чат, войдя в кабинет: ${chatLink}`,
+    help: (inbox, chatLink) => `Этот чат для ваших уведомлений, поэтому Майя здесь не отвечает.\n\n• Чтобы ответить клиенту, ответьте на его уведомление (смахните влево или нажмите и удерживайте → «Ответить») и напишите текст. Я перешлю его клиенту.\n• Все переписки: ${inbox}\n• Проверить Майю как клиент: откройте тестовый чат, войдя в кабинет: ${chatLink}`,
+    unknownAlert: (inbox) => `Не понимаю, какому клиенту это сообщение. Ответьте на уведомление о клиенте или напишите из входящих: ${inbox}`,
+    textOnly: "Пока клиенту можно переслать только текст.",
+    sent: (name) => `✓ Отправлено: ${name}.`,
+    waiting: (name) => `✓ Сохранено. ${name} увидит ответ, когда снова откроет чат.`,
+    failed: (name, inbox) => `Ответ не дошёл до клиента ${name}: Telegram его не принял. Он сохранён во входящих: ${inbox}`
+  }
+};
+
+function formatAlertDate(isoDate, lang) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(isoDate || ""))) return "";
+  try {
+    return new Intl.DateTimeFormat(LOCALE_OF[lang] || "en-CA", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" })
+      .format(new Date(`${isoDate}T12:00:00Z`));
+  } catch (error) {
+    return isoDate;
+  }
+}
+
+function formatAlertTime(minutes, lang) {
+  if (!Number.isFinite(Number(minutes))) return "";
+  const hour = Math.floor(Number(minutes) / 60);
+  const minute = String(Number(minutes) % 60).padStart(2, "0");
+  if (lang === "fr") return `${hour} h ${minute}`;
+  if (lang === "ru") return `${hour}:${minute}`;
+  return `${((hour + 11) % 12) + 1}:${minute} ${hour < 12 ? "AM" : "PM"}`;
+}
+
+function localGenericName(name, lang) {
+  const tail = String(name || "").replace(GENERIC_NAME_RE, "").trim();
+  const telegram = /telegram/i.test(String(name || ""));
+  const label = {
+    en: telegram ? "Telegram client" : "Web client",
+    fr: telegram ? "Client Telegram" : "Client web",
+    ru: telegram ? "Клиент из Telegram" : "Клиент с сайта"
+  }[lang] || (telegram ? "Telegram client" : "Web client");
+  return tail ? `${label} ${tail}` : label;
+}
+
 function nowIso(clock) {
   return clock().toISOString();
 }
@@ -441,7 +644,7 @@ function htmlToText(html) {
 
 // ---------------------------------------------------------------------------
 
-function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, publicBaseUrl, platformNotify, secret } = {}) {
+function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, publicBaseUrl, platformNotify, secret, alertDelayMs } = {}) {
   const db = store.db;
   const http = fetchImpl || ((...args) => fetch(...args));
   const PUBLIC_BASE = String(publicBaseUrl || process.env.PUBLIC_BASE_URL || "https://aibeaty.remolda.com").replace(/\/+$/, "");
@@ -449,6 +652,13 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
   const notifyPlatform = typeof platformNotify === "function" ? platformNotify : () => {};
   let assistant = null;
   const signupAttempts = new Map();
+  // Events about one conversation that land within this window become one
+  // Telegram message (a booking plus Maya's note about it, a handoff plus its
+  // reason). Env override for tests.
+  const delayCandidate = Number(alertDelayMs !== undefined ? alertDelayMs : process.env.OWNER_ALERT_DELAY_MS);
+  const ALERT_DELAY_MS = Number.isFinite(delayCandidate) && delayCandidate >= 0 ? delayCandidate : 1500;
+  const alertQueue = new Map();      // `${slug}|${conversationId}` → { events, timer }
+  const lastAttentionAt = new Map(); // `${slug}|${conversationId}` → ms
 
   // Bot tokens are encrypted with a key derived from the session secret, so a
   // copied database file alone does not hand out the salons' bots.
@@ -523,6 +733,25 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       created_at TEXT NOT NULL,
       sent_at TEXT NOT NULL DEFAULT '',
       PRIMARY KEY (salon_slug, appointment_id)
+    );
+  `);
+
+  // Every owner alert that is about one conversation: the owner answers a
+  // client by replying to the alert in Telegram, and this map finds the thread.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tenant_alert_messages (
+      salon_slug TEXT NOT NULL,
+      chat_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      conversation_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (salon_slug, chat_id, message_id)
+    );
+    CREATE TABLE IF NOT EXISTS tenant_preview_sessions (
+      salon_slug TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (salon_slug, session_id)
     );
   `);
 
@@ -798,6 +1027,11 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
         };
       }
     }
+    if (tenant && preview && payload.sessionId && !/^tg:/.test(String(payload.sessionId))) {
+      // The owner's own test chats are tagged in the inbox and in alerts.
+      db.prepare(`INSERT OR IGNORE INTO tenant_preview_sessions (salon_slug, session_id, created_at) VALUES (?, ?, ?)`)
+        .run(slug, String(payload.sessionId).slice(0, 120), nowIso(clock));
+    }
     return assistant.chat(Object.assign({}, payload, { salon: slug }));
   }
 
@@ -820,8 +1054,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     },
     onEvent(salonId, type, payload) {
       trackReminder(salonId, type, payload);
-      const text = ownerEventText(salonId, type, payload);
-      if (text) notifyOwner(salonId, text);
+      queueOwnerAlert(salonId, type, payload);
     }
   };
 
@@ -970,36 +1203,170 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     setTimeout(tick, 5000).unref();
   }
 
-  function ownerEventText(salonId, type, payload) {
-    const tenant = getTenant(salonId);
-    const ru = tenant && tenant.language === "ru";
-    const thread = `${PUBLIC_BASE}/screens/unified-inbox-luminous-core.html?conversationId=${encodeURIComponent(payload.conversationId || "")}`;
-    const who = payload.client || (ru ? "клиент" : "a client");
-    const when = [payload.day || payload.date || "", payload.time || payload.timeLabel || ""].filter(Boolean).join(" ");
-    switch (type) {
-      case "booking":
-        return ru
-          ? `✅ Новая запись: ${who} — ${payload.service || ""}${payload.stylist ? `, мастер ${payload.stylist}` : ""}${when ? `, ${when}` : ""}.`
-          : `✅ New booking: ${who} — ${payload.service || ""}${payload.stylist ? ` with ${payload.stylist}` : ""}${when ? `, ${when}` : ""}.`;
-      case "reschedule":
-        return ru
-          ? `🔁 Перенос: ${who} — ${payload.service || ""}${when ? ` → ${when}` : ""}.`
-          : `🔁 Rescheduled: ${who} — ${payload.service || ""}${when ? ` → ${when}` : ""}.`;
-      case "cancellation":
-        return ru ? `❌ Отмена: ${who} — ${payload.service || ""}.` : `❌ Cancelled: ${who} — ${payload.service || ""}.`;
-      case "escalation":
-        return ru
-          ? `🔔 Клиенту нужен человек (${payload.reason || ""}). ${payload.summary || ""}\nПереписка: ${thread}`
-          : `🔔 A client needs a human (${payload.reason || ""}). ${payload.summary || ""}\nConversation: ${thread}`;
-      case "owner_message":
-        return ru ? `✉️ Для вас: ${payload.message || ""}\nПереписка: ${thread}` : `✉️ For you: ${payload.message || ""}\nConversation: ${thread}`;
-      case "usage_alert":
-        return ru
-          ? `⚠️ Ассистент израсходовал ${payload.threshold}% дневного лимита (${payload.turns}/${payload.cap}).`
-          : `⚠️ The assistant used ${payload.threshold}% of today's limit (${payload.turns}/${payload.cap}).`;
-      default:
-        return "";
+  // ---------- owner alerts ----------
+  const ALERT_TYPES = new Set(["booking", "reschedule", "cancellation", "escalation", "owner_message", "usage_alert"]);
+
+  function queueOwnerAlert(salonId, type, payload = {}) {
+    if (!ALERT_TYPES.has(type)) return;
+    if (!getTenant(salonId)) return;
+    const key = `${salonId}|${payload.conversationId || "_"}`;
+    let entry = alertQueue.get(key);
+    if (!entry) {
+      entry = { slug: salonId, conversationId: payload.conversationId || "", events: [], timer: null };
+      alertQueue.set(key, entry);
     }
+    entry.events.push({ type, payload });
+    if (entry.timer) return;
+    const flush = () => {
+      alertQueue.delete(key);
+      entry.timer = null;
+      const text = composeOwnerAlert(entry.slug, entry.conversationId, entry.events);
+      if (text) notifyOwner(entry.slug, text, { conversationId: entry.conversationId });
+    };
+    if (ALERT_DELAY_MS === 0) {
+      entry.timer = true;
+      Promise.resolve().then(flush);
+      return;
+    }
+    entry.timer = setTimeout(flush, ALERT_DELAY_MS);
+    if (entry.timer.unref) entry.timer.unref();
+  }
+
+  // Sends everything still waiting in the alert queue now (tests, shutdown).
+  function flushOwnerAlerts() {
+    [...alertQueue.entries()].forEach(([key, entry]) => {
+      if (entry.timer && entry.timer !== true) clearTimeout(entry.timer);
+      alertQueue.delete(key);
+      const text = composeOwnerAlert(entry.slug, entry.conversationId, entry.events);
+      if (text) notifyOwner(entry.slug, text, { conversationId: entry.conversationId });
+    });
+  }
+
+  function conversationFacts(slug, conversationId) {
+    if (!conversationId) return null;
+    const row = db.prepare(`SELECT id, name, contact_phone, assistant_session_id FROM conversations WHERE salon_id = ? AND id = ?`).get(slug, conversationId);
+    if (!row) return null;
+    const session = row.assistant_session_id
+      ? db.prepare(`SELECT client_phone FROM assistant_sessions WHERE salon_id = ? AND id = ?`).get(slug, row.assistant_session_id)
+      : null;
+    const lastIncoming = db.prepare(`
+      SELECT text_value FROM conversation_messages WHERE salon_id = ? AND conversation_id = ? AND type = 'incoming'
+      ORDER BY sort_order DESC LIMIT 1
+    `).get(slug, conversationId);
+    const preview = row.assistant_session_id
+      ? Boolean(db.prepare(`SELECT 1 FROM tenant_preview_sessions WHERE salon_slug = ? AND session_id = ?`).get(slug, row.assistant_session_id))
+      : false;
+    return {
+      name: row.name,
+      phone: realPhone(row.contact_phone) || realPhone(session && session.client_phone),
+      sessionId: row.assistant_session_id || "",
+      telegram: /^tg:/.test(row.assistant_session_id || ""),
+      lastIncoming: lastIncoming ? String(lastIncoming.text_value) : "",
+      preview
+    };
+  }
+
+  function quote(text, max = 280) {
+    const clean = String(text || "").replace(/\s+/g, " ").trim();
+    if (!clean) return "";
+    return `“${clean.length > max ? `${clean.slice(0, max - 1)}…` : clean}”`;
+  }
+
+  function composeOwnerAlert(slug, conversationId, events) {
+    const tenant = getTenant(slug);
+    if (!tenant) return "";
+    const lang = ownerLang(tenant);
+    const t = ALERT_TEXT[lang];
+    const medspa = isMedspa(tenant);
+    const facts = conversationFacts(slug, conversationId);
+    const key = `${slug}|${conversationId || "_"}`;
+
+    const nameFor = (payload) => {
+      const raw = [payload.client, facts && facts.name].find((value) => value && !GENERIC_NAME_RE.test(String(value))) ||
+        (facts && facts.name) || payload.client || "";
+      return raw && GENERIC_NAME_RE.test(raw) ? localGenericName(raw, lang) : (raw || localGenericName("", lang));
+    };
+    const who = (payload) => [nameFor(payload), realPhone(payload.phone) || (facts && facts.phone) || ""].filter(Boolean).join(" · ");
+    const when = (date, minutes, fallbackDay, fallbackTime) => {
+      const day = formatAlertDate(date, lang) || fallbackDay || "";
+      const time = formatAlertTime(minutes, lang) || fallbackTime || "";
+      return [day, time].filter(Boolean).join(", ");
+    };
+
+    const blocks = [];
+    let attention = null;
+    events.forEach(({ type, payload }) => {
+      if (type === "booking") {
+        blocks.push([
+          t.booking,
+          who(payload),
+          [payload.service, payload.stylist ? t.with(payload.stylist) : ""].filter(Boolean).join(" "),
+          when(payload.date, payload.startMinutes, payload.day, payload.time)
+        ].filter(Boolean).join("\n"));
+      } else if (type === "reschedule") {
+        const from = when(payload.fromDate, payload.fromStartMinutes, "", "");
+        const to = when(payload.date, payload.startMinutes, payload.day, payload.time);
+        blocks.push([
+          t.reschedule,
+          who(payload),
+          [payload.service, payload.stylist ? t.with(payload.stylist) : ""].filter(Boolean).join(" "),
+          from ? `${from} → ${to}` : `→ ${to}`
+        ].filter(Boolean).join("\n"));
+      } else if (type === "cancellation") {
+        blocks.push([
+          t.cancellation,
+          who(payload),
+          [payload.service, when(payload.date, payload.startMinutes, "", "")].filter(Boolean).join(", ")
+        ].filter(Boolean).join("\n"));
+      } else if (type === "usage_alert") {
+        blocks.push(t.usage(Number(payload.threshold) || 0, payload.turns, payload.cap));
+      } else if (type === "escalation" || type === "owner_message") {
+        // One attention block per alert; a handoff beats a note about the same turn.
+        if (!attention || (attention.type === "owner_message" && type === "escalation")) attention = { type, payload };
+      }
+    });
+
+    if (attention) {
+      const now = clock().getTime();
+      const last = lastAttentionAt.get(key) || 0;
+      if (conversationId && now - last < ATTENTION_QUIET_MS) {
+        attention = null;
+      } else {
+        lastAttentionAt.set(key, now);
+      }
+    }
+    if (attention) {
+      const { type, payload } = attention;
+      const name = nameFor(payload);
+      const reason = type === "escalation"
+        ? (t.reasons[payload.reason] || t.reasons.assistant_requested)
+        : (t.topics[payload.topic] || t.reasons.owner_message);
+      // The client's own words, never Maya's internal note (that one is ours and
+      // in whatever language the prompt was written in).
+      const clientText = (type === "escalation" ? String(payload.summary || "").split(" | ")[0] : "") || (facts && facts.lastIncoming) || "";
+      let body = "";
+      const medical = type === "escalation" && payload.reason === "medical";
+      // Medspa / clinic: health details stay inside the conversation, never in
+      // a Telegram notification that may show up on a lock screen.
+      if (medspa) body = medical ? t.medicalHidden : t.textHidden;
+      else if (clientText) body = `${t.said}${t.colon || ": "}${quote(clientText)}`;
+      blocks.unshift([
+        type === "escalation" ? t.escalation(name) : t.ownerMessage(name),
+        who(payload) !== name ? who(payload) : "",
+        medspa && medical ? "" : reason,
+        body
+      ].filter(Boolean).join("\n"));
+    }
+    if (!blocks.length) return "";
+
+    const footer = [];
+    if (conversationId && facts) {
+      const name = nameFor(events[0].payload);
+      if (facts.sessionId) footer.push(facts.telegram ? t.replyHint(name) : t.webHint(name));
+      footer.push(`${t.open}${t.colon || ": "}${PUBLIC_BASE}/screens/unified-inbox-luminous-core.html?conversationId=${encodeURIComponent(conversationId)}`);
+    }
+    const head = facts && facts.preview ? `[${t.test}] ` : "";
+    return `${head}${blocks.join("\n\n")}${footer.length ? `\n\n${footer.join("\n")}` : ""}`;
   }
 
   // ---------- Telegram ----------
@@ -1112,11 +1479,21 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     );
   }
 
-  function notifyOwner(slug, text) {
+  // Returns the send promise (tests await it); failures are only logged.
+  function notifyOwner(slug, text, { conversationId } = {}) {
     const row = getTelegram(slug);
-    if (!row || !row.owner_chat_id) return;
-    sendTelegram(row, row.owner_chat_id, text).catch((error) => {
+    if (!row || !row.owner_chat_id) return Promise.resolve(null);
+    return sendTelegram(row, row.owner_chat_id, text).then((sent) => {
+      if (conversationId && sent && sent.message_id !== undefined) {
+        db.prepare(`
+          INSERT OR REPLACE INTO tenant_alert_messages (salon_slug, chat_id, message_id, conversation_id, created_at)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(slug, String(row.owner_chat_id), String(sent.message_id), conversationId, nowIso(clock));
+      }
+      return sent;
+    }).catch((error) => {
       console.error(`[tenancy] owner notify failed for ${slug}: ${String(error.message).slice(0, 140)}`);
+      return null;
     });
   }
 
@@ -1152,6 +1529,190 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     return { status: 200, work };
   }
 
+  function ownerLinks(slug) {
+    return {
+      inbox: `${PUBLIC_BASE}/screens/unified-inbox-luminous-core.html`,
+      chat: `${PUBLIC_BASE}/screens/chat.html?salon=${encodeURIComponent(slug)}`
+    };
+  }
+
+  function ownerChatText(slug) {
+    return OWNER_CHAT_TEXT[ownerLang(getTenant(slug))];
+  }
+
+  // The owner's linked chat is never a client: Maya does not answer it. A
+  // reply to an alert goes to that alert's client; anything else gets help.
+  async function handleOwnerMessage(row, message) {
+    const chatId = String(message.chat.id);
+    const t = ownerChatText(row.salon_slug);
+    const links = ownerLinks(row.salon_slug);
+    const replyTo = message.reply_to_message;
+    const text = String(message.text || "").trim();
+    if (!replyTo) {
+      await sendTelegram(row, chatId, t.help(links.inbox, links.chat));
+      return { action: "help" };
+    }
+    const mapped = db.prepare(`
+      SELECT conversation_id FROM tenant_alert_messages WHERE salon_slug = ? AND chat_id = ? AND message_id = ?
+    `).get(row.salon_slug, chatId, String(replyTo.message_id));
+    if (!mapped) {
+      await sendTelegram(row, chatId, t.unknownAlert(links.inbox));
+      return { action: "unknown_alert" };
+    }
+    if (!text) {
+      await sendTelegram(row, chatId, t.textOnly);
+      return { action: "text_only" };
+    }
+    const result = await sendStaffReply(row.salon_slug, mapped.conversation_id, text.slice(0, 4000), { via: "telegram_owner" });
+    const lang = ownerLang(getTenant(row.salon_slug));
+    const name = result.name && GENERIC_NAME_RE.test(result.name) ? localGenericName(result.name, lang) : (result.name || "");
+    const confirmation = result.delivery === "delivered" ? t.sent(name)
+      : result.delivery === "waiting" ? t.waiting(name)
+        : t.failed(name, `${links.inbox}?conversationId=${encodeURIComponent(mapped.conversation_id)}`);
+    await sendTelegram(row, chatId, confirmation, { reply_to_message_id: message.message_id });
+    return { action: "forwarded", delivery: result.delivery };
+  }
+
+  // A staff member's answer to a client: stored in the thread (author 'staff'),
+  // Maya steps back (takeover), and the text goes to wherever the client is.
+  //   Telegram client → sent through the salon's bot now: 'delivered' / 'failed'
+  //   web chat client → 'waiting' until their chat page fetches it ('seen')
+  //   no live channel (seeded / manual threads) → '' (nothing to deliver)
+  // existingMessageId: the inbox route already stored the message.
+  async function sendStaffReply(slug, conversationId, text, { existingMessageId, via = "inbox" } = {}) {
+    const scope = store.forSalon(slug);
+    if (!scope) return { ok: false, error: "unknown_salon" };
+    const conversation = db.prepare(`SELECT id, name, assistant_session_id FROM conversations WHERE salon_id = ? AND id = ?`).get(slug, conversationId);
+    if (!conversation) return { ok: false, error: "not_found" };
+    const body = String(text || "").trim();
+    if (!body) return { ok: false, error: "empty" };
+    const sessionId = conversation.assistant_session_id || "";
+    const tgMatch = /^tg:(\d+):(-?\d+)$/.exec(sessionId);
+    let messageId = existingMessageId;
+    if (!messageId) {
+      messageId = `message-staff-${crypto.randomBytes(6).toString("hex")}`;
+      scope.createConversationMessage(conversationId, { text: body, type: "outgoing", author: "staff", id: messageId, delivery: sessionId ? (tgMatch ? "sending" : "waiting") : "" });
+    }
+    if (assistant && typeof assistant.noteStaffMessage === "function") assistant.noteStaffMessage(conversationId, slug);
+
+    let delivery = "";
+    let note = "";
+    if (tgMatch) {
+      const row = getTelegram(slug);
+      if (!row || row.bot_id !== tgMatch[1]) {
+        delivery = "failed";
+        note = "telegram_not_connected";
+      } else {
+        try {
+          await sendTelegram(row, tgMatch[2], body);
+          delivery = "delivered";
+        } catch (error) {
+          delivery = "failed";
+          note = String((error.telegram && error.telegram.description) || error.message || "").slice(0, 160);
+          console.error(`[tenancy] staff reply failed for ${slug}: ${note}`);
+        }
+      }
+    } else if (sessionId) {
+      delivery = "waiting";
+    }
+    scope.setMessageDelivery(messageId, delivery, note);
+    return { ok: true, messageId, delivery, note, name: conversation.name, channel: tgMatch ? "telegram" : (sessionId ? "web" : "") };
+  }
+
+  // The web chat asks for staff answers it has not shown yet. The session id
+  // is the chat's own random id (web-<uuid>); Telegram ids are refused, they
+  // are guessable and those clients get their answers in Telegram anyway.
+  function webUpdates(slug, sessionId, after) {
+    const id = String(sessionId || "");
+    if (!id || /^tg:/.test(id) || id.length > 120) return { messages: [] };
+    const session = db.prepare(`SELECT conversation_id FROM assistant_sessions WHERE salon_id = ? AND id = ?`).get(String(slug || ""), id);
+    if (!session) return { messages: [] };
+    const since = /^\d{4}-\d{2}-\d{2}T/.test(String(after || "")) ? String(after) : "";
+    const rows = db.prepare(`
+      SELECT id, text_value, created_at, delivery FROM conversation_messages
+      WHERE salon_id = ? AND conversation_id = ? AND author = 'staff' AND created_at > ?
+      ORDER BY sort_order ASC LIMIT 50
+    `).all(slug, session.conversation_id, since);
+    const seen = rows.filter((row) => row.delivery === "waiting");
+    if (seen.length) {
+      const mark = db.prepare(`UPDATE conversation_messages SET delivery = 'seen' WHERE salon_id = ? AND id = ?`);
+      db.transaction(() => seen.forEach((row) => mark.run(slug, row.id)))();
+    }
+    return { messages: rows.map((row) => ({ id: row.id, text: row.text_value, createdAt: row.created_at })) };
+  }
+
+  // The owner's inbox for a self-serve salon: only this salon's real threads,
+  // no demo fixtures. Channel and test-chat flags come from the session id.
+  function inboxView(slug) {
+    const scope = store.forSalon(slug);
+    if (!scope) return null;
+    const tenant = getTenant(slug);
+    const record = store.getSalonRecord(slug) || {};
+    const previewIds = new Set(db.prepare(`SELECT session_id FROM tenant_preview_sessions WHERE salon_slug = ?`).all(slug).map((row) => row.session_id));
+    const rows = db.prepare(`
+      SELECT id, name, channel, contact_phone, assistant_session_id, assistant_state, updated_at, created_at
+      FROM conversations WHERE salon_id = ? ORDER BY updated_at DESC
+    `).all(slug);
+    const phoneOf = db.prepare(`SELECT client_phone FROM assistant_sessions WHERE salon_id = ? AND id = ?`);
+    const conversations = rows.map((row) => {
+      const sessionId = row.assistant_session_id || "";
+      const messages = scope.getConversationMessages(row.id).map((message) => ({
+        id: message.id,
+        type: message.type,
+        author: message.author || (message.type === "incoming" ? "client" : message.type === "system" ? "" : "maya"),
+        text: message.text,
+        delivery: message.delivery,
+        deliveryNote: message.deliveryNote,
+        createdAt: message.createdAt
+      }));
+      const last = [...messages].reverse().find((message) => message.type !== "system") || messages[messages.length - 1];
+      const session = sessionId ? phoneOf.get(slug, sessionId) : null;
+      return {
+        id: row.id,
+        name: row.name,
+        generic: GENERIC_NAME_RE.test(row.name),
+        kind: /^tg:/.test(sessionId) ? "telegram" : sessionId ? "web" : "other",
+        test: previewIds.has(sessionId),
+        phone: realPhone(row.contact_phone) || realPhone(session && session.client_phone),
+        state: row.assistant_state === "escalated" ? "needs_human" : row.assistant_state === "takeover" ? "takeover" : "maya",
+        preview: last ? String(last.text).slice(0, 140) : "",
+        lastAuthor: last ? last.author : "",
+        updatedAt: row.updated_at,
+        messages
+      };
+    });
+    // Clients first; the owner's own test chats sink to the bottom.
+    conversations.sort((a, b) => Number(a.test) - Number(b.test));
+    return {
+      salon: { slug, name: record.name || slug, city: record.city || "", timezone: record.timezone || "America/Toronto" },
+      selfServe: Boolean(tenant),
+      language: ownerLang(tenant),
+      businessType: tenant ? tenant.businessType : "",
+      telegram: telegramStatus(slug).connected ? { connected: true, ownerLinked: telegramStatus(slug).ownerLinked } : { connected: false },
+      chatUrl: `/screens/chat.html?salon=${encodeURIComponent(slug)}`,
+      conversations
+    };
+  }
+
+  // A Telegram client's own name replaces the "Telegram client 1a2b" placeholder.
+  function nameTelegramConversation(slug, sessionId, from) {
+    const name = cleanText([from && from.first_name, from && from.last_name].filter(Boolean).join(" "), 60);
+    if (!name) return;
+    const row = db.prepare(`SELECT id, name, client_id FROM conversations WHERE salon_id = ? AND assistant_session_id = ?`).get(slug, sessionId);
+    if (!row || !GENERIC_NAME_RE.test(row.name)) return;
+    db.transaction(() => {
+      db.prepare(`UPDATE conversations SET name = ?, avatar_text = ? WHERE salon_id = ? AND id = ?`)
+        .run(name, name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(), slug, row.id);
+      // The thread's implicit client record carries the same placeholder name.
+      if (row.client_id) {
+        const client = db.prepare(`SELECT name FROM clients WHERE salon_id = ? AND id = ?`).get(slug, row.client_id);
+        if (client && GENERIC_NAME_RE.test(client.name)) {
+          db.prepare(`UPDATE clients SET name = ? WHERE salon_id = ? AND id = ?`).run(name, slug, row.client_id);
+        }
+      }
+    })();
+  }
+
   async function processTelegramMessage(row, message) {
     const chatId = String(message.chat.id);
     const text = String(message.text || "").trim();
@@ -1159,17 +1720,19 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     const ru = /^(ru|uk|be)/.test(String(languageCode || ""));
     const lang = clientLanguage(text, languageCode);
     const fromName = [message.from && message.from.first_name, message.from && message.from.last_name].filter(Boolean).join(" ").trim();
+    const isOwnerChat = Boolean(row.owner_chat_id) && row.owner_chat_id === chatId;
 
     const startMatch = text.match(/^\/start(?:\s+(\S+))?/);
+    if (startMatch && startMatch[1] === `owner-${row.owner_link_code}`) {
+      db.prepare(`UPDATE tenant_telegram SET owner_chat_id = ? WHERE salon_slug = ?`).run(chatId, row.salon_slug);
+      await sendTelegram(row, chatId, ownerChatText(row.salon_slug).linked(ownerLinks(row.salon_slug).chat));
+      return;
+    }
+    if (isOwnerChat) {
+      await handleOwnerMessage(row, message);
+      return;
+    }
     if (startMatch) {
-      const payload = startMatch[1] || "";
-      if (payload === `owner-${row.owner_link_code}`) {
-        db.prepare(`UPDATE tenant_telegram SET owner_chat_id = ? WHERE salon_slug = ?`).run(chatId, row.salon_slug);
-        await sendTelegram(row, chatId, ru
-          ? "Готово: сюда будут приходить новые записи, переносы, отмены и просьбы клиентов позвать человека. Можете и сами написать боту как клиент, чтобы проверить его."
-          : "Done. New bookings, reschedules, cancellations and clients asking for a human will arrive here. You can also message this bot as a client to test it.");
-        return;
-      }
       await sendTelegram(row, chatId, greetingFor(row.salon_slug, languageCode), {
         reply_markup: { keyboard: [[{ text: pick(CLIENT_TEXT.shareNumber, lang), request_contact: true }]], resize_keyboard: true, one_time_keyboard: true }
       });
@@ -1187,13 +1750,15 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       return;
     }
 
+    const sessionId = `tg:${row.bot_id}:${chatId}`;
+    nameTelegramConversation(row.salon_slug, sessionId, message.from);
     const tokenForTyping = unseal(row.token_sealed);
     tg(tokenForTyping, "sendChatAction", { chat_id: chatId, action: "typing" }).catch(() => {});
     const typing = setInterval(() => tg(tokenForTyping, "sendChatAction", { chat_id: chatId, action: "typing" }).catch(() => {}), 4500);
     let result;
     try {
       result = await chat(row.salon_slug, {
-        sessionId: `tg:${row.bot_id}:${chatId}`,
+        sessionId,
         message: body.slice(0, 2000),
         channel: "telegram",
         clientPhone,
@@ -1203,10 +1768,11 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
         clientName: fromName,
         // Telegram always opens a chat with /start, which already greeted.
         greeted: true
-      }, { preview: Boolean(row.owner_chat_id) && row.owner_chat_id === chatId });
+      });
     } finally {
       clearInterval(typing);
     }
+    nameTelegramConversation(row.salon_slug, sessionId, message.from);
     if (result && result.reply) {
       await sendTelegram(row, chatId, String(result.reply), { reply_markup: { remove_keyboard: true } });
     } else if (result && result.error === "rate_limited") {
@@ -1260,6 +1826,10 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     connectTelegram,
     disconnectTelegram,
     handleTelegramUpdate,
+    sendStaffReply,
+    webUpdates,
+    inboxView,
+    flushOwnerAlerts,
     listAddons,
     requestAddon,
     sendDueReminders,

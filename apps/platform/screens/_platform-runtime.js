@@ -593,8 +593,8 @@
         var button = document.createElement("button");
         button.type = "button";
         button.className = "aibeaty-logout";
-        button.title = (owner.displayName || owner.email || "") + " — выйти / sign out";
-        button.textContent = "Выйти";
+        button.title = (owner.displayName || owner.email || "") + " — sign out";
+        button.textContent = "Sign out";
         button.addEventListener("click", logout);
         host.insertAdjacentElement("afterend", button);
         // The owner's way back to the setup wizard: services, team, channels, plan.
@@ -602,7 +602,7 @@
           var setup = document.createElement("a");
           setup.className = "aibeaty-logout";
           setup.href = "/screens/setup.html";
-          setup.textContent = "Настройка · Setup";
+          setup.textContent = "Setup";
           setup.style.textDecoration = "none";
           host.insertAdjacentElement("afterend", setup);
         }
