@@ -113,11 +113,16 @@ function resolveDayOfMonth(todayIso, day) {
 }
 
 const NEXT_RE = /(next|prochain|prochaine|следующ|наступн)/i;
+// "this Friday" / "ce vendredi" / "в эту пятницу" said on a Friday: today, even after closing.
+const THIS_RE = /(^|[^\p{L}])(this|ce|cette|эт[аоуи]|цю|цей|ця|сегодня|сьогодні|today|aujourd'hui)(?=$|[^\p{L}])/iu;
 const NUMBER_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, un: 1, une: 1, deux: 2, trois: 3, quatre: 4, cinq: 5, "один": 1, "два": 2, "три": 3, "четыре": 4, "пять": 5, "один день": 1 };
 
 // Finds every date expression in free text. Each hit: { phrase, offset } or
 // { phrase, error }.
-function findDateExpressions(text, todayIso) {
+// opts.todayOver: the salon is closed for the rest of today (after closing,
+// or not open today at all). A bare weekday that names today then means the
+// same weekday next week ("Friday" said on a Friday evening).
+function findDateExpressions(text, todayIso, opts = {}) {
   const value = String(text || "");
   const lower = value.toLowerCase().replace(/[’]/g, "'");
   const hits = [];
@@ -184,7 +189,7 @@ function findDateExpressions(text, todayIso) {
     if (!found) continue;
     let offset = (day.index - todayWeekday + 7) % 7;
     const around = lower.slice(Math.max(0, found.index - 14), found.index + found[0].length + 12);
-    if (offset === 0 && NEXT_RE.test(around)) offset = 7;
+    if (offset === 0 && (NEXT_RE.test(around) || (opts.todayOver && !THIS_RE.test(around)))) offset = 7;
     push(found[2], withOffset(offset));
   }
   return hits;
@@ -192,16 +197,57 @@ function findDateExpressions(text, todayIso) {
 
 // Tool argument → offset. A plain number is an offset (the engine's own
 // commit path passes one). Empty means today.
-function parseDayArgument(input, todayIso) {
+function parseDayArgument(input, todayIso, opts = {}) {
   const text = String(input || "").trim();
   if (!text) return { offset: 0 };
   const plain = text.match(/^\+?(\d{1,2})$/);
   if (plain) return withOffset(Number(plain[1]));
-  const hits = findDateExpressions(text, todayIso);
+  const hits = findDateExpressions(text, todayIso, opts);
   if (!hits.length) return { error: "unparsed_day" };
   // An explicit date beats a weekday word in the same argument ("Thu 2026-09-24").
   const best = hits.find((hit) => hit.offset !== undefined) || hits[0];
   return best.offset !== undefined ? { offset: best.offset } : { error: best.error };
+}
+
+// A year in a reply other than this one or the next is always a slip of the
+// model ("Sep 19, 2024"). Dates with a wrong year get the year the calendar
+// gives that month/day (the next one on or after today).
+const MONTH_WORD_SRC = "(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[uû]t|septembre|octobre|novembre|d[ée]cembre|январ[яь]|феврал[яь]|марта?|апрел[яь]|ма[яй]|июн[яь]|июл[яь]|августа?|сентябр[яь]|октябр[яь]|ноябр[яь]|декабр[яь]|січня|лютого|березня|квітня|травня|червня|липня|серпня|вересня|жовтня|листопада|грудня)\\.?";
+function fixReplyYears(text, todayIso) {
+  const value = String(text || "");
+  const thisYear = Number(String(todayIso).slice(0, 4));
+  const ok = (year) => year === thisYear || year === thisYear + 1;
+  // This year unless that date is more than a week gone, then next year.
+  const yearFor = (month, day) => {
+    if (!validDate(thisYear, month, day)) return thisYear + 1;
+    const offset = offsetBetween(todayIso, utcToIso(Date.UTC(thisYear, month, day)));
+    return offset >= -7 ? thisYear : thisYear + 1;
+  };
+  let out = value.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (whole, y, m, d) => {
+    const year = Number(y);
+    if (ok(year) || !validDate(thisYear, Number(m) - 1, Number(d))) return whole;
+    return `${yearFor(Number(m) - 1, Number(d))}-${m}-${d}`;
+  });
+  const monthFirst = new RegExp(`(?<![\\p{L}])(${MONTH_WORD_SRC})(\\s+)(\\d{1,2})(?:st|nd|rd|th)?(,?\\s+)((?:19|20)\\d{2})\\b`, "giu");
+  out = out.replace(monthFirst, (whole, monthWord, gap, day, sep, year) => {
+    if (ok(Number(year))) return whole;
+    const month = monthIndex(monthWord);
+    if (month < 0) return whole;
+    return whole.slice(0, whole.length - year.length) + String(yearFor(month, Number(day)));
+  });
+  const dayFirst = new RegExp(`(\\d{1,2})(?:er|e|-?го)?(\\s+)(?:de\\s+)?(${MONTH_WORD_SRC})(,?\\s+)((?:19|20)\\d{2})\\b`, "giu");
+  out = out.replace(dayFirst, (whole, day, gap, monthWord, sep, year) => {
+    if (ok(Number(year))) return whole;
+    const month = monthIndex(monthWord);
+    if (month < 0) return whole;
+    return whole.slice(0, whole.length - year.length) + String(yearFor(month, Number(day)));
+  });
+  return out;
+}
+
+function hasStrayYear(text, todayIso) {
+  const thisYear = Number(String(todayIso).slice(0, 4));
+  return (String(text || "").match(/\b20\d{2}\b/g) || []).some((y) => Number(y) !== thisYear && Number(y) !== thisYear + 1);
 }
 
 const WEEKDAY_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -226,6 +272,8 @@ ${lines.join("\n")}`;
 module.exports = {
   findDateExpressions,
   parseDayArgument,
+  fixReplyYears,
+  hasStrayYear,
   calendarBlock,
   addDays,
   weekdayOf,

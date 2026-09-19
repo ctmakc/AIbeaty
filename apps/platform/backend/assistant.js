@@ -130,6 +130,23 @@ const AFFIRM_CORRECTION_RE = /(^|[\s,.;:!-])(but|mais|но|але|instead|plutô
 // «отменяем», «отменяй(те)», «переносите», «записывайте», «скасовуйте», "cancel it".
 const AFFIRM_ACTION_RE = /(отменя(ем|й|йте|ю)|отмен(и|ите)(?=$|[\s,.!])|убира(ем|й|йте)|убер(и|ите)(?=$|[\s,.!])|скасов(уємо|уй|уйте)|скасуй(те)?|перенос(им|и|ите|ьте)|перенес(и|ите|іть|емо)(?=$|[\s,.!])|запис(ывай|ывайте|ываем|уй|уйте|уємо)|оформля(й|йте|ем)|оформи(те)?(?=$|[\s,.!])|бронируй(те)?|броню(й|йте)|cancel (it|that|the appointment|my appointment)|please cancel|go ahead|do it|proceed|book it|book me|r[ée]serve[zr]?(-le| le| moi|-moi)?(?=$|[\s,.!])|allez-y|vas-y|on y va|confirme[zr]?)/i;
 
+// "yes, but what about my deposit?" / "да, но где парковка?" is consent plus a
+// side question. A "but" clause is a CHANGE only when it is not a question or
+// when it names another time, day or option ("yes but can we do 3 instead?").
+const CHANGE_MARKER_RE = /(\d|instead|rather|plutôt|plutot|change|changer|другое|другой|другую|друго[мй]|інш|except|sauf|кроме|крім|earlier|later|plus tôt|plus tard|раньше|позже|раніше|пізніше|another|autre|перенес|move|déplac|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|demain|понедельник|вторник|сред[уа]|четверг|пятниц|суббот|воскресень|завтра|понеділ|вівтор|серед[уа]|четвер|п.ятниц|субот|неділ)/i;
+function sideQuestionOnly(rest) {
+  const value = String(rest || "");
+  const marker = AFFIRM_CORRECTION_RE.exec(value);
+  if (!marker) return true;
+  const tail = value.slice(marker.index);
+  const sentences = tail.split(/(?<=[.!?])\s+/).filter((part) => part.trim());
+  if (!sentences.length) return false;
+  return sentences.every((part) => {
+    if (!AFFIRM_CORRECTION_RE.test(part)) return true;
+    return /\?/.test(part) && !CHANGE_MARKER_RE.test(part);
+  });
+}
+
 function isAffirmation(text) {
   const value = String(text || "").trim().toLowerCase().replace(/[’]/g, "'");
   if (!value) return false;
@@ -140,7 +157,7 @@ function isAffirmation(text) {
     // "Верно ли…?", "Correct?", "Oui?" are questions, not consent.
     if (/^\s*[?)!.…]*\s*$/.test(rest) && /\?/.test(rest)) return false;
     if (/^\s*(ли|чи)(?=$|[\s,?])/i.test(rest)) return false;
-    if (AFFIRM_CORRECTION_RE.test(rest)) return false;
+    if (AFFIRM_CORRECTION_RE.test(rest) && !sideQuestionOnly(rest)) return false;
     if (/^[\s,.!]*(no|non|нет|ні|not|pas)(?=$|[\s,.!?])/i.test(rest)) return false;
     // A rejection word inside the affirmative clause itself ("да нет", "yes no").
     const firstClause = rest.split(/[?.!]/)[0];
@@ -162,7 +179,12 @@ function isAffirmation(text) {
 function affirmationRemainder(text) {
   const value = String(text || "").trim();
   const leading = LEADING_AFFIRM_RE.exec(value.toLowerCase().replace(/[’]/g, "'"));
-  const rest = (leading ? value.slice(leading[0].length) : value).replace(/^[\s,.!;:—–-]+/, "").trim();
+  let rest = (leading ? value.slice(leading[0].length) : value).replace(/^[\s,.!;:—–-]+/, "").trim();
+  // "yes cancel. but what about my deposit?" → "what about my deposit?"
+  const action = new RegExp(`^(?:${AFFIRM_ACTION_RE.source})`, "i").exec(rest);
+  const bare = /^(please\s+)?(cancel|book|confirm|move|reschedule|annule[zr]?|d[ée]place[zr]?)(\s+(it|that|me|le|la))?(?=$|[\s,.!;])/i.exec(rest);
+  if (action || bare) rest = rest.slice((action || bare)[0].length).replace(/^[\s,.!;:—–-]+/, "").trim();
+  rest = rest.replace(/^(but|and|mais|et|но|и|а|але|і|та)(?=\s)\s*,?\s*/i, "").trim();
   if (!rest) return "";
   if (/\?/.test(rest) || rest.split(/\s+/).length >= 4) return rest;
   return "";
@@ -194,6 +216,23 @@ function extractPriceNumbers(text) {
   }
   return found;
 }
+
+// Said to a client who writes while a person handles the thread (first
+// message, then at most every HOLDING_INTERVAL_MS).
+const HOLDING_REPLY = {
+  en: "Thanks — I've passed this to the salon team; they'll reply here as soon as they can.",
+  fr: "Merci, j'ai transmis votre message à l'équipe du salon. Elle vous répondra ici dès que possible.",
+  ru: "Спасибо, я передала это команде салона. Вам ответят здесь, как только смогут.",
+  uk: "Дякую, я передала це команді салону. Вам дадуть відповідь тут, щойно зможуть."
+};
+
+// Added under a handoff in the salon owner's own test chat (it never locks).
+const TEST_HANDOFF_NOTE = {
+  en: "(Test chat: a real client's conversation would now wait for your team, and you would get an alert. Here Maya keeps answering so you can go on testing.)",
+  fr: "(Clavardage test : avec un vrai client, la conversation attendrait maintenant votre équipe et vous recevriez une alerte. Ici, Maya continue de répondre pour que vous puissiez poursuivre le test.)",
+  ru: "(Тестовый чат: с настоящим клиентом переписка теперь ждала бы вашу команду, а вам пришло бы оповещение. Здесь Майя продолжает отвечать, чтобы вы могли тестировать дальше.)",
+  uk: "(Тестовий чат: зі справжнім клієнтом розмова тепер чекала б на вашу команду, а вам надійшло б сповіщення. Тут Майя відповідає далі, щоб ви могли продовжити тест.)"
+};
 
 // Canned replies, one per supported language. Maya never promises a response
 // time on the salon's behalf: "the salon team will reply here as soon as they can".
@@ -481,6 +520,44 @@ function parseClientTime(text) {
   return null;
 }
 
+// Clock times a reply names ("2:30 PM", "14:00", "14 h 30", "5pm", "17h").
+// Each hit carries every reading it can have: a bare "3:30" in a salon is
+// 3:30 PM as often as it is 3:30 AM. The end of a range ("10:00 - 11:00")
+// is not an offer and is skipped.
+function replyTimes(text) {
+  const value = String(text || "");
+  const hits = [];
+  const add = (index, length, hours, minutes, meridiem) => {
+    if (hours > 23 || minutes > 59) return;
+    let options;
+    if (meridiem === "p") options = [(hours % 12 + 12) * 60 + minutes];
+    else if (meridiem === "a") options = [(hours % 12) * 60 + minutes];
+    else if (hours >= 1 && hours <= 7) options = [hours * 60 + minutes, (hours + 12) * 60 + minutes];
+    else options = [hours * 60 + minutes];
+    if (hits.some((hit) => index < hit.index + hit.length && hit.index < index + length)) return;
+    hits.push({ index, length, raw: value.slice(index, index + length), options });
+  };
+  const patterns = [
+    [/(?<![\d$€£:.,/])(\d{1,2})(?::|\s?h\s?)(\d{2})(?!\d)(?:\s*([ap])\.?\s?m\b\.?)?/gi, (m) => (/h/i.test(m[0]) && Number(m[1]) < 8 && !m[3] ? null : [Number(m[1]), Number(m[2]), (m[3] || "").toLowerCase()])],
+    [/(?<![\d$€£:.,/])(\d{1,2})\s*([ap])\.?\s?m(?![a-z])\.?/gi, (m) => [Number(m[1]), 0, m[2].toLowerCase()]],
+    [/(?<![\d$€£:.,/])(\d{1,2})\s?h(?![\p{L}\d])/giu, (m) => (Number(m[1]) >= 8 ? [Number(m[1]), 0, ""] : null)]
+  ];
+  patterns.forEach(([re, read]) => {
+    let match;
+    while ((match = re.exec(value)) !== null) {
+      const parts = read(match);
+      if (parts) add(match.index, match[0].length, parts[0], parts[1], parts[2]);
+    }
+  });
+  hits.sort((a, b) => a.index - b.index);
+  return hits.filter((hit, i) => {
+    const prev = hits[i - 1];
+    if (!prev) return true;
+    const between = value.slice(prev.index + prev.length, hit.index);
+    return !/^\s*(-|–|—|to|until|till|à|au|jusqu'à|до|по)\s*$/i.test(between);
+  });
+}
+
 // The model asking the client to confirm a booking it never staged with the
 // tool. The server then stages it from the draft and sends the real read-back.
 const SELF_CONFIRM_RE = /(shall i (book|go ahead)|should i book|want me to (book|lock|confirm)|(can|may) i (book|confirm)|confirm\s*\?|is that (right|correct)\s*\?|does that work\s*\?|sound good\s*\?|vous confirmez|je confirme|on confirme|je (vous )?r[ée]serve|je peux r[ée]server|[cç]a vous va\s*\?|c'est bon pour vous|всё верно\s*\?|все верно\s*\?|записываю\s*\?|записать вас|подтверждаете|підтверджуєте|записую\s*\?|все вірно\s*\?)/i;
@@ -576,7 +653,11 @@ const STYLIST_CORRECTION_RE = /такого (мастера|майстра|ст�
 //                                     every salon, the pre-self-serve behaviour.
 //   dailyTurnsCapFor(salonId)         per-salon daily LLM turn cap (trial plans
 //                                     get a smaller one); falls back to the global cap.
-function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, alertFetch, alertLinkBase, dailyTurnsCap, onEvent, alertEmailFor, dailyTurnsCapFor, languageFor } = {}) {
+//   isTestSession(salonId, sessionId) the salon owner's own test chat (wizard
+//                                     preview, web chat opened while signed in):
+//                                     a handoff there never locks Maya, and its
+//                                     bookings are flagged test.
+function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, alertFetch, alertLinkBase, dailyTurnsCap, onEvent, alertEmailFor, dailyTurnsCapFor, languageFor, isTestSession: isTestSessionHook } = {}) {
   const db = rootStore.db;
   const clockNow = typeof clock === "function" ? clock : () => new Date();
   // Alert emails: off unless ALERT_EMAIL is set (env or option). No secrets —
@@ -595,6 +676,15 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
   const capCandidate = Number(dailyTurnsCap !== undefined ? dailyTurnsCap : process.env.ASSISTANT_DAILY_TURNS_CAP);
   const GLOBAL_TURNS_CAP = Number.isFinite(capCandidate) && capCandidate > 0 ? Math.floor(capCandidate) : 400;
   const ALERT_EMAIL_DEFAULT = ALERT_EMAIL;
+  // While a person handles a conversation, a client who writes again hears a
+  // short holding line at most this often, and the thread returns to Maya by
+  // itself after this long without a staff answer.
+  const envMs = (name, fallback) => {
+    const value = Number(process.env[name]);
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  };
+  const HOLDING_INTERVAL_MS = envMs("HANDOFF_HOLDING_MS", 15 * 60 * 1000);
+  const AUTO_RETURN_MS = envMs("HANDOFF_AUTO_RETURN_MS", 12 * 60 * 60 * 1000);
 
   // ---------------------------------------------------------------------------
   // Everything below is per-salon. `store` inside this scope is the SALON-SCOPED
@@ -1104,7 +1194,19 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
     // names and ISO dates in en/fr/ru/uk are resolved here, never by the model;
     // a year the model guessed wrong is corrected to the nearest future date.
     function resolveDay(input) {
-      return dates.parseDayArgument(input, todayIso());
+      return dates.parseDayArgument(input, todayIso(), dateOpts());
+    }
+
+    // The salon is done for today (closed today, or past closing time): a
+    // bare weekday that names today ("Friday" said on a Friday evening)
+    // means the same weekday next week.
+    function dateOpts() {
+      const window = hoursForOffset(0);
+      return { todayOver: !window || salonMinutesNow() >= window[1] };
+    }
+
+    function findDates(text) {
+      return dates.findDateExpressions(text, todayIso(), dateOpts());
     }
 
     // Booking day guard: a book_appointment day that the client did not name
@@ -1179,11 +1281,15 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       return null;
     }
 
+    // Test bookings (the owner's own test chat) never hold a slot against a
+    // real client; inside a test chat they do, so the owner sees "taken".
+    let slotViewTest = false;
     function busyIntervals(dayOffset, stylistId) {
       return db.prepare(`
         SELECT start_minutes, end_minutes FROM appointments
         WHERE salon_id = ? AND checked_out = 0 AND appointment_status = 'scheduled' AND day_offset = ? AND stylist_id = ?
-      `).all(salonId, dayOffset, stylistId);
+          AND (is_test = 0 OR ? = 1)
+      `).all(salonId, dayOffset, stylistId, slotViewTest ? 1 : 0);
     }
 
     function slotFree(dayOffset, stylistId, startMinutes, endMinutes) {
@@ -1256,8 +1362,78 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         .run(state, statusLabel, new Date().toISOString(), session.conversation_id, salonId);
     }
 
+    function isTestSession(session) {
+      if (!session) return false;
+      if (session.state && session.state.test) return true;
+      return typeof isTestSessionHook === "function" && Boolean(isTestSessionHook(salonId, session.id));
+    }
+
+    function nowMs() {
+      return clockNow().getTime();
+    }
+
+    // The moment a person became responsible for this thread: the later of
+    // the handoff and the last staff answer. Older threads fall back to the
+    // last escalation / takeover event.
+    function handoffSinceMs(session) {
+      const marks = [session.state.handoffAt, session.state.lastStaffAt]
+        .map((value) => Date.parse(value || ""))
+        .filter((value) => Number.isFinite(value));
+      if (marks.length) return Math.max(...marks);
+      const row = db.prepare(`
+        SELECT created_at FROM assistant_events
+        WHERE salon_id = ? AND conversation_id = ? AND type IN ('escalation', 'takeover_on')
+        ORDER BY created_at DESC LIMIT 1
+      `).get(salonId, session.conversation_id || "");
+      const parsed = row ? Date.parse(row.created_at) : NaN;
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    // Maya answers again: the thread leaves human-only mode.
+    function returnToMaya(session, cause) {
+      db.prepare(`UPDATE conversations SET assistant_state = 'active', status = ?, updated_at = ? WHERE id = ? AND salon_id = ?`)
+        .run("Maya AI · active", new Date().toISOString(), session.conversation_id, salonId);
+      session.state.escalated = null;
+      session.state.failedUnderstandings = 0;
+      session.state.handoffAt = null;
+      session.state.holdingAt = null;
+      session.state.waitingCount = 0;
+      recordEvent(session, "handback", { cause });
+    }
+
+    // Threads whose staff went quiet for AUTO_RETURN_MS go back to Maya.
+    function autoReturnStale() {
+      const rows = db.prepare(`
+        SELECT id, assistant_session_id FROM conversations
+        WHERE salon_id = ? AND assistant_state IN ('escalated', 'takeover') AND assistant_session_id != ''
+      `).all(salonId);
+      let returned = 0;
+      rows.forEach((row) => {
+        const session = loadSession(row.assistant_session_id);
+        if (!session) return;
+        const since = handoffSinceMs(session);
+        if (since === null || nowMs() - since < AUTO_RETURN_MS) return;
+        returnToMaya(session, "auto_12h");
+        saveSession(session);
+        returned += 1;
+      });
+      return returned;
+    }
+
     function escalate(session, reason, summary) {
+      if (isTestSession(session)) {
+        // The owner's own test chat: the handoff is shown and alerted (marked
+        // test), but Maya keeps answering so the preview never locks.
+        recordEvent(session, "escalation", { reason, summary: String(summary || "").slice(0, 400), test: true });
+        session.state.escalated = null;
+        session.state.failedUnderstandings = 0;
+        session.state.testHandoffNote = true;
+        return;
+      }
       setConversationState(session, "escalated", "Needs human · Maya paused");
+      session.state.handoffAt = clockNow().toISOString();
+      session.state.holdingAt = null;
+      session.state.waitingCount = 0;
       recordEvent(session, "escalation", { reason, summary: String(summary || "").slice(0, 400) });
       store.logActivity({
         title: "Maya Escalated a Conversation",
@@ -1612,6 +1788,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
     }
 
     function executeTool(session, turn, name, args) {
+      slotViewTest = isTestSession(session);
       switch (name) {
         case "get_services_and_prices": {
           const rows = args.query ? resolveServices(args.query) : [];
@@ -1888,6 +2065,10 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
             dayOffset: day.offset,
             notes: `Booked by Maya (AI assistant) via ${session.channel} chat.`
           });
+          const testBooking = isTestSession(session);
+          if (appointmentId && testBooking) {
+            db.prepare(`UPDATE appointments SET is_test = 1, tags_json = '["Test"]' WHERE salon_id = ? AND id = ?`).run(salonId, appointmentId);
+          }
           const row = appointmentId ? db.prepare(`SELECT * FROM appointments WHERE salon_id = ? AND id = ?`).get(salonId, appointmentId) : null;
           if (!row) {
             leaveOwnerMessage(session, `Не удалось создать запись: ${service.name}, ${dayLabel(day.offset)} ${proposal.timeLabel}, клиент ${clientName}.`, "booking_failed");
@@ -1911,7 +2092,8 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
             price: service.price_label,
             date: isoDateForOffset(day.offset),
             startMinutes: proposal.startMinutes,
-            phone: clientPhone
+            phone: clientPhone,
+            test: testBooking
           });
           return {
             status: "booked",
@@ -2246,6 +2428,138 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       return null;
     }
 
+    // ---------- time guard ----------
+    // Every check_availability result is remembered per date: the times it
+    // listed (slots, a free requested time, the next free days). A reply may
+    // offer a time only when that result, or a check in code right now, says
+    // it is free for the service being discussed.
+    function isoOffset(iso) {
+      const [y, m, d] = String(iso).split("-").map(Number);
+      return Math.round((Date.UTC(y, m - 1, d) - refDayUtcMs()) / 86400000);
+    }
+
+    function recordAvailability(session, result) {
+      if (!result || typeof result !== "object") return;
+      const state = session.state;
+      state.toolTimes = state.toolTimes || {};
+      const startOf = (label) => parseTimeFlexible(String(label || "").split(/\s+-\s+/)[0]);
+      const put = (iso, slots, extra) => {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ""))) return;
+        const times = (slots || []).map((slot) => startOf(slot && slot.time)).filter((value) => value !== null);
+        if (extra !== undefined && extra !== null) times.push(extra);
+        state.toolTimes[iso] = [...new Set(times)];
+      };
+      if (result.date) {
+        const requested = result.requested_time && result.requested_time.available ? startOf(result.requested_time.time) : null;
+        put(result.date, result.slots || [], requested);
+      }
+      (result.next_days || []).forEach((day) => put(day.date, day.slots));
+      const keys = Object.keys(state.toolTimes).sort();
+      while (keys.length > 14) delete state.toolTimes[keys.shift()];
+      if (result.date) state.lastCheckedDate = result.date;
+    }
+
+    function bookableNow(offset, start, service) {
+      const window = hoursForOffset(offset);
+      if (!window) return false;
+      const minStart = minStartForOffset(offset);
+      const duration = service ? service.duration_minutes : SLOT_STEP_MINUTES;
+      if (start < minStart || start + duration > window[1]) return false;
+      const staff = store.getStylistRows().filter((row) => staffWorksOn(row, offset) && (!service || staffDoesService(row, service.id)));
+      return staff.some((row) => slotFree(offset, row.id, start, start + duration));
+    }
+
+    const TIME_HOURS_RE = /(open|clos|hours|we're here|ouvr|ouvert|ferm|horaire|работа|открыт|закрыва|працю|відчин|зачин|last (start|appointment|booking)|dernier rendez|walk-?in|sans rendez)/i;
+    const TIME_NEGATIVE_RE = /(not (available|free|open)|isn't (available|free|open)|unavailable|taken|fully booked|booked up|no (free|open)|already (booked|past|gone)|has passed|pas (libre|disponible)|indisponible|complet|déjà (pris|passé)|занят|нет свобод|недоступ|уже прош|зайнят|немає вільн|вже мину)/i;
+
+    // The first time in the reply that nothing says is free: { offset, raw } | null.
+    function unverifiedTime(session, turn, reply) {
+      const state = session.state;
+      const draft = state.draft || {};
+      const service = draft.serviceId ? allServices().find((row) => row.id === draft.serviceId) : null;
+      const pending = state.pendingAction;
+      const faqTimes = new Set();
+      faqTopics().forEach((topic) => replyTimes(topic.text).forEach((hit) => hit.options.forEach((value) => faqTimes.add(value))));
+      const sentences = String(reply || "").split(/(?<=[.!?…])\s+|\n+/);
+      let fallbackIso = turn.lastCheckedDate || (draft.dayOffset !== undefined ? dayIso(draft.dayOffset) : "");
+      for (const sentence of sentences) {
+        const hits = replyTimes(sentence);
+        const named = findDates(sentence).find((hit) => hit.offset !== undefined);
+        if (named) fallbackIso = dayIso(named.offset);
+        if (!hits.length || TIME_HOURS_RE.test(sentence) || TIME_NEGATIVE_RE.test(sentence)) continue;
+        if (!fallbackIso) continue;
+        const offset = isoOffset(fallbackIso);
+        if (offset < 0 || offset > dates.MAX_OFFSET) continue;
+        const listed = new Set((state.toolTimes || {})[fallbackIso] || []);
+        const own = db.prepare(`
+          SELECT start_minutes FROM appointments WHERE salon_id = ? AND day_offset = ? AND appointment_status = 'scheduled'
+            AND client_id != '' AND client_id = ?
+        `).all(salonId, offset, session.client_id || (getConversationRow(session.conversation_id) || {}).client_id || "").map((row) => row.start_minutes);
+        for (const hit of hits) {
+          const ok = hit.options.some((value) => listed.has(value) || faqTimes.has(value) || own.includes(value) ||
+            (pending && pending.dayOffset === offset && pending.startMinutes === value) ||
+            bookableNow(offset, value, service));
+          if (!ok) return { offset, raw: hit.raw, service };
+        }
+      }
+      return null;
+    }
+
+    // The honest replacement: real free times for that day from the calendar.
+    function slotOfferText(session, offset, service, lang) {
+      if (!service) {
+        return localized({
+          en: "Let me check the real free times first. Which service would you like, and on which day?",
+          fr: "Je vérifie d'abord les vraies disponibilités. Quel service voulez-vous, et quel jour?",
+          ru: "Сначала проверю реальные свободные окна. Какая услуга вам нужна и на какой день?",
+          uk: "Спершу перевірю реальні вільні вікна. Яка послуга вам потрібна і на який день?"
+        }, lang);
+      }
+      const stylist = (session.state.draft || {}).stylistId ? store.getStylistRows().find((row) => row.id === session.state.draft.stylistId) : null;
+      let slots = freeSlots(offset, service.duration_minutes, stylist && staffDoesService(stylist, service.id) ? stylist : null, service.id);
+      let day = offset;
+      let moved = false;
+      if (!slots.length) {
+        for (let next = offset + 1; next <= Math.min(offset + 21, dates.MAX_OFFSET); next++) {
+          const found = freeSlots(next, service.duration_minutes, null, service.id);
+          if (found.length) { slots = found; day = next; moved = true; break; }
+        }
+      }
+      if (!slots.length) {
+        return localized({
+          en: `I can't find a free time for ${service.name} in the next few weeks. I've let the salon team know; they will reply here as soon as they can.`,
+          fr: `Je ne trouve pas de disponibilité pour ${service.name} dans les prochaines semaines. J'ai prévenu l'équipe du salon, on vous répondra ici dès que possible.`,
+          ru: `Не нахожу свободного времени на «${service.name}» в ближайшие недели. Я передала это команде салона, вам ответят здесь.`,
+          uk: `Не знаходжу вільного часу на «${service.name}» найближчими тижнями. Я передала це команді салону, вам дадуть відповідь тут.`
+        }, lang);
+      }
+      const starts = [...new Set(slots.map((slot) => slot.startMinutes))].slice(0, 4);
+      session.state.toolTimes = session.state.toolTimes || {};
+      session.state.toolTimes[dayIso(day)] = starts;
+      const list = starts.map((value) => localTime(value, lang));
+      const joined = {
+        en: list.length > 1 ? `${list.slice(0, -1).join(", ")} or ${list[list.length - 1]}` : list[0],
+        fr: list.length > 1 ? `${list.slice(0, -1).join(", ")} ou ${list[list.length - 1]}` : list[0],
+        ru: list.length > 1 ? `${list.slice(0, -1).join(", ")} или ${list[list.length - 1]}` : list[0],
+        uk: list.length > 1 ? `${list.slice(0, -1).join(", ")} або ${list[list.length - 1]}` : list[0]
+      };
+      const when = localDay(day, lang);
+      if (moved) {
+        return localized({
+          en: `${localDay(offset, "en")} has no free time for ${service.name}. The next free times are ${when}: ${joined.en}. Would one of these work?`,
+          fr: `Il n'y a plus de place pour ${service.name} ${localDay(offset, "fr")}. Prochaines disponibilités, ${when} : ${joined.fr}. L'une d'elles vous convient?`,
+          ru: `На ${localDay(offset, "ru")} нет свободного времени на «${service.name}». Ближайшее: ${when}, ${joined.ru}. Подойдёт?`,
+          uk: `На ${localDay(offset, "uk")} немає вільного часу на «${service.name}». Найближче: ${when}, ${joined.uk}. Підійде?`
+        }, lang);
+      }
+      return localized({
+        en: `For ${service.name} on ${when} I can offer ${joined.en}. Which one suits you?`,
+        fr: `Pour ${service.name}, ${when}, je peux vous proposer ${joined.fr}. Laquelle vous convient?`,
+        ru: `На «${service.name}» ${when} могу предложить ${joined.ru}. Какое время удобно?`,
+        uk: `На «${service.name}» ${when} можу запропонувати ${joined.uk}. Який час зручний?`
+      }, lang);
+    }
+
     // ---------- reply gates ----------
     function gateReply(session, turn, rawReply) {
       let reply = String(rawReply || "").trim();
@@ -2330,6 +2644,22 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
           ), "price_guard");
           reply = localized(FALLBACKS.unknown, language);
         }
+      }
+
+      // Gate 3a: a time Maya offers must come from the availability tool (or
+      // be free in the calendar right now) for that day and service.
+      const badTime = unverifiedTime(session, turn, reply);
+      if (badTime) {
+        gates.push(`time_guard:${badTime.raw}`);
+        recordEvent(session, "time_guard", { time: badTime.raw, date: dayIso(badTime.offset), original: reply.slice(0, 300) });
+        reply = slotOfferText(session, badTime.offset, badTime.service, language);
+      }
+
+      // Gate 3c: a year other than this one or the next is a slip ("Sep 19, 2024").
+      const yearFixed = dates.fixReplyYears(reply, todayIso());
+      if (yearFixed !== reply) {
+        gates.push("year_fixed");
+        reply = yearFixed;
       }
 
       // Gate 3b: a day the salon is open may not be called closed.
@@ -2482,7 +2812,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
           if (!day.re.test(sentence)) return;
           for (let offset = 0; offset < 7; offset++) if (dayWeekday(offset) === day.index) offsets.add(offset);
         });
-        dates.findDateExpressions(sentence, todayIso()).forEach((hit) => { if (hit.offset !== undefined) offsets.add(hit.offset); });
+        findDates(sentence).forEach((hit) => { if (hit.offset !== undefined) offsets.add(hit.offset); });
         offsets.forEach((offset) => {
           const window = hoursForOffset(offset);
           if (!window) return;
@@ -2622,7 +2952,33 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
     }
 
     // ---------- main turn ----------
-    async function chat({ sessionId, message, channel, clientPhone, languageHint, clientName, greeted }) {
+    // The owner's own test chat: after a handoff notice she hears, in the
+    // chat's language, that a real client would now wait for the team, and
+    // Maya goes on answering.
+    async function chat(args = {}) {
+      const result = await chatTurn(args);
+      const sid = String(args.sessionId || "").trim();
+      const session = sid && result && !result.error ? loadSession(sid) : null;
+      if (session && session.state.testHandoffNote) {
+        session.state.testHandoffNote = false;
+        const note = localized(TEST_HANDOFF_NOTE, session.language || "en");
+        result.reply = [result.reply, note].filter(Boolean).join("\n\n");
+        const last = db.prepare(`
+          SELECT id FROM conversation_messages WHERE salon_id = ? AND conversation_id = ? AND type = 'outgoing'
+          ORDER BY sort_order DESC LIMIT 1
+        `).get(salonId, session.conversation_id);
+        if (last) {
+          db.prepare(`UPDATE conversation_messages SET text_value = ? WHERE salon_id = ? AND id = ?`).run(result.reply, salonId, last.id);
+        } else {
+          persistMessage(session, "outgoing", result.reply);
+        }
+        saveSession(session);
+        result.state = Object.assign({}, result.state, { testHandoff: true });
+      }
+      return result;
+    }
+
+    async function chatTurn({ sessionId, message, channel, clientPhone, languageHint, clientName, greeted, test }) {
       const text = String(message || "").trim().slice(0, 2000);
       const sid = String(sessionId || "").trim();
       if (!sid || !text) return { error: "bad_request", message: "sessionId and message are required." };
@@ -2637,6 +2993,8 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
 
       const session = ensureSession({ sessionId: sid, channel, clientPhone, language: detectLanguage(text), clientName });
       if (languageHint) session.state.languageHint = String(languageHint).slice(0, 12);
+      if (test) session.state.test = true;
+      slotViewTest = isTestSession(session);
       // Telegram greets on /start with the AI disclosure, so Maya does not
       // introduce herself a second time in her first reply.
       if (greeted) session.state.introduced = true;
@@ -2650,14 +3008,43 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       const lang = session.language;
       const conversation = getConversationRow(session.conversation_id);
 
-      // Takeover / escalation silencing: store the message so the owner sees it, say nothing.
+      // A person handles this thread (handoff or takeover). The owner's own
+      // test chat never locks; a real thread returns to Maya by itself after
+      // AUTO_RETURN_MS without a staff answer.
       if (conversation && ["takeover", "escalated"].includes(conversation.assistant_state)) {
+        const since = handoffSinceMs(session);
+        if (isTestSession(session)) {
+          returnToMaya(session, "test_chat");
+        } else if (since !== null && nowMs() - since >= AUTO_RETURN_MS) {
+          returnToMaya(session, "auto_12h");
+        }
+      }
+      const liveConversation = getConversationRow(session.conversation_id);
+      if (liveConversation && ["takeover", "escalated"].includes(liveConversation.assistant_state)) {
+        // Maya stays out of it, but the client is never met with silence: a
+        // short holding line (first time, then at most every 15 minutes), and
+        // the owner hears about every message (tenancy throttles the alerts).
         persistMessage(session, "incoming", text);
         recordEvent(session, "message_in", { text: text.slice(0, 300), silenced: true });
+        session.state.waitingCount = (Number(session.state.waitingCount) || 0) + 1;
+        recordEvent(session, "client_waiting", {
+          count: session.state.waitingCount,
+          text: text.slice(0, 500),
+          state: liveConversation.assistant_state,
+          client: (session.state.client || {}).name || ""
+        });
+        const lastHolding = Date.parse(session.state.holdingAt || "");
+        let reply = null;
+        if (!Number.isFinite(lastHolding) || nowMs() - lastHolding >= HOLDING_INTERVAL_MS) {
+          reply = localized(HOLDING_REPLY, lang);
+          session.state.holdingAt = clockNow().toISOString();
+          persistMessage(session, "outgoing", reply);
+          recordEvent(session, "message_out", { text: reply.slice(0, 300), canned: "holding" });
+        }
         saveSession(session);
         return {
-          reply: null,
-          state: sessionState(session, { silenced: true, reason: conversation.assistant_state })
+          reply,
+          state: sessionState(session, { silenced: true, holding: Boolean(reply), reason: liveConversation.assistant_state })
         };
       }
 
@@ -2688,7 +3075,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       // The day and time the client just named go into the draft too.
       const messageTime = parseClientTime(text);
       if (messageTime !== null) noteDraft(session, { startMinutes: messageTime });
-      const messageDay = dates.findDateExpressions(text, todayIso()).find((hit) => hit.offset !== undefined);
+      const messageDay = findDates(text).find((hit) => hit.offset !== undefined);
       if (messageDay) noteDraft(session, { dayOffset: messageDay.offset });
       const lowerText = text.toLowerCase();
       const namedServices = allServices().filter((row) => row.name.length >= 3 && lowerText.includes(row.name.toLowerCase()))
@@ -2706,7 +3093,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         // pulled back to it (the model lost "next Thursday" between turns).
         draftDayAtStart: (session.state.draft || {}).dayOffset,
         offeredAtStart: ((session.state.draft || {}).offeredDays || []).slice(),
-        clientNamedDay: Boolean(messageDay) || dates.findDateExpressions(text, todayIso()).length > 0,
+        clientNamedDay: Boolean(messageDay) || findDates(text).length > 0,
         actionCommitted: false,
         handoffRequested: false,
         escalateAfter: null,
@@ -2854,7 +3241,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
           content: `The client mentioned ${external.app}. You cannot see ${external.app} or any other calendar or booking app; never say you can look something up there. Only this chat's own booking tools are yours.`
         });
       }
-      const mentions = dates.findDateExpressions(text, todayIso());
+      const mentions = findDates(text);
       if (mentions.length) {
         const lines = mentions.map((hit) => hit.offset !== undefined
           ? `"${hit.phrase}" = ${dayIso(hit.offset)} (${dates.WEEKDAY_EN[dates.weekdayOf(dayIso(hit.offset))]})`
@@ -2900,6 +3287,10 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
               if (turn.dayCorrected) {
                 recordEvent(session, "day_corrected", turn.dayCorrected);
                 turn.dayCorrected = null;
+              }
+              if (call.function.name === "check_availability") {
+                recordAvailability(session, result);
+                if (result && result.date) turn.lastCheckedDate = result.date;
               }
               recordEvent(session, "tool_call", { tool: call.function.name, args, ok: !result.error });
               current.push({
@@ -3146,18 +3537,31 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
           if (!enabled) {
             session.state.escalated = null;
             session.state.failedUnderstandings = 0;
-            saveSession(session);
+            session.state.handoffAt = null;
+            session.state.holdingAt = null;
+            session.state.waitingCount = 0;
+          } else if (!["takeover", "escalated"].includes(conversation.assistant_state)) {
+            session.state.handoffAt = clockNow().toISOString();
+            session.state.holdingAt = null;
           }
+          saveSession(session);
         }
       }
       return { conversationId, assistantState: state };
     }
 
-    // Called when staff sends an outgoing message via the inbox UI: bot goes silent.
+    // Called when staff sends an outgoing message via the inbox UI: bot goes
+    // silent, and the 12-hour hand-back clock restarts from this answer.
     function noteStaffMessage(conversationId) {
       const conversation = getConversationRow(conversationId);
       if (!conversation || !conversation.assistant_session_id) return;
       if (conversation.assistant_state !== "takeover") setTakeover(conversationId, true);
+      const session = loadSession(conversation.assistant_session_id);
+      if (session) {
+        session.state.lastStaffAt = clockNow().toISOString();
+        session.state.waitingCount = 0;
+        saveSession(session);
+      }
     }
 
     // ---------- LLM spend usage (surface for owner + ops) ----------
@@ -3201,10 +3605,18 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
 
     // ---------- owner digest ----------
     function getDigest(day) {
+      const testSessionCache = new Map();
       const targetDay = /^\d{4}-\d{2}-\d{2}$/.test(String(day || "")) ? day : salonDayString();
       const events = db.prepare(`
         SELECT * FROM assistant_events WHERE salon_id = ? AND day = ? ORDER BY created_at ASC
-      `).all(salonId, targetDay).map((row) => Object.assign(row, { payload: JSON.parse(row.payload_json || "{}") }));
+      `).all(salonId, targetDay).map((row) => Object.assign(row, { payload: JSON.parse(row.payload_json || "{}") }))
+        // The owner's own test chats are not part of the salon's day.
+        .filter((row) => {
+          if (!testSessionCache.has(row.session_id)) {
+            testSessionCache.set(row.session_id, isTestSession(loadSession(row.session_id) || { id: row.session_id, state: {} }));
+          }
+          return !testSessionCache.get(row.session_id);
+        });
 
       const byType = (type) => events.filter((event) => event.type === type);
       const conversationIds = [...new Set(events.map((event) => event.conversation_id).filter(Boolean))];
@@ -3275,6 +3687,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       getUsage,
       setTakeover,
       noteStaffMessage,
+      autoReturnStale,
       // exposed for tests
       _internals: {
         detectLanguage,
@@ -3394,6 +3807,11 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
     noteStaffMessage(conversationId, expectedSalonSlug) {
       const salon = salonForConversation(conversationId, expectedSalonSlug);
       return salon ? salon.noteStaffMessage(conversationId) : undefined;
+    },
+    // Hands quiet threads back to Maya (12 h without a staff answer).
+    autoReturnStale(salonSlug) {
+      const salon = forSalon(salonSlug);
+      return salon ? salon.autoReturnStale() : 0;
     },
     // Default-salon internals, kept for the existing single-salon test suite.
     _internals: defaultAssistant._internals

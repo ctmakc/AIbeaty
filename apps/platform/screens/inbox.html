@@ -229,10 +229,11 @@
       viaTelegram: "Telegram", viaWeb: "Web chat", noChannel: "No live channel",
       stateMaya: "Maya is answering", stateNeed: "Needs you", stateYou: "You are answering",
       flagNeed: "Needs you", flagYou: "You answer", flagTest: "Your test",
-      takeOver: "Take over", handBack: "Hand back to Maya",
+      takeOver: "Take over", handBack: "Let Maya continue",
+      waitingN: function (n) { return n === 1 ? "1 new message" : n + " new messages"; },
       back: "Back to conversations", send: "Send", placeholder: "Write your answer…",
       noteMaya: "Sending an answer pauses Maya in this conversation until you hand it back.",
-      noteYou: "Maya is paused here. Clients see your answers as the salon team.",
+      noteYou: "Maya is paused here. Clients see your answers as the salon team. If nobody answers for 12 hours, Maya takes the conversation back.",
       noteOther: "This conversation has no live channel. Your note is saved here only.",
       maya: "Maya", you: "You", client: "Client",
       delivered: "Delivered in Telegram", failed: "Not delivered", waiting: "Waiting for the client to open the chat", seen: "Seen in the web chat", sending: "Sending…",
@@ -254,10 +255,11 @@
       viaTelegram: "Telegram", viaWeb: "Clavardage web", noChannel: "Aucun canal actif",
       stateMaya: "Maya répond", stateNeed: "À traiter", stateYou: "Vous répondez",
       flagNeed: "À traiter", flagYou: "Vous répondez", flagTest: "Votre test",
-      takeOver: "Prendre la main", handBack: "Rendre la main à Maya",
+      takeOver: "Prendre la main", handBack: "Laisser Maya continuer",
+      waitingN: function (n) { return n === 1 ? "1 nouveau message" : n + " nouveaux messages"; },
       back: "Retour aux conversations", send: "Envoyer", placeholder: "Écrivez votre réponse…",
       noteMaya: "Votre réponse met Maya en pause dans cette conversation jusqu'à ce que vous lui rendiez la main.",
-      noteYou: "Maya est en pause ici. Les clients voient vos réponses au nom du salon.",
+      noteYou: "Maya est en pause ici. Les clients voient vos réponses au nom du salon. Sans réponse pendant 12 heures, Maya reprend la conversation.",
       noteOther: "Cette conversation n'a aucun canal actif. Votre note est seulement enregistrée ici.",
       maya: "Maya", you: "Vous", client: "Client",
       delivered: "Livré dans Telegram", failed: "Non livré", waiting: "En attente : le client n'a pas encore rouvert le clavardage", seen: "Vu dans le clavardage web", sending: "Envoi…",
@@ -279,10 +281,11 @@
       viaTelegram: "Telegram", viaWeb: "Чат на сайте", noChannel: "Нет канала связи",
       stateMaya: "Отвечает Майя", stateNeed: "Ждёт вас", stateYou: "Отвечаете вы",
       flagNeed: "Ждёт вас", flagYou: "Отвечаете вы", flagTest: "Ваш тест",
-      takeOver: "Ответить самой", handBack: "Вернуть Майе",
+      takeOver: "Ответить самой", handBack: "Пусть Майя продолжит",
+      waitingN: function (n) { return "Новых сообщений: " + n; },
       back: "К списку переписок", send: "Отправить", placeholder: "Напишите ответ…",
       noteMaya: "Ваш ответ ставит Майю на паузу в этой переписке, пока вы не вернёте её.",
-      noteYou: "Майя здесь на паузе. Клиент видит ваши ответы от имени салона.",
+      noteYou: "Майя здесь на паузе. Клиент видит ваши ответы от имени салона. Если 12 часов никто не ответит, Майя снова возьмёт переписку.",
       noteOther: "У этой переписки нет канала связи. Заметка сохранится только здесь.",
       maya: "Майя", you: "Вы", client: "Клиент",
       delivered: "Доставлено в Telegram", failed: "Не доставлено", waiting: "Клиент ещё не открыл чат", seen: "Прочитано в чате на сайте", sending: "Отправляем…",
@@ -403,6 +406,7 @@
       var flag = conv.state === "needs_human" ? '<span class="flag need">' + esc(T.flagNeed) + "</span>"
         : conv.state === "takeover" ? '<span class="flag you">' + esc(T.flagYou) + "</span>" : "";
       if (conv.test) flag += ' <span class="flag test">' + esc(T.flagTest) + "</span>";
+      if (conv.waiting && conv.state !== "maya") flag += ' <span class="flag need">' + esc(T.waitingN(conv.waiting)) + "</span>";
       var who = conv.lastAuthor === "staff" ? T.you + T.colon : conv.lastAuthor === "maya" ? T.maya + T.colon : "";
       var ava = initials(conv) || '<span class="material-symbols-outlined" aria-hidden="true">' + (conv.kind === "telegram" ? "send" : "chat") + "</span>";
       return '<button class="row" type="button" data-id="' + esc(conv.id) + '"' + (conv.id === selectedId ? ' aria-current="true"' : "") + ">" +

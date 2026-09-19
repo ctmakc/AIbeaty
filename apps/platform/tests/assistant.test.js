@@ -173,7 +173,7 @@ async function test(name, fn) {
     assert.ok(eventsOfType("booking").some((event) => event.session_id === "s-book"));
   });
 
-  await test("escalation: explicit human request bypasses LLM, thread goes silent", async () => {
+  await test("escalation: explicit human request bypasses LLM; next message gets one holding line, then quiet", async () => {
     const assistant = createAssistant({
       store,
       llm: { model: "mock", baseUrl: "mock://", async complete() { throw new Error("LLM must not be called on a hard trigger"); } }
@@ -182,14 +182,16 @@ async function test(name, fn) {
     assert.ok(result.reply, "canned handoff reply expected");
     assert.strictEqual(result.state.assistantState, "escalated");
     const followUp = await assistant.chat({ sessionId: "s-esc", message: "Ау, вы тут?" });
-    assert.strictEqual(followUp.reply, null, "bot silent after escalation");
+    assert.match(String(followUp.reply), /передала это команде салона/, "a holding line, never silence");
     assert.strictEqual(followUp.state.silenced, true);
+    const again = await assistant.chat({ sessionId: "s-esc", message: "Алло?" });
+    assert.strictEqual(again.reply, null, "at most one holding line per 15 minutes");
     const stored = store.db.prepare(`
       SELECT COUNT(*) AS count FROM conversation_messages cm
       JOIN conversations c ON c.id = cm.conversation_id
       WHERE c.assistant_session_id = 's-esc' AND cm.type = 'incoming'
     `).get().count;
-    assert.strictEqual(stored, 2, "silenced incoming message still lands in the thread");
+    assert.strictEqual(stored, 3, "silenced incoming messages still land in the thread");
   });
 
   await test("escalation: medical topic triggers immediate handoff", async () => {
@@ -212,8 +214,10 @@ async function test(name, fn) {
     const conversationId = first.state.conversationId;
     assistant.noteStaffMessage(conversationId); // owner replied by hand in the inbox
     const silenced = await assistant.chat({ sessionId: "s-take", message: "А когда вы открыты?" });
-    assert.strictEqual(silenced.reply, null);
+    assert.match(String(silenced.reply), /передала это команде салона/, "Maya stays out of it, with a holding line");
     assert.strictEqual(silenced.state.reason, "takeover");
+    const quiet = await assistant.chat({ sessionId: "s-take", message: "Ну?" });
+    assert.strictEqual(quiet.reply, null);
     assistant.setTakeover(conversationId, false);
     const back = await assistant.chat({ sessionId: "s-take", message: "Ну так когда?" });
     assert.ok(back.reply, "bot speaks again after takeover off");

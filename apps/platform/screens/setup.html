@@ -434,8 +434,9 @@
       knowsTeam: function (n) { return n + (n === 1 ? " person on the team" : " people on the team"); },
       knowsHours: function (n) { return "Open " + n + (n === 1 ? " day" : " days") + " a week"; },
       knowsAnswers: function (n) { return n ? n + " answers to common questions" : "No answers yet: she passes those questions to you"; },
+      testCleared: "Bookings from your test chat are removed, so every slot is free for real clients",
       tryThis: "Try asking:", try1: function (name) { return "How much is " + name + "?"; }, try2: "Can I book for Friday afternoon?", try3: "Where do I park?", try4: "I want to talk to a person",
-      testChat: "Test chat (only you see it)", resetChat: "Reset test chat", resetDone: "Test chat cleared.",
+      testChat: "Test chat (only you see it)", resetChat: "Reset test chat", resetDone: "Test chat cleared.", resetDoneBookings: "Test chat cleared, and its test bookings are gone from your calendar.",
       goLive: "Go live", launching: "Going live…",
       goLiveWait: "Send Maya at least one test message first.", goLiveReady: "Happy with her answers? Go live and clients can reach her.",
       waitTitle: "Almost there. Fix these and Maya can go live:", fix: "Fix", warnings: "Worth a look (not blocking):",
@@ -536,8 +537,9 @@
       knowsTeam: function (n) { return n + (n === 1 ? " personne dans l’équipe" : " personnes dans l’équipe"); },
       knowsHours: function (n) { return "Ouvert " + n + (n === 1 ? " jour" : " jours") + " par semaine"; },
       knowsAnswers: function (n) { return n ? n + " réponses aux questions fréquentes" : "Aucune réponse encore : elle vous transmet ces questions"; },
+      testCleared: "Les rendez-vous de votre chat de test sont supprimés : toutes les plages restent libres pour vos vrais clients",
       tryThis: "Essayez :", try1: function (name) { return "Combien coûte " + name + "?"; }, try2: "Puis-je réserver vendredi après-midi?", try3: "Où puis-je me stationner?", try4: "Je veux parler à une personne",
-      testChat: "Chat de test (vous seul le voyez)", resetChat: "Réinitialiser le chat de test", resetDone: "Chat de test effacé.",
+      testChat: "Chat de test (vous seul le voyez)", resetChat: "Réinitialiser le chat de test", resetDone: "Chat de test effacé.", resetDoneBookings: "Chat de test effacé, et ses rendez-vous de test ont quitté votre agenda.",
       goLive: "Lancer Maya", launching: "Lancement…",
       goLiveWait: "Envoyez d’abord au moins un message de test à Maya.", goLiveReady: "Ses réponses vous conviennent? Lancez-la et vos clients pourront lui écrire.",
       waitTitle: "Presque prêt. Corrigez ceci et Maya pourra être lancée :", fix: "Corriger", warnings: "À vérifier (sans bloquer) :",
@@ -638,8 +640,9 @@
       knowsTeam: function (n) { return "Мастеров: " + n; },
       knowsHours: function (n) { return "Рабочих дней в неделю: " + n; },
       knowsAnswers: function (n) { return n ? "Ответов на частые вопросы: " + n : "Ответов пока нет: такие вопросы она передаст вам"; },
+      testCleared: "Записи из тестового чата удаляются, всё время свободно для настоящих клиентов",
       tryThis: "Попробуйте спросить:", try1: function (name) { return "Сколько стоит «" + name + "»?"; }, try2: "Можно записаться на пятницу после обеда?", try3: "Где припарковаться?", try4: "Хочу поговорить с человеком",
-      testChat: "Тестовый чат (видите только вы)", resetChat: "Очистить тестовый чат", resetDone: "Тестовый чат очищен.",
+      testChat: "Тестовый чат (видите только вы)", resetChat: "Очистить тестовый чат", resetDone: "Тестовый чат очищен.", resetDoneBookings: "Тестовый чат очищен, тестовые записи убраны из календаря.",
       goLive: "Запустить Майю", launching: "Запускаю…",
       goLiveWait: "Сначала отправьте Майе хотя бы одно тестовое сообщение.", goLiveReady: "Ответы нравятся? Запускайте, и клиенты смогут ей писать.",
       waitTitle: "Почти готово. Исправьте это, и Майю можно будет запустить:", fix: "Исправить", warnings: "Стоит проверить (не мешает запуску):",
@@ -1210,7 +1213,7 @@
     var answers = ["parking", "payment", "cancellation", "deposit", "late"].filter(function (key) { return doc.faq[key]; }).length + doc.faq.custom.length;
     $("confirmTitle").textContent = t("confirmTitle");
     $("confirmLead").textContent = t("confirmLead");
-    $("confirmList").innerHTML = [t("knowsServices")(doc.services.length), t("knowsTeam")(doc.staff.length), t("knowsHours")(openDays().length), t("knowsAnswers")(answers)].map(function (line) {
+    $("confirmList").innerHTML = [t("knowsServices")(doc.services.length), t("knowsTeam")(doc.staff.length), t("knowsHours")(openDays().length), t("knowsAnswers")(answers), t("testCleared")].map(function (line) {
       return '<div class="item ok"><span class="material-symbols-outlined" aria-hidden="true">check_circle</span><div>' + esc(line) + '</div><span></span></div>';
     }).join("");
     $("confirmYes").textContent = t("confirmYes");
@@ -1609,7 +1612,11 @@
       var frame = $("testChat");
       if (frame) frame.src = chatSrc() + "&r=" + Date.now();
       syncGoLive();
-      return toast(t("resetDone"));
+      // Test bookings go with the test chat, so they never hold a real slot.
+      return api("POST", "/api/setup/test-chat/reset", {}).then(function (result) {
+        var removed = result && result.data && result.data.removedBookings;
+        toast(removed ? t("resetDoneBookings") : t("resetDone"));
+      }).catch(function () { toast(t("resetDone")); });
     }
     if (node.id === "qrDownload") return downloadQr();
     if (node.id === "planGo") return submitPlan(node);
