@@ -17,6 +17,7 @@
 // → tenancy.attachAssistant(assistant). The assistant needs the hooks at build
 // time and tenancy needs the assistant to answer messages.
 
+const mayaLanguage = require("./maya-language");
 const crypto = require("node:crypto");
 const dns = require("node:dns").promises;
 const net = require("node:net");
@@ -227,6 +228,44 @@ const DAY_NAMES = {
   en: { sun: "Sunday", mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday" },
   ru: { sun: "воскресенье", mon: "понедельник", tue: "вторник", wed: "среду", thu: "четверг", fri: "пятницу", sat: "субботу" }
 };
+
+// Client-facing lines the tenancy layer sends itself (outside Maya), in the
+// client's language: en, fr, ru, uk.
+const CLIENT_TEXT = {
+  settingUp: {
+    en: "This salon's assistant is still being set up. Please contact the salon directly for now.",
+    fr: "L'assistante de ce salon est encore en préparation. Pour l'instant, contactez directement le salon.",
+    ru: "Ассистент этого салона ещё настраивается. Пожалуйста, свяжитесь с салоном напрямую.",
+    uk: "Асистент цього салону ще налаштовується. Будь ласка, зв'яжіться із салоном напряму."
+  },
+  paused: {
+    en: "The salon's online assistant is paused right now. Please contact the salon directly.",
+    fr: "L'assistante en ligne du salon est en pause pour le moment. Contactez directement le salon.",
+    ru: "Онлайн-ассистент салона сейчас на паузе. Пожалуйста, свяжитесь с салоном напрямую.",
+    uk: "Онлайн-асистент салону зараз на паузі. Будь ласка, зв'яжіться із салоном напряму."
+  },
+  shareNumber: { en: "📱 Share my number", fr: "📱 Partager mon numéro", ru: "📱 Поделиться номером", uk: "📱 Поділитися номером" },
+  myPhone: { en: "My phone number is {phone}", fr: "Mon numéro de téléphone : {phone}", ru: "Мой номер телефона: {phone}", uk: "Мій номер телефону: {phone}" },
+  textOnly: {
+    en: "I can only read text for now. Please type your message.",
+    fr: "Pour l'instant, je lis seulement le texte. Écrivez-moi votre message, s'il vous plaît.",
+    ru: "Пока я читаю только текст. Напишите, пожалуйста, сообщением.",
+    uk: "Поки що я читаю лише текст. Напишіть, будь ласка, повідомленням."
+  },
+  slowDown: { en: "That was fast 🙂 Give me a minute.", fr: "C'était rapide 🙂 Laissez-moi une minute.", ru: "Слишком быстро 🙂 Подождите минутку.", uk: "Занадто швидко 🙂 Зачекайте хвилинку." }
+};
+
+function pick(pack, lang) {
+  return pack[lang] || pack.en;
+}
+
+// The client's language for tenancy-level lines: the message text first,
+// then the app/browser language code, then English.
+function clientLanguage(text, languageCode) {
+  const detected = mayaLanguage.detectMessageLanguage(text);
+  if (detected.language && (detected.confident || !mayaLanguage.normalizeLanguageCode(languageCode))) return detected.language;
+  return mayaLanguage.normalizeLanguageCode(languageCode) || detected.language || "en";
+}
 
 function validateSetup(doc, language = "en") {
   const t = MESSAGES[language] || MESSAGES.en;
@@ -745,20 +784,16 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
   async function chat(slug, payload, { preview = false } = {}) {
     const tenant = getTenant(slug);
     if (tenant) {
-      const ru = /[а-яёіїє]/i.test(String(payload.message || ""));
+      const lang = clientLanguage(payload.message, payload.languageHint);
       if (!tenant.setupComplete || (!tenant.launched && !preview)) {
         return {
-          reply: ru
-            ? "Ассистент этого салона ещё настраивается. Пожалуйста, свяжитесь с салоном напрямую."
-            : "This salon's assistant is still being set up. Please contact the salon directly for now.",
+          reply: pick(CLIENT_TEXT.settingUp, lang),
           state: { reason: "setup_incomplete" }
         };
       }
       if (!tenant.active) {
         return {
-          reply: ru
-            ? "Онлайн-ассистент салона сейчас на паузе. Пожалуйста, свяжитесь с салоном напрямую."
-            : "The salon's online assistant is paused right now. Please contact the salon directly.",
+          reply: pick(CLIENT_TEXT.paused, lang),
           state: { reason: "trial_ended" }
         };
       }
@@ -768,6 +803,12 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
 
   // ---------- hooks for createAssistant ----------
   const hooks = {
+    // Last-resort language for Maya when the client's own message and channel
+    // say nothing (the client's language always wins).
+    languageFor(salonId) {
+      const tenant = getTenant(salonId);
+      return tenant ? tenant.language : "";
+    },
     dailyTurnsCapFor(salonId) {
       const tenant = getTenant(salonId);
       return tenant && tenant.plan === "trial" ? TRIAL_TURNS_CAP : undefined;
@@ -860,11 +901,15 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
         continue;
       }
       if (appointment.appt_date !== tomorrow || now.minutes < REMINDER_FROM || now.minutes >= REMINDER_UNTIL) continue;
-      const ru = /^(ru|uk)/.test(row.language);
-      const time = clockLabel(appointment.start_minutes);
-      const text = ru
-        ? `Напоминаем: завтра в ${time} — ${appointment.service_name}${appointment.stylist ? `, мастер ${appointment.stylist}` : ""}, салон «${record.name}».${record.address ? ` Адрес: ${record.address}.` : ""} Если планы изменились, напишите сюда: перенесём или отменим.`
-        : `Reminder: tomorrow at ${time} — ${appointment.service_name}${appointment.stylist ? ` with ${appointment.stylist}` : ""} at ${record.name}.${record.address ? ` Address: ${record.address}.` : ""} If your plans changed, reply here and we'll reschedule or cancel.`;
+      const lang = mayaLanguage.normalizeLanguageCode(row.language) || "en";
+      const time = lang === "en" ? clockLabel(appointment.start_minutes) : `${Math.floor(appointment.start_minutes / 60)}:${String(appointment.start_minutes % 60).padStart(2, "0")}`;
+      const staff = appointment.stylist || "";
+      const text = pick({
+        en: `Reminder: tomorrow at ${time} — ${appointment.service_name}${staff ? ` with ${staff}` : ""} at ${record.name}.${record.address ? ` Address: ${record.address}.` : ""} If your plans changed, reply here and we'll reschedule or cancel.`,
+        fr: `Rappel : demain à ${time}, ${appointment.service_name}${staff ? ` avec ${staff}` : ""} chez ${record.name}.${record.address ? ` Adresse : ${record.address}.` : ""} Si vos plans ont changé, répondez ici et on déplace ou on annule.`,
+        ru: `Напоминаем: завтра в ${time} — ${appointment.service_name}${staff ? `, мастер ${staff}` : ""}, салон «${record.name}».${record.address ? ` Адрес: ${record.address}.` : ""} Если планы изменились, напишите сюда: перенесём или отменим.`,
+        uk: `Нагадуємо: завтра о ${time} — ${appointment.service_name}${staff ? `, майстер ${staff}` : ""}, салон «${record.name}».${record.address ? ` Адреса: ${record.address}.` : ""} Якщо плани змінилися, напишіть сюди: перенесемо або скасуємо.`
+      }, lang);
       try {
         await sendTelegram(row, row.chat_id, text);
         db.prepare(`UPDATE tenant_reminders SET status = 'sent', sent_at = ? WHERE salon_slug = ? AND appointment_id = ?`).run(nowIso(clock), row.salon_slug, row.appointment_id);
@@ -1075,13 +1120,19 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     });
   }
 
+  // Telegram /start greeting in the client's language (language_code). It
+  // carries the AI disclosure, so Maya does not introduce herself again.
   function greetingFor(slug, languageCode) {
     const record = store.getSalonRecord(slug) || {};
-    const name = record.name || "the salon";
-    if (/^(ru|uk|be)/.test(String(languageCode || ""))) {
-      return `Здравствуйте! Я Майя, ИИ-ассистент салона «${name}». Могу записать вас, перенести или отменить визит и ответить на вопросы о ценах и услугах. Если нужен живой человек, просто напишите «позвать человека».`;
-    }
-    return `Hi! I'm Maya, the AI assistant at ${name}. I can book, reschedule or cancel a visit and answer questions about prices and services. If you'd rather talk to a person, just write "human".`;
+    const name = record.name || "";
+    const lang = clientLanguage("", languageCode);
+    const pack = {
+      en: `Hi! I'm Maya, the AI assistant${name ? ` at ${name}` : ""}. I can book, move or cancel a visit and answer questions about prices and services. If you'd rather talk to a person, just type "human".`,
+      fr: `Bonjour! Je suis Maya, l'assistante IA${name ? ` de ${name}` : ""}. Je peux réserver, déplacer ou annuler un rendez-vous et répondre à vos questions sur les prix et les services. Pour parler à une personne, écrivez simplement « humain ».`,
+      ru: `Здравствуйте! Я Майя, ИИ-ассистентка${name ? ` салона «${name}»` : ""}. Могу записать вас, перенести или отменить визит и ответить на вопросы о ценах и услугах. Если нужен живой человек, просто напишите «позвать человека».`,
+      uk: `Вітаю! Я Майя, ШІ-асистентка${name ? ` салону «${name}»` : ""}. Можу записати вас, перенести чи скасувати візит і відповісти на питання про ціни та послуги. Якщо потрібна жива людина, просто напишіть «покликати людину».`
+    };
+    return pick(pack, lang);
   }
 
   // Webhook entry point. Returns an HTTP status right away; the conversation
@@ -1106,6 +1157,8 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     const text = String(message.text || "").trim();
     const languageCode = message.from && message.from.language_code;
     const ru = /^(ru|uk|be)/.test(String(languageCode || ""));
+    const lang = clientLanguage(text, languageCode);
+    const fromName = [message.from && message.from.first_name, message.from && message.from.last_name].filter(Boolean).join(" ").trim();
 
     const startMatch = text.match(/^\/start(?:\s+(\S+))?/);
     if (startMatch) {
@@ -1118,7 +1171,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
         return;
       }
       await sendTelegram(row, chatId, greetingFor(row.salon_slug, languageCode), {
-        reply_markup: { keyboard: [[{ text: ru ? "📱 Поделиться номером" : "📱 Share my number", request_contact: true }]], resize_keyboard: true, one_time_keyboard: true }
+        reply_markup: { keyboard: [[{ text: pick(CLIENT_TEXT.shareNumber, lang), request_contact: true }]], resize_keyboard: true, one_time_keyboard: true }
       });
       return;
     }
@@ -1127,10 +1180,10 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     let body = text;
     if (message.contact && message.contact.phone_number) {
       clientPhone = String(message.contact.phone_number);
-      body = ru ? `Мой номер телефона: ${clientPhone}` : `My phone number is ${clientPhone}`;
+      body = pick(CLIENT_TEXT.myPhone, lang).replace("{phone}", clientPhone);
     }
     if (!body) {
-      await sendTelegram(row, chatId, ru ? "Пока я читаю только текст. Напишите, пожалуйста, сообщением." : "I can only read text for now. Please type your message.");
+      await sendTelegram(row, chatId, pick(CLIENT_TEXT.textOnly, lang));
       return;
     }
 
@@ -1143,7 +1196,13 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
         sessionId: `tg:${row.bot_id}:${chatId}`,
         message: body.slice(0, 2000),
         channel: "telegram",
-        clientPhone
+        clientPhone,
+        // Maya answers in the client's language: the text decides, the
+        // Telegram app language is the fallback for short messages.
+        languageHint: String(languageCode || ""),
+        clientName: fromName,
+        // Telegram always opens a chat with /start, which already greeted.
+        greeted: true
       }, { preview: Boolean(row.owner_chat_id) && row.owner_chat_id === chatId });
     } finally {
       clearInterval(typing);
@@ -1151,7 +1210,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     if (result && result.reply) {
       await sendTelegram(row, chatId, String(result.reply), { reply_markup: { remove_keyboard: true } });
     } else if (result && result.error === "rate_limited") {
-      await sendTelegram(row, chatId, ru ? "Слишком быстро 🙂 Подождите минутку." : "That was fast 🙂 Give me a minute.");
+      await sendTelegram(row, chatId, pick(CLIENT_TEXT.slowDown, lang));
     }
   }
 

@@ -340,7 +340,7 @@ async function test(name, fn) {
       llm: { model: "mock", baseUrl: "mock://", async complete({ messages }) { seenMessages = messages; return text("Секунду, посмотрю расписание!"); } }
     });
     await assistant.chat({ sessionId: "s-styl-inj", message: "запишите меня к мастеру Наталье на четверг" });
-    assert.ok(seenMessages.some((m) => m.role === "system" && /НЕ СУЩЕСТВУЕТ/.test(m.content) && /Наталье/.test(m.content)),
+    assert.ok(seenMessages.some((m) => m.role === "system" && /do NOT exist/.test(m.content) && /Наталье/.test(m.content)),
       "ground-truth system note injected on first mention");
   });
 
@@ -411,12 +411,10 @@ async function test(name, fn) {
       llm: scriptedLlm([
         toolCall("book_appointment", bookArgs),
         text("Проверяю: женская стрижка, среда. Всё верно?"),
-        toolCall("book_appointment", bookArgs),
-        text("Вы записаны! Ждём вас в среду."),
+        // "Да, всё верно!" commits in code: no model call on that turn.
         toolCall("cancel_appointment", {}),
-        text("Проверяю: женская стрижка в среду. Отменяем?"),
-        toolCall("cancel_appointment", {}),
-        text("Готово, запись отменена. Если захотите вернуться — я всегда тут.")
+        text("Проверяю: женская стрижка в среду. Отменяем?")
+        // "Точно, отменяем" commits in code too.
       ])
     });
     await assistant.chat({ sessionId: "s-cancel", message: `Запишите меня на женскую стрижку в среду в ${timeArg}, я Тест Отмена` });
@@ -444,8 +442,6 @@ async function test(name, fn) {
       llm: scriptedLlm([
         toolCall("book_appointment", bookArgs),
         text("Проверяю: мужская стрижка, четверг. Всё верно?"),
-        toolCall("book_appointment", bookArgs),
-        text("Вы записаны! До четверга."),
         toolCall("cancel_appointment", {}),
         text("Проверяю: мужская стрижка в четверг. Отменяем?"),
         toolCall("cancel_appointment", {}),
@@ -461,12 +457,13 @@ async function test(name, fn) {
     assert.ok(!/отменена|canceled/i.test(refused.reply || ""), `no cancellation claim: ${refused.reply}`);
   });
 
-  await test("empty reply: owner task is recorded on the SAME turn as the 'within the hour' promise", async () => {
+  await test("empty reply: owner task is recorded on the SAME turn as the 'team will reply' promise", async () => {
     const before = eventsOfType("owner_message").filter((event) => event.session_id === "s-empty").length;
     assert.strictEqual(before, 0);
     const assistant = createAssistant({ store, llm: scriptedLlm([text("")]) });
     const result = await assistant.chat({ sessionId: "s-empty", message: "Какой у вас wifi-пароль для гостей?" });
-    assert.ok(/в течение часа/.test(result.reply), `promise present: ${result.reply}`);
+    assert.ok(/ответят здесь, как только смогут/.test(result.reply), `promise present: ${result.reply}`);
+    assert.ok(!/в течение часа|within the hour/.test(result.reply), `no response-time promise: ${result.reply}`);
     assert.ok(result.state.gates.includes("empty_reply"));
     const after = eventsOfType("owner_message").filter((event) => event.session_id === "s-empty");
     assert.strictEqual(after.length, 1, "owner message recorded on the same turn");
@@ -518,7 +515,8 @@ async function test(name, fn) {
     const result = await assistant.chat({ sessionId: "s-compl", message: "Вы испортили мне окрашивание, это ужасно!" });
     assert.ok(/(прости|извин)/i.test(result.reply), `apology present: ${result.reply}`);
     assert.ok(/(обидно|слышу вас)/i.test(result.reply), `feeling named: ${result.reply}`);
-    assert.ok(/в течение часа/.test(result.reply), `timeframe present: ${result.reply}`);
+    assert.ok(/ответит вам здесь, как только сможет/.test(result.reply), `next step present: ${result.reply}`);
+    assert.ok(!/в течение часа/.test(result.reply), `no response-time promise: ${result.reply}`);
     assert.ok(!/(скидк|акци|предложить вам|записать вас на)/i.test(result.reply), `no upsell: ${result.reply}`);
     assert.strictEqual(result.state.assistantState, "escalated");
     assert.ok(eventsOfType("escalation").some((event) => event.session_id === "s-compl" && JSON.parse(event.payload_json).reason === "complaint"));
@@ -677,8 +675,6 @@ async function test(name, fn) {
         script: scriptedLlm([
           toolCall("book_appointment", bookArgs),
           text(`Проверяю: мужская стрижка ${DAY.phrase}. Всё верно?`),
-          toolCall("book_appointment", bookArgs),
-          text("Вы записаны!"),
           toolCall("cancel_appointment", {}),
           text(`Проверяю: отменяем мужскую стрижку ${DAY.phrase}?`)
         ]),
