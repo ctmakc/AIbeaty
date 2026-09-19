@@ -101,6 +101,7 @@
   .flag.need { background: var(--error-bg); color: var(--error); }
   .flag.you { background: var(--surface-container); color: var(--on-surface-variant); }
   .flag.test { background: rgba(122, 37, 219, .08); color: var(--tertiary); }
+  .flag.count { background: var(--surface-container); color: var(--on-surface); }
   .empty { padding: 28px 20px; color: var(--on-surface-variant); line-height: 1.55; font-size: 13.5px; }
   .empty strong { display: block; color: var(--ink); font: 800 15px var(--font-headline); margin-bottom: 6px; }
 
@@ -232,7 +233,7 @@
       takeOver: "Take over", handBack: "Let Maya continue",
       waitingN: function (n) { return n === 1 ? "1 new message" : n + " new messages"; },
       back: "Back to conversations", send: "Send", placeholder: "Write your answer…",
-      noteMaya: "Sending an answer pauses Maya in this conversation until you hand it back.",
+      noteMaya: "Sending an answer pauses Maya in this conversation until you press Let Maya continue.",
       noteYou: "Maya is paused here. Clients see your answers as the salon team. If nobody answers for 12 hours, Maya takes the conversation back.",
       noteOther: "This conversation has no live channel. Your note is saved here only.",
       maya: "Maya", you: "You", client: "Client",
@@ -406,7 +407,7 @@
       var flag = conv.state === "needs_human" ? '<span class="flag need">' + esc(T.flagNeed) + "</span>"
         : conv.state === "takeover" ? '<span class="flag you">' + esc(T.flagYou) + "</span>" : "";
       if (conv.test) flag += ' <span class="flag test">' + esc(T.flagTest) + "</span>";
-      if (conv.waiting && conv.state !== "maya") flag += ' <span class="flag need">' + esc(T.waitingN(conv.waiting)) + "</span>";
+      if (conv.waiting && conv.state !== "maya") flag += ' <span class="flag count">' + esc(T.waitingN(conv.waiting)) + "</span>";
       var who = conv.lastAuthor === "staff" ? T.you + T.colon : conv.lastAuthor === "maya" ? T.maya + T.colon : "";
       var ava = initials(conv) || '<span class="material-symbols-outlined" aria-hidden="true">' + (conv.kind === "telegram" ? "send" : "chat") + "</span>";
       return '<button class="row" type="button" data-id="' + esc(conv.id) + '"' + (conv.id === selectedId ? ' aria-current="true"' : "") + ">" +
@@ -441,7 +442,7 @@
     var stateText = conv.state === "needs_human" ? T.stateNeed : conv.state === "takeover" ? T.stateYou : T.stateMaya;
     var action = conv.kind === "other" ? "" : conv.state === "maya"
       ? '<button class="btn quiet" type="button" id="toggleMaya" data-active="false">' + esc(T.takeOver) + "</button>"
-      : '<button class="btn quiet" type="button" id="toggleMaya" data-active="true">' + esc(T.handBack) + "</button>";
+      : '<button class="btn" type="button" id="toggleMaya" data-active="true"><span class="material-symbols-outlined" aria-hidden="true" style="font-size:18px">smart_toy</span><span>' + esc(T.handBack) + "</span></button>";
     var meta = [channelLabel(conv), conv.phone].filter(Boolean).join(" · ");
     var feedHtml = "";
     var lastDay = "";

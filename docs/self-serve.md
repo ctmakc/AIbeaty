@@ -9,7 +9,7 @@ sends the owner every booking and escalation.
 Code: `apps/platform/backend/tenancy.js` (sign-up, setup doc, AI price-list import,
 plan gate, Telegram webhooks, reminders, trial notices, add-on requests).
 Plans and payment: `apps/platform/backend/billing.js`.
-Tests: `npm run selfserve:test` (includes `tests/billing-wizard.test.js`).
+Tests: `npm run selfserve:test` (includes `tests/billing-wizard.test.js` and `tests/handoff.test.js`).
 
 ## Plans (owner decision 2026-09-18)
 CAD per month, month-to-month, cancel anytime; annual = 10 months billed for 12.
@@ -77,6 +77,25 @@ messages and owner alerts. Maya answers in the client's language.
   no internal codes; events for one conversation within `OWNER_ALERT_DELAY_MS`
   (1500) are one message, and a second "needs you" within 60 s is dropped.
   Medspa/clinic salons get no client text in alerts.
+- Handoff / takeover: Maya stays out of the thread, but every client message
+  gets a holding line in the client's language (first one, then at most every
+  15 min, `HANDOFF_HOLDING_MS`) and the owner gets "💬 <client> wrote again (N
+  new messages)" (one per conversation per 5 min, `OWNER_WAITING_ALERT_MS`;
+  messages in between are sent with the next alert, never dropped; medspa: no
+  client text). The inbox shows the count and a **Let Maya continue** button;
+  a thread with no staff answer for 12 h (`HANDOFF_AUTO_RETURN_MS`) goes back
+  to Maya by itself (ticker, inbox load or the client's next message).
+- Test chats: the owner's preview, the web chat opened while signed in and the
+  owner's linked Telegram chat never lock after a handoff (Maya adds a test
+  note in the chat's language and keeps answering). Their bookings get
+  `appointments.is_test = 1` + a "Test" tag: they hold no real slot, stay out
+  of revenue, digest and reminders, alerts say `[Test chat]`, and they are
+  deleted at Go live and by **Reset test chat** (`POST /api/setup/test-chat/reset`).
+- Reply guards: a time Maya offers must come from the last availability
+  result for that day or be free in the calendar right now (else she offers
+  real free times); a bare weekday that names today after closing means next
+  week; years other than this/next in a reply are corrected; "yes, but
+  <question>" commits and answers only the question.
 - Self-serve owners opening `/screens/unified-inbox-luminous-core.html` get
   `screens/inbox.html` (their real threads only); the demo salon keeps the console.
 - Imported prices are a draft; the owner reviews before Go live.
