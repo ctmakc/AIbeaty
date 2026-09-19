@@ -1245,7 +1245,7 @@
         '<div class="line' + (tg.ownerLinked ? "" : " pending") + '"><span class="material-symbols-outlined" aria-hidden="true">' + (tg.ownerLinked ? "check_circle" : "notifications") + '</span>' +
         '<div><b>' + (tg.ownerLinked ? t("tgOwnerDone") : t("tgOwner")) + '</b>' + (tg.ownerLinked ? "" : '<div class="hint">' + t("tgOwnerHint") + '</div>') + '</div>' +
         (tg.ownerLinked ? "<span></span>" : '<a class="btn small" href="' + esc(tg.ownerLink) + '" target="_blank" rel="noopener">' + t("tgLink") + '</a>') + '</div>' +
-        (tg.ownerLinked ? "" : '<div class="ownerqr"><div class="qrbox" data-qr="' + esc(tg.ownerLink) + '" aria-hidden="true"></div><p class="hint">' + t("tgOwnerQr") + '</p></div>') +
+        (tg.ownerLinked ? "" : '<div class="ownerqr"><div class="qrbox" data-owner-qr="' + esc(tg.ownerLink) + '" aria-hidden="true"></div><p class="hint">' + t("tgOwnerQr") + '</p></div>') +
         '</div>' +
         '<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap"><button class="btn quiet small" type="button" data-copy="' + esc(tg.botLink) + '">' + t("copy") + ' t.me/' + esc(tg.username) + '</button>' +
         '<button class="btn quiet small" type="button" id="tgDisconnect">' + t("tgDisconnect") + '</button></div>';
@@ -1437,7 +1437,7 @@
   // The owner deep link as a QR code, for owners doing setup on a computer:
   // their Telegram is on the phone. Drawn with qrcode-generator (drawQr).
   function paintQrCodes(attempt) {
-    var boxes = document.querySelectorAll("[data-qr]");
+    var boxes = document.querySelectorAll("[data-owner-qr]");
     if (!boxes.length || !window.matchMedia("(min-width: 761px)").matches) return;
     if (typeof window.qrcode !== "function") {
       if ((attempt || 0) < 30) setTimeout(function () { paintQrCodes((attempt || 0) + 1); }, 200);
@@ -1446,7 +1446,7 @@
     Array.prototype.forEach.call(boxes, function (box) {
       if (box.getAttribute("data-painted")) return;
       var canvas = document.createElement("canvas");
-      if (!drawQr(canvas, box.getAttribute("data-qr"), 264)) return;
+      if (!drawQr(canvas, box.getAttribute("data-owner-qr"), 264)) return;
       box.setAttribute("data-painted", "1");
       box.appendChild(canvas);
       box.closest(".ownerqr").classList.add("ready");
