@@ -28,6 +28,9 @@ tenancy.attachAssistant(assistant);
 // Tells us (the platform operator) about sign-ups and add-on requests. Same
 // formsubmit relay the assistant alerts use; off when ALERT_EMAIL is empty.
 function platformNotify({ subject, lines }) {
+  // Always in the service log too (journalctl), so a plan request is never lost
+  // when the email relay is off or fails.
+  console.log(`[platform] ${subject}${(lines || []).length ? `\n  ${(lines || []).join("\n  ")}` : ""}`);
   const to = String(process.env.PLATFORM_EMAIL || process.env.ALERT_EMAIL || "").trim();
   if (!to) return;
   const origin = String(process.env.ALERT_ORIGIN || "https://aibeaty.pages.dev").replace(/\/+$/, "");
@@ -67,14 +70,40 @@ const PUBLIC_EXACT_PATHS = new Set([
 // until someone deliberately writes it down here.
 const PUBLIC_ASSISTANT_PATHS = new Set([
   "/api/assistant/health",
-  "/api/assistant/chat"
+  "/api/assistant/chat",
+  // The web chat fetches the salon team's answers for ITS OWN session (the
+  // random web-<uuid> id is the key; Telegram session ids are refused).
+  "/api/assistant/updates"
 ]);
+
+// /c/<slug> → the salon's chat page. Public: it is what clients scan.
+const SHORT_CHAT_RE = /^\/c\/([a-z0-9][a-z0-9-]{0,79})\/?$/;
+
+// The Luminous Core demo screens. A self-serve salon never sees them (their
+// numbers, names and trends are the demo salon's fixtures): the owner gets
+// their Bookings screen instead. The demo salon keeps them all.
+const DEMO_SCREENS = new Set([
+  "/screens/salon-performance-luminous-core.html",
+  "/screens/stylist-schedule-luminous-core.html",
+  "/screens/services-pricing-luminous-core.html",
+  "/screens/client-directory-luminous-core.html",
+  "/screens/automations-marketing-luminous-core.html",
+  "/screens/inventory-management-luminous-core.html",
+  "/screens/digest.html",
+  "/index.html"
+]);
+const BOOKINGS_SCREEN = "/screens/bookings.html";
 
 function isPublicPath(pathname) {
   if (PUBLIC_ASSISTANT_PATHS.has(pathname)) return true;
   // Telegram calls this for every salon bot; each request is authenticated by
   // the per-bot secret header inside tenancy.handleTelegramUpdate.
   if (/^\/api\/telegram\/hook\/\d+$/.test(pathname)) return true;
+  // Stripe calls this; each request is authenticated by its signature inside
+  // tenancy.handleStripeWebhook (and it answers 404 until Stripe is configured).
+  if (pathname === "/api/billing/stripe-webhook") return true;
+  // The short chat link a salon prints and puts in its Instagram bio.
+  if (SHORT_CHAT_RE.test(pathname)) return true;
   if (pathname.startsWith("/api/auth/")) return true;
   if (PUBLIC_EXACT_PATHS.has(pathname)) return true;
   // Stylesheets are the login page's only asset dependency and carry no salon data.
@@ -138,6 +167,20 @@ function sendNotFound(response, message) {
 
 function sendBadRequest(response, message) {
   json(response, 400, { error: "bad_request", message });
+}
+
+// Stripe signs the exact bytes it sent, so its webhook reads the raw body.
+function readRawBody(request, limit = 1_000_000) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    request.on("data", (chunk) => {
+      size += chunk.length;
+      if (size <= limit) chunks.push(chunk);
+    });
+    request.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    request.on("error", reject);
+  });
 }
 
 function parseRequestBody(request) {
@@ -594,17 +637,22 @@ async function handleApiMutation(request, requestUrl, response) {
   const messageMatch = pathname.match(/^\/api\/platform\/inbox\/conversations\/([^/]+)\/messages$/);
   if (messageMatch && request.method === "POST") {
     const conversationId = decodeURIComponent(messageMatch[1]);
-    const result = scope.createConversationMessage(conversationId, body);
+    const staffReply = body.type !== "incoming" && body.type !== "system";
+    const messageId = staffReply ? `message-staff-${require("crypto").randomBytes(6).toString("hex")}` : undefined;
+    const result = scope.createConversationMessage(conversationId, staffReply ? Object.assign({}, body, { author: "staff", id: messageId }) : body);
     if (!result) return sendNotFound(response, `Unknown conversation: ${conversationId}`);
     if (result.error) return sendBadRequest(response, result.error);
-    // Staff replied manually in an assistant thread → human takeover, Maya goes silent.
-    // Scoped to the session's salon like every other conversation action here.
-    if (body.type !== "incoming" && body.type !== "system") {
-      assistant.noteStaffMessage(conversationId, request.salonSlug);
+    // Staff replied manually in an assistant thread → human takeover, Maya goes
+    // silent, and the answer goes to the client's own chat (Telegram now, the
+    // web chat on its next poll). Scoped to the session's salon.
+    let delivery = null;
+    if (staffReply) {
+      delivery = await tenancy.sendStaffReply(request.salonSlug, conversationId, String(body.text || ""), { existingMessageId: messageId });
     }
     return json(response, 201, {
       ok: true,
       action: "conversation_message_created",
+      delivery: delivery ? { status: delivery.delivery, note: delivery.note, channel: delivery.channel } : undefined,
       conversationId: result,
       conversation: scope.getInboxPage().conversations.find((conversation) => conversation.id === result),
       page: scope.getInboxPage(),
@@ -688,7 +736,10 @@ async function handleAssistantRoutes(request, requestUrl, response) {
       salon: salon.name,
       salonSlug: salon.slug,
       city: salon.city,
-      timezone: salon.timezone
+      timezone: salon.timezone,
+      // The salon's first three services with the price as the owner wrote it,
+      // for the chat's greeting (public prices, nothing private).
+      highlights: tenancy.highlights(salon.slug)
     };
     if (request.session) {
       payload.model = llm.model;
@@ -728,16 +779,30 @@ async function handleAssistantRoutes(request, requestUrl, response) {
     // The salon's own signed-in owner may test Maya before launch.
     const viewer = auth.readSession(request);
     const preview = Boolean(viewer && viewer.salonSlug === salonSlug);
+    // Trusted-proxy client IP (Cloudflare/nginx sits in front): a per-IP key the
+    // attacker cannot rotate the way they can rotate body.sessionId. Powers the
+    // per-IP chat throttle and the per-visitor booking quota in the assistant.
+    const clientKey = String(request.headers["x-forwarded-for"] || "").split(",")[0].trim()
+      || (request.socket && request.socket.remoteAddress) || "";
     const result = await tenancy.chat(salonSlug, {
       sessionId: body.sessionId,
       message: body.message,
       channel: body.channel,
-      clientPhone: body.clientPhone
+      clientPhone: body.clientPhone,
+      // Browser/UI language: a fallback only; Maya answers in the language
+      // the client writes in.
+      languageHint: typeof body.language === "string" ? body.language.slice(0, 12) : "",
+      clientKey
     }, { preview });
     if (result.error === "unknown_salon") return jsonCors(request, response, 404, result);
     if (result.error === "bad_request") return jsonCors(request, response, 400, result);
     if (result.error === "rate_limited") return jsonCors(request, response, 429, result);
     return jsonCors(request, response, 200, result);
+  }
+
+  if (request.method === "GET" && pathname === "/api/assistant/updates") {
+    const salonSlug = String(requestUrl.searchParams.get("salon") || store.DEFAULT_SALON_SLUG);
+    return jsonCors(request, response, 200, tenancy.webUpdates(salonSlug, requestUrl.searchParams.get("sessionId"), requestUrl.searchParams.get("after")));
   }
 
   const takeoverMatch = pathname.match(/^\/api\/assistant\/conversations\/([^/]+)\/takeover$/);
@@ -904,12 +969,18 @@ async function handleSetupRoutes(request, requestUrl, response) {
     return json(response, 200, {
       salon: { slug, name: record.name },
       tenant: tenant
-        ? { plan: tenant.plan, trialEndsAt: tenant.trialEndsAt, trialDaysLeft: tenant.trialDaysLeft, active: tenant.active, setupComplete: tenant.setupComplete, launched: tenant.launched, live: tenant.live, businessType: tenant.businessType, language }
+        ? { plan: tenant.plan, planStatus: tenant.planStatus, trialEndsAt: tenant.trialEndsAt, trialDaysLeft: tenant.trialDaysLeft, active: tenant.active, setupComplete: tenant.setupComplete, launched: tenant.launched, live: tenant.live, businessType: tenant.businessType, language }
         : null,
       setup: tenant ? tenant.setup : null,
       telegram: tenancy.telegramStatus(slug),
       addons: tenancy.listAddons(slug, language),
+      plan: tenant ? tenancy.planView(slug, language) : null,
+      owner: { name: (request.session && request.session.displayName) || "" },
       chatUrl: `/screens/chat.html?salon=${encodeURIComponent(slug)}`,
+      publicChatUrl: `${tenancy.publicBase}/screens/chat.html?salon=${encodeURIComponent(slug)}`,
+      // The link clients use: what goes in the Instagram bio and the QR code.
+      shortChatUrl: `${tenancy.publicBase}/c/${encodeURIComponent(slug)}`,
+      ownerEmail: (request.session && request.session.email) || "",
       widgetSnippet: `<script>window.AIBEATY_API_BASE = "${tenancy.publicBase}"; window.AIBEATY_SALON = "${slug}";</script>\n<script src="${tenancy.publicBase}/assistant-widget.js" defer></script>`
     });
   }
@@ -923,6 +994,28 @@ async function handleSetupRoutes(request, requestUrl, response) {
     if (!body) return json(response, 400, { error: "bad_request" });
     const result = tenancy.saveSetup(slug, body.setup || body, { language });
     return json(response, result.ok ? 200 : 422, result);
+  }
+
+  if (pathname === "/api/setup/language" && request.method === "PUT") {
+    const body = await readBody();
+    if (!body) return json(response, 400, { error: "bad_request" });
+    return json(response, 200, { ok: true, language: tenancy.setLanguage(slug, body.language) });
+  }
+
+  if (pathname === "/api/setup/plan" && request.method === "GET") {
+    return json(response, 200, tenancy.planView(slug, language));
+  }
+
+  if (pathname === "/api/setup/plan" && request.method === "POST") {
+    const body = await readBody();
+    if (!body) return json(response, 400, { error: "bad_request" });
+    const result = await tenancy.requestPlan(slug, body, { language });
+    return json(response, result.status || (result.ok ? 200 : 422), result);
+  }
+
+  // "Reset test chat" in the wizard: the owner's test bookings go with it.
+  if (pathname === "/api/setup/test-chat/reset" && request.method === "POST") {
+    return json(response, 200, tenancy.resetTestChat(slug));
   }
 
   if (pathname === "/api/setup/launch" && request.method === "POST") {
@@ -962,6 +1055,95 @@ async function handleSetupRoutes(request, requestUrl, response) {
   }
 
   return json(response, 404, { error: "not_found", message: `Unknown setup endpoint: ${pathname}` });
+}
+
+// The owner's Bookings screen (screens/bookings.html): the next 14 days of
+// real appointments, cancel one (the client is told where they booked), and
+// busy blocks Maya respects. enforceAuth pinned request.salonSlug.
+async function handleBookingsRoutes(request, requestUrl, response) {
+  const pathname = requestUrl.pathname;
+  const slug = request.salonSlug;
+  if (!request.session || request.session.role !== "owner") {
+    return json(response, 403, { error: "forbidden", message: "Only the salon owner can see bookings." });
+  }
+  if (!tenancy.getTenant(slug)) {
+    return json(response, 409, { error: "not_self_serve", message: "This salon is managed by the AIbeaty team." });
+  }
+  const readBody = async () => {
+    try {
+      return await parseRequestBody(request);
+    } catch (error) {
+      return null;
+    }
+  };
+  if (pathname === "/api/bookings" && request.method === "GET") {
+    const days = Number(requestUrl.searchParams.get("days") || 14);
+    const includeTests = requestUrl.searchParams.get("tests") === "1";
+    return json(response, 200, tenancy.bookingsView(slug, { days, includeTests }));
+  }
+  if (pathname === "/api/bookings/blocks" && request.method === "GET") {
+    return json(response, 200, { blocks: tenancy.listBlocks(slug) });
+  }
+  if (pathname === "/api/bookings/blocks" && request.method === "POST") {
+    const body = await readBody();
+    if (!body) return json(response, 400, { error: "bad_request" });
+    const result = tenancy.addBlock(slug, body);
+    return json(response, result.status || (result.ok ? 201 : 422), result);
+  }
+  const blockMatch = pathname.match(/^\/api\/bookings\/blocks\/([^/]+)$/);
+  if (blockMatch && request.method === "DELETE") {
+    const result = tenancy.removeBlock(slug, decodeURIComponent(blockMatch[1]));
+    return json(response, result.ok ? 200 : 404, result);
+  }
+  const cancelMatch = pathname.match(/^\/api\/bookings\/([^/]+)\/cancel$/);
+  if (cancelMatch && request.method === "POST") {
+    const body = (await readBody()) || {};
+    const result = await tenancy.cancelBooking(slug, decodeURIComponent(cancelMatch[1]), { reason: body.reason });
+    return json(response, result.status || (result.ok ? 200 : 422), result);
+  }
+  return json(response, 404, { error: "not_found", message: `Unknown bookings endpoint: ${pathname}` });
+}
+
+// The owner's inbox (screens/inbox.html): read threads, answer a client, hand
+// a thread back to Maya. enforceAuth pinned request.salonSlug to the session.
+async function handleInboxRoutes(request, requestUrl, response) {
+  const pathname = requestUrl.pathname;
+  const slug = request.salonSlug;
+  if (pathname === "/api/inbox" && request.method === "GET") {
+    const view = tenancy.inboxView(slug);
+    if (!view) return json(response, 404, { error: "unknown_salon" });
+    const session = request.session || {};
+    return json(response, 200, Object.assign(view, {
+      owner: { displayName: session.displayName || "", email: session.email || "", role: session.role || "" }
+    }));
+  }
+  const replyMatch = pathname.match(/^\/api\/inbox\/conversations\/([^/]+)\/reply$/);
+  if (replyMatch && request.method === "POST") {
+    let body = {};
+    try {
+      body = await parseRequestBody(request);
+    } catch (error) {
+      return json(response, 400, { error: "bad_request" });
+    }
+    const text = String(body.text || "").trim().slice(0, 4000);
+    if (!text) return json(response, 400, { error: "empty", message: "Write a message first." });
+    const result = await tenancy.sendStaffReply(slug, decodeURIComponent(replyMatch[1]), text);
+    if (!result.ok) return json(response, result.error === "not_found" ? 404 : 400, result);
+    return json(response, 201, result);
+  }
+  const mayaMatch = pathname.match(/^\/api\/inbox\/conversations\/([^/]+)\/maya$/);
+  if (mayaMatch && request.method === "POST") {
+    let body = {};
+    try {
+      body = await parseRequestBody(request);
+    } catch (error) {
+      return json(response, 400, { error: "bad_request" });
+    }
+    const result = assistant.setTakeover(decodeURIComponent(mayaMatch[1]), !body.active, slug);
+    if (!result) return json(response, 404, { error: "not_found" });
+    return json(response, 200, Object.assign({ ok: true }, result));
+  }
+  return json(response, 404, { error: "not_found", message: `Unknown inbox endpoint: ${pathname}` });
 }
 
 // The gate. Everything that is not explicitly public needs a session, and a session
@@ -1008,6 +1190,19 @@ async function requestHandler(request, response) {
     return;
   }
 
+  const shortChat = requestUrl.pathname.match(SHORT_CHAT_RE);
+  if (shortChat && request.method === "GET") {
+    const known = store.getSalonRecord(shortChat[1]);
+    if (!known) {
+      response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+      response.end("No salon at this link. Check the address with the salon.");
+      return;
+    }
+    response.writeHead(302, { Location: `/screens/chat.html?salon=${encodeURIComponent(shortChat[1])}`, "Cache-Control": "no-cache" });
+    response.end();
+    return;
+  }
+
   if (!enforceAuth(request, requestUrl, response)) return;
 
   const hookMatch = requestUrl.pathname.match(/^\/api\/telegram\/hook\/(\d+)$/);
@@ -1025,6 +1220,13 @@ async function requestHandler(request, response) {
     return;
   }
 
+  if (requestUrl.pathname === "/api/billing/stripe-webhook") {
+    if (request.method !== "POST") return json(response, 405, { error: "method_not_allowed" });
+    const raw = await readRawBody(request);
+    const outcome = tenancy.handleStripeWebhook(raw, request.headers["stripe-signature"]);
+    return json(response, outcome.status, outcome.body);
+  }
+
   if (requestUrl.pathname.startsWith("/api/setup")) {
     await handleSetupRoutes(request, requestUrl, response);
     return;
@@ -1032,6 +1234,34 @@ async function requestHandler(request, response) {
 
   if (requestUrl.pathname.startsWith("/api/assistant")) {
     await handleAssistantRoutes(request, requestUrl, response);
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/bookings" || requestUrl.pathname.startsWith("/api/bookings/")) {
+    await handleBookingsRoutes(request, requestUrl, response);
+    return;
+  }
+
+  // A self-serve salon's owner never lands on a demo screen: those show the
+  // demo salon's fixtures. Their Bookings screen is the home instead.
+  if (request.method === "GET" && DEMO_SCREENS.has(requestUrl.pathname) &&
+      request.session && tenancy.getTenant(request.session.salonSlug)) {
+    response.writeHead(302, { Location: BOOKINGS_SCREEN, "Cache-Control": "no-store" });
+    response.end();
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/inbox" || requestUrl.pathname.startsWith("/api/inbox/")) {
+    await handleInboxRoutes(request, requestUrl, response);
+    return;
+  }
+
+  // A self-serve salon's owner gets their own inbox (real threads only, their
+  // language, phone layout) at the address every alert links to. The demo
+  // salon keeps the Luminous Core console.
+  if (request.method === "GET" && requestUrl.pathname === "/screens/unified-inbox-luminous-core.html" &&
+      request.session && tenancy.getTenant(request.session.salonSlug)) {
+    serveFile(new URL(`/screens/inbox.html${requestUrl.search || ""}`, requestUrl), response);
     return;
   }
 
@@ -1062,7 +1292,10 @@ async function requestHandler(request, response) {
   // (/index.html still serves the self-contained launcher page.)
   if (requestUrl.pathname === "/") {
     const tenant = request.session ? tenancy.getTenant(request.session.salonSlug) : null;
-    const home = tenant && !tenant.setupComplete ? "/screens/setup.html" : "/screens/salon-performance-luminous-core.html";
+    // Self-serve: launched → Bookings, not launched yet → the setup wizard.
+    const home = tenant
+      ? (tenant.launched ? BOOKINGS_SCREEN : "/screens/setup.html")
+      : "/screens/salon-performance-luminous-core.html";
     response.writeHead(302, { Location: home });
     response.end();
     return;

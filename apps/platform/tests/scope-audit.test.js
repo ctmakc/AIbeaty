@@ -166,8 +166,10 @@ if (!gateBody) {
   publicFailures.push("  isPublicPath() opens /api/assistant by PREFIX — every route under it becomes public. Use the exact-match allowlist.");
 }
 
-// The allowlist itself: exactly the two endpoints a salon's guest needs.
-const ALLOWED_PUBLIC_ASSISTANT = ["/api/assistant/health", "/api/assistant/chat"];
+// The allowlist itself: exactly the endpoints a salon's guest needs. `updates`
+// (2026-09-18) returns only the salon team's answers in the caller's OWN web
+// chat session, keyed by that chat's random id; Telegram session ids are refused.
+const ALLOWED_PUBLIC_ASSISTANT = ["/api/assistant/health", "/api/assistant/chat", "/api/assistant/updates"];
 const allowlist = /const PUBLIC_ASSISTANT_PATHS = new Set\(\[([\s\S]*?)\]\)/.exec(serverSource);
 if (!allowlist) {
   publicFailures.push("  PUBLIC_ASSISTANT_PATHS allowlist not found in server.js");

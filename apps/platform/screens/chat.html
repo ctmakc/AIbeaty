@@ -116,6 +116,16 @@
   .intro h2 { font-family: var(--font-headline); font-weight: 800; font-size: 18px; margin: 0 0 6px; letter-spacing: -0.01em; }
   .intro p { font-size: 13px; color: var(--on-surface-variant); line-height: 1.55; margin: 0 auto; max-width: 34ch; }
   .intro .hint { font-size: 12px; margin-top: 14px; color: var(--on-surface-variant); }
+  /* The salon's own first services, so a guest (and the owner testing) sees
+     real prices before typing anything. Ledger rows, like the owner's wizard. */
+  .intro .menu { list-style: none; margin: 14px auto 0; padding: 0; max-width: 300px; text-align: left; border-top: 1px solid var(--surface-variant); }
+  .intro .menu li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 2px; border-bottom: 1px solid var(--surface-variant); font-size: 13px; }
+  .intro .menu li span:first-child { color: var(--on-surface); font-weight: 600; }
+  .intro .menu li span:last-child { color: var(--on-surface-variant); text-align: right; }
+  .intro .menu-h { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--on-surface-variant); margin-top: 12px; }
+  .intro .menu-wrap { margin-bottom: 12px; }
+  body.embed .intro { padding: 12px 10px; }
+  body.embed .intro .avatar { width: 44px; height: 44px; font-size: 19px; margin-bottom: 8px; }
 
   .msg { display: flex; gap: 8px; margin-bottom: 10px; align-items: flex-end; }
   .msg .mini {
@@ -123,6 +133,9 @@
     color: #fff; font-family: var(--font-headline); font-weight: 800; font-size: 12px;
     display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
+  /* A person from the salon answered: a quiet neutral disc instead of Maya's. */
+  .msg .mini.team { background: var(--surface-container); color: var(--on-surface-variant); }
+  .msg .mini.team .material-symbols-outlined { font-size: 15px; }
   .msg .stack { display: flex; flex-direction: column; gap: 3px; max-width: 82%; }
   .bubble {
     padding: 10px 14px; font-size: 14px; line-height: 1.45; white-space: pre-wrap;
@@ -261,7 +274,7 @@
       </div>
       <button id="send" aria-label="Отправить"><span class="material-symbols-outlined icon-fill" style="font-size:20px">send</span></button>
     </footer>
-    <div class="disclaimer">Майя — ИИ-ассистент. Запись подтверждается в системе салона.</div>
+    <div class="disclaimer">Майя — ИИ-ассистент салона. Позвать человека можно в любой момент.</div>
   </div>
 </div>
 
@@ -290,7 +303,7 @@
 
   // --- UI locale (AIBEATY_L10N) ---
   // Maya mirrors the language of the guest's messages; the chrome follows the
-  // browser: ru → Russian (source markup), uk → Ukrainian, anything else → English.
+  // browser (or ?lang= on the link): fr, ru, uk, anything else → English.
   // Labels, placeholders, quick chips and error states only — no layout, no logic.
   var AIBEATY_L10N = {
     ru: {
@@ -304,6 +317,8 @@
       introTitle: "Майя на связи",
       introText: "Запись, цены, перенос визита — отвечаю сразу, в любое время. Я ИИ‑ассистент салона, и в любой момент можно позвать человека.",
       introHint: "Выберите вопрос или напишите своё сообщение",
+      menuTitle: "Несколько услуг",
+      consult: "По консультации",
       typingAria: "Майя печатает",
       chipsAria: "Быстрые вопросы",
       chips: [
@@ -315,12 +330,13 @@
       placeholder: "Напишите сообщение…",
       inputAria: "Сообщение для Майи",
       sendAria: "Отправить",
-      disclaimer: "Майя — ИИ-ассистент. Запись подтверждается в системе салона.",
+      disclaimer: "Майя — ИИ-ассистент салона. Позвать человека можно в любой момент.",
       metaName: "Майя",
       errRate: "Слишком много сообщений подряд — подождите минутку и попробуйте снова.",
       errTeam: "Диалог у команды салона — вам ответят прямо здесь.",
       errFail: "Майя отошла на минутку — попробуйте ещё раз.",
-      retry: "Повторить"
+      retry: "Повторить",
+      teamName: "Команда салона"
     },
     uk: {
       title: "Майя — чат із салоном",
@@ -333,6 +349,8 @@
       introTitle: "Майя на зв’язку",
       introText: "Запис, ціни, перенесення візиту — відповідаю одразу, будь-коли. Я ШІ‑асистент салону, і будь-якої миті можна покликати людину.",
       introHint: "Оберіть питання або напишіть своє повідомлення",
+      menuTitle: "Кілька послуг",
+      consult: "За консультацією",
       typingAria: "Майя друкує",
       chipsAria: "Швидкі питання",
       chips: [
@@ -344,12 +362,45 @@
       placeholder: "Напишіть повідомлення…",
       inputAria: "Повідомлення для Майї",
       sendAria: "Надіслати",
-      disclaimer: "Майя — ШІ-асистент. Запис підтверджується в системі салону.",
+      disclaimer: "Майя — ШІ-асистент салону. Покликати людину можна будь-якої миті.",
       metaName: "Майя",
       errRate: "Забагато повідомлень поспіль — зачекайте хвилинку і спробуйте ще раз.",
       errTeam: "Діалог у команди салону — вам дадуть відповідь просто тут.",
       errFail: "Майя відійшла на хвилинку — спробуйте ще раз.",
-      retry: "Повторити"
+      retry: "Повторити",
+      teamName: "Команда салону"
+    },
+    fr: {
+      title: "Maya — clavardage du salon",
+      name: "Maya",
+      sub: "Assistante IA du salon",
+      subPrefix: "Assistante IA · ",
+      restartTitle: "Recommencer",
+      restartAria: "Recommencer la conversation",
+      closeTitle: "Réduire le chat",
+      introTitle: "Maya est là",
+      introText: "Réservation, prix, changement de rendez-vous : je réponds tout de suite, à toute heure. Je suis l’assistante IA du salon, et vous pouvez demander une personne en tout temps.",
+      introHint: "Choisissez une question ou écrivez votre message",
+      menuTitle: "Quelques services",
+      consult: "Sur consultation",
+      typingAria: "Maya écrit",
+      chipsAria: "Questions rapides",
+      chips: [
+        { label: "Réserver", say: "Bonjour! J’aimerais prendre rendez-vous." },
+        { label: "Prix", say: "Pouvez-vous me donner vos prix, s’il vous plaît?" },
+        { label: "Déplacer un rendez-vous", say: "J’aimerais déplacer mon rendez-vous." },
+        { label: "Parler à une personne", say: "Puis-je parler à une personne, s’il vous plaît?" }
+      ],
+      placeholder: "Écrivez un message…",
+      inputAria: "Message pour Maya",
+      sendAria: "Envoyer",
+      disclaimer: "Maya est l’assistante IA du salon. Vous pouvez demander une personne en tout temps.",
+      metaName: "Maya",
+      errRate: "Trop de messages d’affilée — attendez une minute et réessayez.",
+      errTeam: "L’équipe du salon a pris le relais. Elle vous répondra ici dès que possible.",
+      errFail: "Maya s’est absentée une minute — réessayez, s’il vous plaît.",
+      retry: "Réessayer",
+      teamName: "Équipe du salon"
     },
     en: {
       title: "Maya — salon chat",
@@ -362,6 +413,8 @@
       introTitle: "Maya is here",
       introText: "Booking, prices, rescheduling — I reply right away, any time. I’m the salon’s AI assistant, and you can ask for a human at any moment.",
       introHint: "Pick a question or type your own message",
+      menuTitle: "A few of our services",
+      consult: "By consultation",
       typingAria: "Maya is typing",
       chipsAria: "Quick questions",
       chips: [
@@ -373,21 +426,29 @@
       placeholder: "Type a message…",
       inputAria: "Message for Maya",
       sendAria: "Send",
-      disclaimer: "Maya is an AI assistant. Bookings are confirmed in the salon’s system.",
+      disclaimer: "Maya is the salon’s AI assistant. You can ask for a person at any time.",
       metaName: "Maya",
       errRate: "Too many messages in a row — give it a minute and try again.",
-      errTeam: "The salon team has this conversation — they will reply right here.",
+      errTeam: "The salon team has this conversation. They will reply here as soon as they can.",
       errFail: "Maya stepped away for a minute — please try again.",
-      retry: "Retry"
+      retry: "Retry",
+      teamName: "Salon team"
     }
   };
+  // Chrome language: ?lang= on the salon's chat link, else the browser.
+  // English and French by default; Russian/Ukrainian only for ru/uk browsers.
+  // Maya herself always answers in the language the client writes in.
+  var BROWSER_LANG = "";
+  try { BROWSER_LANG = String(navigator.language || (navigator.languages && navigator.languages[0]) || ""); } catch (e) {}
   var LOCALE = (function () {
-    var raw = "";
-    try { raw = String(navigator.language || (navigator.languages && navigator.languages[0]) || ""); } catch (e) {}
-    raw = raw.toLowerCase();
+    var forced = "";
+    try { forced = String(new URLSearchParams(location.search).get("lang") || "").toLowerCase().slice(0, 2); } catch (e) {}
+    if (AIBEATY_L10N[forced]) return forced;
+    var raw = BROWSER_LANG.toLowerCase();
     if (raw.indexOf("ru") === 0) return "ru";
     if (raw.indexOf("uk") === 0) return "uk";
-    return raw ? "en" : "ru";
+    if (raw.indexOf("fr") === 0) return "fr";
+    return "en";
   })();
   var T = AIBEATY_L10N[LOCALE];
 
@@ -475,6 +536,9 @@
     if (entry.k === "out") {
       return el('<div class="msg out' + cls + '"><div class="stack"><div class="bubble">' + esc(entry.t) + '</div><span class="meta">' + esc(timeLabel(entry.ts)) + "</span></div></div>");
     }
+    if (entry.k === "team") {
+      return el('<div class="msg in' + cls + '"><div class="mini team" aria-hidden="true"><span class="material-symbols-outlined">person</span></div><div class="stack"><div class="bubble">' + esc(entry.t) + '</div><span class="meta">' + esc(T.teamName || "Salon team") + " · " + esc(timeLabel(entry.ts)) + "</span></div></div>");
+    }
     return el('<div class="msg in' + cls + '"><div class="mini" aria-hidden="true">M</div><div class="stack"><div class="bubble">' + mdInline(entry.t) + '</div><span class="meta">' + esc(T.metaName) + " · " + esc(timeLabel(entry.ts)) + "</span></div></div>");
   }
   function append(entry, animate) {
@@ -495,6 +559,17 @@
   // --- salon name in the header ---
   fetch(API_BASE + "/api/assistant/health" + (SALON ? "?salon=" + encodeURIComponent(SALON) : "")).then(function (r) { return r.json(); }).then(function (data) {
     if (data && data.salon) document.getElementById("sub").textContent = T.subPrefix + data.salon;
+    // The salon's first three services with their prices, word for word.
+    var menu = (data && data.highlights) || [];
+    if (menu.length && intro.parentNode) {
+      var hint = intro.querySelector("p");
+      var block = document.createElement("div");
+      block.className = "menu-wrap";
+      block.innerHTML = '<div class="menu-h">' + esc(T.menuTitle) + '</div><ul class="menu">' + menu.map(function (item) {
+        return "<li><span>" + esc(item.name) + "</span><span>" + esc(item.consultOnly || !item.price ? T.consult : item.price) + "</span></li>";
+      }).join("") + "</ul>";
+      intro.insertBefore(block, hint);
+    }
   }).catch(function () {});
 
   // --- conversation ---
@@ -520,7 +595,7 @@
     fetch(API_BASE + "/api/assistant/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: sessionId, message: text, channel: "Webchat", salon: SALON || undefined })
+      body: JSON.stringify({ sessionId: sessionId, message: text, channel: "Webchat", salon: SALON || undefined, language: LOCALE !== "en" ? LOCALE : (BROWSER_LANG || "en") })
     }).then(function (response) {
       return response.json().then(function (data) { return { status: response.status, data: data }; });
     }).then(function (result) {
@@ -532,10 +607,14 @@
         }
         if (result.status >= 400 || data.error) { fail(text); return; }
         if (data.reply === null) {
-          append({ k: "sys", t: T.errTeam });
+          // Only once: a paused Maya answers every message with null.
+          var lastEntry = log[log.length - 2];
+          if (!(lastEntry && lastEntry.k === "sys" && lastEntry.t === T.errTeam)) append({ k: "sys", t: T.errTeam });
+          pollTeam();
           return;
         }
         append({ k: "in", t: String(data.reply || ""), ts: Date.now() });
+        pollTeam();
       });
     }).catch(function () {
       finish(function () { fail(text); });
@@ -566,6 +645,36 @@
     });
   }
 
+  // --- answers from the salon team ---
+  // When a person from the salon answers in the owner's inbox, the chat shows
+  // it on the next check: every 10 s while the page is visible, and right
+  // after each of Maya's replies. The cursor survives a reload.
+  var TEAM_KEY = "aibeaty.chat.team" + (SALON ? "." + SALON : "");
+  var teamAfter = store.get(TEAM_KEY) || "";
+  var polling = false;
+  function pollTeam() {
+    if (polling) return;
+    polling = true;
+    var url = API_BASE + "/api/assistant/updates?sessionId=" + encodeURIComponent(sessionId) +
+      (SALON ? "&salon=" + encodeURIComponent(SALON) : "") + (teamAfter ? "&after=" + encodeURIComponent(teamAfter) : "");
+    fetch(url).then(function (r) { return r.json(); }).then(function (data) {
+      (data && data.messages || []).forEach(function (message) {
+        var known = log.some(function (entry) { return entry.id === message.id; });
+        teamAfter = message.createdAt;
+        if (!known) append({ k: "team", t: String(message.text || ""), ts: Date.parse(message.createdAt) || Date.now(), id: message.id });
+      });
+      if (teamAfter) store.set(TEAM_KEY, teamAfter);
+    }).catch(function () {}).then(function () { polling = false; });
+  }
+  // Only a chat that has started a conversation can have answers waiting.
+  setInterval(function () {
+    if (log.length && document.visibilityState === "visible") pollTeam();
+  }, 10000);
+  if (log.length) pollTeam();
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && log.length) pollTeam();
+  });
+
   // --- composer ---
   function autosize() {
     input.style.height = "auto";
@@ -587,6 +696,7 @@
   document.getElementById("restart").addEventListener("click", function () {
     store.del(LOG_KEY);
     store.del(SESSION_KEY);
+    store.del(TEAM_KEY);
     location.reload();
   });
   document.getElementById("close").addEventListener("click", function () {

@@ -30,7 +30,7 @@
 
   // --- UI locale (AIBEATY_L10N) ---
   // Maya mirrors the language of the guest's messages; the widget chrome follows
-  // the browser: ru → Russian, uk → Ukrainian, anything else → English.
+  // the browser: fr → French, ru → Russian, uk → Ukrainian, anything else → English.
   // Labels and the teaser only — no layout, no logic.
   var AIBEATY_L10N = {
     ru: {
@@ -53,6 +53,13 @@
       minimize: "Minimize Maya chat",
       teaser: "Have a question? Maya is online and replies right away.",
       hideTeaser: "Dismiss hint"
+    },
+    fr: {
+      panel: "Clavardage avec Maya, l’assistante du salon",
+      open: "Ouvrir le clavardage avec Maya, l’assistante du salon",
+      minimize: "Réduire le clavardage avec Maya",
+      teaser: "Une question? Maya est en ligne et répond tout de suite.",
+      hideTeaser: "Masquer le message"
     }
   };
   var LOCALE = (function () {
@@ -61,7 +68,8 @@
     raw = raw.toLowerCase();
     if (raw.indexOf("ru") === 0) return "ru";
     if (raw.indexOf("uk") === 0) return "uk";
-    return raw ? "en" : "ru";
+    if (raw.indexOf("fr") === 0) return "fr";
+    return "en";
   })();
   var T = AIBEATY_L10N[LOCALE];
 

@@ -17,9 +17,12 @@
 // → tenancy.attachAssistant(assistant). The assistant needs the hooks at build
 // time and tenancy needs the assistant to answer messages.
 
+const mayaLanguage = require("./maya-language");
 const crypto = require("node:crypto");
 const dns = require("node:dns").promises;
 const net = require("node:net");
+const billing = require("./billing");
+const mayaRules = require("./maya-rules");
 
 const TRIAL_DAYS = Number(process.env.TRIAL_DAYS) || 14;
 const TRIAL_TURNS_CAP = Number(process.env.TRIAL_DAILY_TURNS_CAP) || 150;
@@ -29,27 +32,255 @@ const EXTRACT_MAX_CHARS = 24000;
 const SITE_MAX_BYTES = 1_500_000;
 const TG_MAX_MESSAGE = 4096;
 
-const BUSINESS_TYPES = ["hair", "nails", "lashes_brows", "barber", "spa", "multi"];
+const BUSINESS_TYPES = ["hair", "nails", "lashes_brows", "barber", "spa", "medspa", "multi"];
+// UI languages. English and French for everyone; Russian is offered only to a
+// browser that asks for ru/uk. Maya herself answers in the CLIENT's language.
+const LANGUAGES = ["en", "fr", "ru"];
+function normalizeLanguage(value) {
+  const code = String(value || "").toLowerCase().slice(0, 2);
+  if (code === "uk") return "ru";
+  return LANGUAGES.includes(code) ? code : "en";
+}
+function pick(language, texts) {
+  return texts[language] !== undefined ? texts[language] : texts.en;
+}
 const WEEKDAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const RESERVED_SLUGS = new Set(["luminous-core", "admin", "api", "app", "www", "demo", "signup", "login", "setup", "screens"]);
 
 // Paid extras. `auto: true` means the owner switches it on in the wizard with no
 // human involved; the rest are requested and we come back with a quote. Prices
 // are deliberately absent: nobody has set them yet.
+// Paid prices live in backend/billing.js (owner decision 2026-09-18); the
+// `price` here is only copied from there for the add-ons that have one.
 const ADDONS = [
-  { key: "telegram", auto: true, title: { en: "Telegram bot", ru: "Telegram-бот" } },
-  { key: "website_widget", auto: true, title: { en: "Chat on your website", ru: "Чат на вашем сайте" } },
-  { key: "owner_alerts", auto: true, title: { en: "Bookings and alerts in your Telegram", ru: "Записи и тревоги в ваш Telegram" } },
-  { key: "instagram_dm", auto: false, title: { en: "Instagram Direct", ru: "Instagram Direct" } },
-  { key: "facebook_messenger", auto: false, title: { en: "Facebook Messenger", ru: "Facebook Messenger" } },
-  { key: "whatsapp", auto: false, title: { en: "WhatsApp", ru: "WhatsApp" } },
-  { key: "sms_reminders", auto: false, title: { en: "SMS reminders before visits", ru: "SMS-напоминания перед визитом" } },
-  { key: "calendar_sync", auto: false, title: { en: "Sync with Square / Fresha / Vagaro / Google Calendar", ru: "Синхронизация с Square / Fresha / Vagaro / Google Calendar" } },
-  { key: "google_reviews", auto: false, title: { en: "Replies to Google reviews", ru: "Ответы на отзывы в Google" } },
-  { key: "phone_calls", auto: false, title: { en: "AI answers phone calls", ru: "ИИ отвечает на звонки" } },
-  { key: "done_for_you", auto: false, title: { en: "We set everything up for you", ru: "Настроим всё за вас" } },
-  { key: "continue_after_trial", auto: false, title: { en: "Keep the assistant after the trial", ru: "Оставить ассистента после пробного периода" } }
-];
+  { key: "website_widget", auto: true, title: { en: "Your chat link and website chat", fr: "Votre lien de clavardage et le chat du site", ru: "Ссылка на чат и чат на сайте" } },
+  { key: "telegram", auto: true, title: { en: "Telegram bot (optional)", fr: "Bot Telegram (facultatif)", ru: "Telegram-бот (по желанию)" } },
+  { key: "owner_alerts", auto: true, title: { en: "Bookings and alerts in your Telegram", fr: "Réservations et alertes dans votre Telegram", ru: "Записи и тревоги в ваш Telegram" } },
+  { key: "instagram_dm", auto: false, title: { en: "Instagram Direct", fr: "Instagram Direct", ru: "Instagram Direct" } },
+  { key: "whatsapp", auto: false, title: { en: "WhatsApp", fr: "WhatsApp", ru: "WhatsApp" } },
+  { key: "calendar_sync", auto: false, title: { en: "Calendar sync (Google Calendar / Square / Booksy / Fresha / Vagaro)", fr: "Synchronisation d’agenda (Google Agenda / Square / Booksy / Fresha / Vagaro)", ru: "Синхронизация календаря (Google Calendar / Square / Booksy / Fresha / Vagaro)" } },
+  { key: "sms_reminders", auto: false, title: { en: "SMS reminders (up to 300 SMS)", fr: "Rappels par SMS (jusqu’à 300 SMS)", ru: "SMS-напоминания (до 300 SMS)" } },
+  { key: "done_for_you", auto: false, title: { en: "We set it up for you (free during the trial)", fr: "Nous configurons tout pour vous (gratuit pendant l’essai)", ru: "Настроим всё за вас (бесплатно в пробный период)" } },
+  { key: "facebook_messenger", auto: false, later: true, title: { en: "Facebook Messenger", fr: "Facebook Messenger", ru: "Facebook Messenger" } },
+  { key: "google_reviews", auto: false, later: true, title: { en: "Replies to Google reviews", fr: "Réponses aux avis Google", ru: "Ответы на отзывы в Google" } },
+  { key: "phone_calls", auto: false, later: true, title: { en: "AI answers phone calls", fr: "L’IA répond aux appels", ru: "ИИ отвечает на звонки" } },
+  { key: "continue_after_trial", auto: false, later: true, title: { en: "Keep the assistant after the trial", fr: "Garder l’assistante après l’essai", ru: "Оставить ассистента после пробного периода" } }
+].map((addon) => {
+  const paid = billing.addonByKey(addon.key);
+  return paid ? Object.assign({ price: paid.price }, addon) : addon;
+});
+
+// ---------------------------------------------------------------------------
+// Owner alerts: one readable Telegram message per event, in the owner's own
+// UI language (tenant.language), with no internal codes.
+// ---------------------------------------------------------------------------
+
+const OWNER_LANGS = ["en", "fr", "ru"];
+const LOCALE_OF = { en: "en-CA", fr: "fr-CA", ru: "ru-RU" };
+// Two attention alerts (needs a human / Maya's note) about one conversation
+// within this window are one alert: the owner already knows to look.
+const ATTENTION_QUIET_MS = 60 * 1000;
+
+function ownerLang(tenant) {
+  const lang = String((tenant && tenant.language) || "en").slice(0, 2).toLowerCase();
+  if (lang === "uk") return "ru";
+  return OWNER_LANGS.includes(lang) ? lang : "en";
+}
+
+function isMedspa(tenant) {
+  return /^(medspa|clinic|medical)/.test(String((tenant && tenant.businessType) || ""));
+}
+
+// "Web client 1a2b", "Telegram client 1a2b" and the legacy "Веб-гость 1a2b"
+// are placeholders, not names.
+const GENERIC_NAME_RE = /^(web client|telegram client|веб-гость|client web|client telegram|веб-клиент|telegram-клиент)(\s|$)/i;
+// store.createConversation fills a new thread's implicit client with these
+// placeholders; they are not contact details and never reach an owner.
+function realPhone(value) {
+  const text = String(value || "").trim();
+  return text && text !== "(555) 000-0000" ? text : "";
+}
+
+const ALERT_TEXT = {
+  en: {
+    booking: "✅ New booking",
+    reschedule: "🔁 Booking moved",
+    cancellation: "❌ Booking cancelled",
+    escalation: (name) => `🔔 ${name} needs a person`,
+    ownerMessage: (name) => `✉️ ${name} is waiting for your answer`,
+    with: (stylist) => `with ${stylist}`,
+    reasons: {
+      explicit_request: "They asked to talk to a person.",
+      medical: "Health or skin question. Maya does not answer these.",
+      complaint: "They are unhappy about a visit.",
+      price_dispute: "They are unhappy about a price.",
+      frustration: "They sound frustrated.",
+      repeated_misunderstanding: "Maya did not understand them twice.",
+      assistant_requested: "Maya passed the conversation to you.",
+      owner_message: "Maya passed the conversation to you."
+    },
+    topics: {
+      price_guard: "Maya was about to quote a price that is not on your list, so she held back and asked them to wait for you.",
+      booking_gate: "Maya could not confirm the booking in the calendar. Please confirm it yourself.",
+      empty_reply: "Maya could not answer this message.",
+      llm_error: "Maya could not answer this message.",
+      reschedule_failed: "Maya could not move this booking. Please move it yourself.",
+      daily_cap: "Maya reached today's message limit and took a note for you."
+    },
+    medicalHidden: "Medical question. Open the conversation to read it.",
+    textHidden: "Open the conversation to read the message.",
+    said: "They wrote",
+    replyHint: (name) => `↩️ Reply to this message and your answer goes to ${name}.`,
+    webHint: (name) => `↩️ Reply to this message: ${name} sees your answer when they open the chat again.`,
+    open: "Open the conversation",
+    test: "Test chat",
+    waiting: (name, count) => count > 1 ? `💬 ${name} wrote again (${count} new messages)` : `💬 ${name} wrote again`,
+    waitingNote: "Maya is paused in this conversation, so only you can answer. The client was told the team will reply here. To let Maya answer again, open the conversation and press Let Maya continue.",
+    lastMessage: "Latest",
+    usage: (threshold, turns, cap) => threshold >= 100
+      ? `⛔ Maya used all of today's ${cap} replies. Clients get a polite note and their messages wait for you in the inbox. The count resets at midnight.`
+      : `⚠️ Maya used ${threshold}% of today's replies (${turns} of ${cap}).`
+  },
+  fr: {
+    booking: "✅ Nouveau rendez-vous",
+    reschedule: "🔁 Rendez-vous déplacé",
+    cancellation: "❌ Rendez-vous annulé",
+    escalation: (name) => `🔔 ${name} veut parler à quelqu'un`,
+    ownerMessage: (name) => `✉️ ${name} attend votre réponse`,
+    with: (stylist) => `avec ${stylist}`,
+    reasons: {
+      explicit_request: "La personne a demandé à parler à quelqu'un.",
+      medical: "Question de santé ou de peau. Maya n'y répond pas.",
+      complaint: "La personne n'est pas satisfaite d'une visite.",
+      price_dispute: "La personne n'est pas d'accord avec un prix.",
+      frustration: "La personne semble agacée.",
+      repeated_misunderstanding: "Maya ne l'a pas comprise deux fois de suite.",
+      assistant_requested: "Maya vous a transmis la conversation.",
+      owner_message: "Maya vous a transmis la conversation."
+    },
+    topics: {
+      price_guard: "Maya allait donner un prix absent de votre liste. Elle s'est retenue et a demandé à la personne d'attendre votre réponse.",
+      booking_gate: "Maya n'a pas pu confirmer le rendez-vous dans l'agenda. Confirmez-le vous-même.",
+      empty_reply: "Maya n'a pas pu répondre à ce message.",
+      llm_error: "Maya n'a pas pu répondre à ce message.",
+      reschedule_failed: "Maya n'a pas pu déplacer ce rendez-vous. Déplacez-le vous-même.",
+      daily_cap: "Maya a atteint la limite de messages du jour et a pris une note pour vous."
+    },
+    medicalHidden: "Question médicale. Ouvrez la conversation pour la lire.",
+    textHidden: "Ouvrez la conversation pour lire le message.",
+    said: "Message",
+    colon: "\u00a0: ",
+    replyHint: (name) => `↩️ Répondez à ce message et votre réponse ira à ${name}.`,
+    webHint: (name) => `↩️ Répondez à ce message : ${name} verra votre réponse en rouvrant le clavardage.`,
+    open: "Ouvrir la conversation",
+    test: "Clavardage test",
+    waiting: (name, count) => count > 1 ? `💬 ${name} a écrit de nouveau (${count} nouveaux messages)` : `💬 ${name} a écrit de nouveau`,
+    waitingNote: "Maya est en pause dans cette conversation : vous seule pouvez répondre. La personne sait que l'équipe lui répondra ici. Pour que Maya reprenne, ouvrez la conversation et appuyez sur Laisser Maya continuer.",
+    lastMessage: "Dernier message",
+    usage: (threshold, turns, cap) => threshold >= 100
+      ? `⛔ Maya a utilisé les ${cap} réponses du jour. Les clients reçoivent un mot poli et leurs messages vous attendent dans la boîte de réception. Le compteur repart à minuit.`
+      : `⚠️ Maya a utilisé ${threshold} % des réponses du jour (${turns} sur ${cap}).`
+  },
+  ru: {
+    booking: "✅ Новая запись",
+    reschedule: "🔁 Запись перенесена",
+    cancellation: "❌ Запись отменена",
+    escalation: (name) => `🔔 ${name}: нужен человек`,
+    ownerMessage: (name) => `✉️ ${name} ждёт вашего ответа`,
+    with: (stylist) => `мастер ${stylist}`,
+    reasons: {
+      explicit_request: "Клиент попросил живого человека.",
+      medical: "Вопрос о здоровье или коже. Майя на такие не отвечает.",
+      complaint: "Клиент недоволен визитом.",
+      price_dispute: "Клиент недоволен ценой.",
+      frustration: "Клиент раздражён.",
+      repeated_misunderstanding: "Майя дважды не поняла клиента.",
+      assistant_requested: "Майя передала разговор вам.",
+      owner_message: "Майя передала разговор вам."
+    },
+    topics: {
+      price_guard: "Майя чуть не назвала цену, которой нет в вашем прайсе. Она остановилась и попросила клиента дождаться вашего ответа.",
+      booking_gate: "Майя не смогла подтвердить запись в календаре. Подтвердите её сами.",
+      empty_reply: "Майя не смогла ответить на это сообщение.",
+      llm_error: "Майя не смогла ответить на это сообщение.",
+      reschedule_failed: "Майя не смогла перенести запись. Перенесите её сами.",
+      daily_cap: "У Майи закончился дневной лимит сообщений, она записала вопрос для вас."
+    },
+    medicalHidden: "Медицинский вопрос. Откройте переписку, чтобы прочитать.",
+    textHidden: "Откройте переписку, чтобы прочитать сообщение.",
+    said: "Клиент пишет",
+    replyHint: (name) => `↩️ Ответьте на это сообщение, и ваш ответ уйдёт клиенту ${name}.`,
+    webHint: (name) => `↩️ Ответьте на это сообщение: ${name} увидит ответ, когда снова откроет чат.`,
+    open: "Открыть переписку",
+    test: "Тестовый чат",
+    waiting: (name, count) => count > 1 ? `💬 ${name} снова пишет (новых сообщений: ${count})` : `💬 ${name} снова пишет`,
+    waitingNote: "Майя в этой переписке на паузе, ответить можете только вы. Клиенту сказано, что команда ответит здесь. Чтобы Майя снова отвечала, откройте переписку и нажмите «Пусть Майя продолжит».",
+    lastMessage: "Последнее",
+    usage: (threshold, turns, cap) => threshold >= 100
+      ? `⛔ Майя израсходовала все ${cap} ответов на сегодня. Клиенты получают вежливую заглушку, их сообщения ждут вас во входящих. Счётчик обнулится в полночь.`
+      : `⚠️ Майя израсходовала ${threshold}% дневных ответов (${turns} из ${cap}).`
+  }
+};
+
+const OWNER_CHAT_TEXT = {
+  en: {
+    linked: (chatLink) => `Done. New bookings, changes, cancellations and clients who need a person will arrive here.\n\nTo answer a client, reply to their alert (swipe left on it, or long-press and choose Reply). I'll send your answer to the client.\n\nMaya does not answer in this chat, because it is yours. To try her as a client, open your test chat while signed in: ${chatLink}`,
+    help: (inbox, chatLink) => `This chat is for your alerts, so Maya does not answer here.\n\n• To answer a client, reply to their alert (swipe left on it, or long-press and choose Reply) and type your message. I'll send it to the client.\n• All conversations: ${inbox}\n• To try Maya as a client, open your test chat while signed in: ${chatLink}`,
+    unknownAlert: (inbox) => `I can't tell which client that message belongs to. Reply to an alert about a client, or answer from the inbox: ${inbox}`,
+    textOnly: "Only text can be forwarded to a client for now.",
+    sent: (name) => `✓ Sent to ${name}.`,
+    waiting: (name) => `✓ Saved. ${name} sees it when they open the chat again.`,
+    failed: (name, inbox) => `Your answer did not reach ${name}: Telegram refused it. It is saved in the inbox: ${inbox}`
+  },
+  fr: {
+    linked: (chatLink) => `C'est fait. Les nouveaux rendez-vous, changements, annulations et les clients qui veulent parler à quelqu'un arriveront ici.\n\nPour répondre à un client, répondez à son alerte (glissez-la vers la gauche, ou appui long puis Répondre). J'envoie votre réponse au client.\n\nMaya ne répond pas dans ce clavardage, il est à vous. Pour l'essayer comme un client, ouvrez votre clavardage test en étant connecté : ${chatLink}`,
+    help: (inbox, chatLink) => `Ce clavardage sert à vos alertes, Maya n'y répond donc pas.\n\n• Pour répondre à un client, répondez à son alerte (glissez-la vers la gauche, ou appui long puis Répondre) et écrivez votre message. Je l'envoie au client.\n• Toutes les conversations : ${inbox}\n• Pour essayer Maya comme un client, ouvrez votre clavardage test en étant connecté : ${chatLink}`,
+    unknownAlert: (inbox) => `Je ne sais pas à quel client ce message s'adresse. Répondez à une alerte sur un client, ou répondez depuis la boîte de réception : ${inbox}`,
+    textOnly: "Pour l'instant, seul le texte peut être transmis à un client.",
+    sent: (name) => `✓ Envoyé à ${name}.`,
+    waiting: (name) => `✓ Enregistré. ${name} le verra en rouvrant le clavardage.`,
+    failed: (name, inbox) => `Votre réponse n'a pas pu être livrée à ${name} : Telegram l'a refusée. Elle est enregistrée dans la boîte de réception : ${inbox}`
+  },
+  ru: {
+    linked: (chatLink) => `Готово. Сюда будут приходить новые записи, переносы, отмены и клиенты, которым нужен человек.\n\nЧтобы ответить клиенту, ответьте на его уведомление (смахните его влево или нажмите и удерживайте → «Ответить»). Я перешлю ваш ответ клиенту.\n\nМайя в этом чате не отвечает: он ваш. Чтобы проверить её как клиент, откройте тестовый чат, войдя в кабинет: ${chatLink}`,
+    help: (inbox, chatLink) => `Этот чат для ваших уведомлений, поэтому Майя здесь не отвечает.\n\n• Чтобы ответить клиенту, ответьте на его уведомление (смахните влево или нажмите и удерживайте → «Ответить») и напишите текст. Я перешлю его клиенту.\n• Все переписки: ${inbox}\n• Проверить Майю как клиент: откройте тестовый чат, войдя в кабинет: ${chatLink}`,
+    unknownAlert: (inbox) => `Не понимаю, какому клиенту это сообщение. Ответьте на уведомление о клиенте или напишите из входящих: ${inbox}`,
+    textOnly: "Пока клиенту можно переслать только текст.",
+    sent: (name) => `✓ Отправлено: ${name}.`,
+    waiting: (name) => `✓ Сохранено. ${name} увидит ответ, когда снова откроет чат.`,
+    failed: (name, inbox) => `Ответ не дошёл до клиента ${name}: Telegram его не принял. Он сохранён во входящих: ${inbox}`
+  }
+};
+
+function formatAlertDate(isoDate, lang) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(isoDate || ""))) return "";
+  try {
+    return new Intl.DateTimeFormat(LOCALE_OF[lang] || "en-CA", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" })
+      .format(new Date(`${isoDate}T12:00:00Z`));
+  } catch (error) {
+    return isoDate;
+  }
+}
+
+function formatAlertTime(minutes, lang) {
+  if (!Number.isFinite(Number(minutes))) return "";
+  const hour = Math.floor(Number(minutes) / 60);
+  const minute = String(Number(minutes) % 60).padStart(2, "0");
+  if (lang === "fr") return `${hour} h ${minute}`;
+  if (lang === "ru") return `${hour}:${minute}`;
+  return `${((hour + 11) % 12) + 1}:${minute} ${hour < 12 ? "AM" : "PM"}`;
+}
+
+function localGenericName(name, lang) {
+  const tail = String(name || "").replace(GENERIC_NAME_RE, "").trim();
+  const telegram = /telegram/i.test(String(name || ""));
+  const label = {
+    en: telegram ? "Telegram client" : "Web client",
+    fr: telegram ? "Client Telegram" : "Client web",
+    ru: telegram ? "Клиент из Telegram" : "Клиент с сайта"
+  }[lang] || (telegram ? "Telegram client" : "Web client");
+  return tail ? `${label} ${tail}` : label;
+}
 
 function nowIso(clock) {
   return clock().toISOString();
@@ -98,10 +329,37 @@ function parseHours(value) {
 }
 
 function parsePrice(value) {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  const digits = String(value || "").replace(/[^\d.,]/g, "").replace(",", ".");
-  const parsed = Number.parseFloat(digits);
-  return Number.isFinite(parsed) ? parsed : null;
+  const parsed = parsePriceText(value);
+  return parsed.ok ? parsed.value : null;
+}
+
+// Owners write prices the way they say them. Every one of these is accepted and
+// quoted to clients word for word:
+//   "$65"  "65"  "from $75"  "$75+"  "$220–$320"  "+$15"  "$5/nail"  "Free"
+//   "Complimentary"  "By consultation"  "Price on request"  "Gratuit"  "Sur consultation"
+// Returns { ok, kind, value } where value is the lowest amount (0 for free and
+// consultation) — what the quote guard checks the model's numbers against.
+const PRICE_FREE_RE = /^(free|complimentary|no charge|gratuit|gratuite|offert|offerte|бесплатно|безкоштовно|безплатно)[.!]?$/i;
+const PRICE_CONSULT_RE = /(consult|on request|upon request|price on request|quote|ask us|call us|sur demande|sur devis|devis|по консультации|по запросу|консультац|за запитом)/i;
+const PRICE_MAX_CHARS = 60;
+
+function parsePriceText(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return { ok: value >= 0, kind: "fixed", value };
+  const text = String(value === undefined || value === null ? "" : value).replace(/\s+/g, " ").trim();
+  if (!text) return { ok: false, kind: "empty", value: null };
+  const numbers = (text.match(/\d+(?:[.,]\d{1,2})?/g) || []).map((raw) => Number.parseFloat(raw.replace(",", ".")));
+  if (numbers.length) {
+    const lower = text.toLowerCase();
+    let kind = "fixed";
+    if (numbers.length >= 2 && /\d\s*\$?\s*(?:-|–|—|to|à|до|-)\s*\$?\s*\d/i.test(text)) kind = "range";
+    else if (/^(from|starting|starts|à partir|a partir|dès|des |от|від)/i.test(lower) || /\d\s*\$?\s*\+$/.test(text)) kind = "from";
+    else if (/^\+/.test(text)) kind = "addon";
+    else if (/\/|\bper\b|\beach\b|\bpar\b|за\s/i.test(lower)) kind = "per_unit";
+    return { ok: true, kind, value: Math.min.apply(null, numbers) };
+  }
+  if (PRICE_FREE_RE.test(text)) return { ok: true, kind: "free", value: 0 };
+  if (PRICE_CONSULT_RE.test(text)) return { ok: true, kind: "consult", value: 0 };
+  return { ok: false, kind: "unclear", value: null };
 }
 
 function cleanText(value, max = 300) {
@@ -112,7 +370,28 @@ function cleanText(value, max = 300) {
 // setup document: shape, validation, conversion to what the store expects
 // ---------------------------------------------------------------------------
 
+// Starter "topics we do not discuss" for a medspa / clinic. The owner can edit
+// them in step 4; medical questions always go to a person.
+const MEDSPA_FORBIDDEN = {
+  en: "Medical advice, dosing and units for a specific person, pregnancy or breastfeeding, medications and health conditions, diagnosing skin or health problems",
+  fr: "Conseils médicaux, doses et unités pour une personne précise, grossesse ou allaitement, médicaments et problèmes de santé, diagnostic de la peau ou de la santé",
+  ru: "Медицинские советы, дозировки и единицы для конкретного человека, беременность и кормление грудью, лекарства и болезни, диагнозы кожи и здоровья"
+};
+const OWNER_ROLE = { en: "Owner", fr: "Propriétaire", ru: "Владелец" };
+const DEFAULT_HOURS = { sun: "closed", mon: "closed", tue: "10:00-19:00", wed: "10:00-19:00", thu: "10:00-19:00", fri: "10:00-19:00", sat: "10:00-17:00" };
+
+function openDaysOf(hours) {
+  return WEEKDAYS.filter((day) => {
+    const parsed = parseHours(hours[day]);
+    return parsed && !parsed.error;
+  });
+}
+
 function emptySetup(signup = {}) {
+  const language = normalizeLanguage(signup.language);
+  const medspa = signup.businessType === "medspa";
+  const hours = Object.assign({}, DEFAULT_HOURS);
+  const ownerName = cleanText(signup.ownerName, 60);
   return {
     salon: {
       name: cleanText(signup.salonName, 120),
@@ -123,11 +402,13 @@ function emptySetup(signup = {}) {
       instagram: "",
       timezone: signup.timezone || "America/Toronto"
     },
-    hours: { sun: "closed", mon: "closed", tue: "10:00-19:00", wed: "10:00-19:00", thu: "10:00-19:00", fri: "10:00-19:00", sat: "10:00-17:00" },
+    hours,
     services: [],
-    staff: [],
+    // The owner is almost always the first person who does the work: a solo
+    // owner should not have to add herself.
+    staff: ownerName ? [{ name: ownerName, role: pick(language, OWNER_ROLE), services: [], workDays: openDaysOf(hours) }] : [],
     faq: { parking: "", payment: "", cancellation: "", deposit: "", late: "", custom: [] },
-    assistant: { forbidden: "" }
+    assistant: { forbidden: medspa ? pick(language, MEDSPA_FORBIDDEN) : "", healthPrivacy: medspa }
   };
 }
 
@@ -145,8 +426,11 @@ function normalizeSetup(input) {
     name: cleanText(service && service.name, 90),
     category: cleanText(service && service.category, 60),
     durationMinutes: Math.round(Number(service && service.durationMinutes) || 0),
-    price: cleanText(service && service.price, 30),
+    price: cleanText(service && service.price, PRICE_MAX_CHARS),
     deposit: Boolean(service && service.deposit),
+    // "Consultation only": Maya never quotes a price for it and hands the
+    // client to the team.
+    consultOnly: Boolean(service && service.consultOnly),
     keywords: (Array.isArray(service && service.keywords) ? service.keywords : String((service && service.keywords) || "").split(","))
       .map((word) => cleanText(word, 40))
       .filter(Boolean)
@@ -185,7 +469,12 @@ function normalizeSetup(input) {
     services,
     staff,
     faq,
-    assistant: { forbidden: cleanText(doc.assistant && doc.assistant.forbidden, 400) }
+    assistant: {
+      forbidden: cleanText(doc.assistant && doc.assistant.forbidden, 400),
+      // Medspa / clinic: health details stay out of Telegram alerts and
+      // medical questions always go to a person.
+      healthPrivacy: Boolean(doc.assistant && doc.assistant.healthPrivacy)
+    }
   };
 }
 
@@ -200,11 +489,30 @@ const MESSAGES = {
     serviceName: (index) => `Service #${index} has no name.`,
     serviceDup: (name) => `"${name}" is listed twice. Keep one, or give them different names.`,
     duration: (name) => `Set how many minutes "${name}" takes. The assistant needs it to find free time.`,
-    price: (name, value) => `The price of "${name}" is unclear: "${value}". Write a number, like 65 or "from $110".`,
+    price: (name, value) => (value
+      ? `We can't read the price of "${name}": "${value}". Write it like 65, from $75, $220–$320, +$15, $5/nail, Free or By consultation.`
+      : `Add a price for "${name}", like 65, from $75, $220–$320, Free or By consultation. Or tick "Consultation only".`),
     noStaff: "Add at least one person who does the work, even if it is only you.",
     staffDup: (name) => `"${name}" is listed twice.`,
     staffService: (member, service) => `${member} does "${service}", but there is no service with that name. Pick it from your list.`,
     staffNoDays: (member) => `${member} has no working days. The assistant will not offer their time.`
+  },
+  fr: {
+    name: "Indiquez le nom de votre salon.",
+    timezone: (zone) => `Le fuseau horaire « ${zone} » n’est pas reconnu. Choisissez-en un dans la liste.`,
+    hours: (day, value) => `Les heures du ${day} semblent incorrectes : « ${value} ». Écrivez-les ainsi : 10:00-19:00, ou choisissez « fermé ».`,
+    noOpenDay: "Indiquez au moins un jour d’ouverture, sinon personne ne peut réserver.",
+    noServices: "Ajoutez au moins un service pour que l’assistante ait quelque chose à réserver.",
+    serviceName: (index) => `Le service no ${index} n’a pas de nom.`,
+    serviceDup: (name) => `« ${name} » apparaît deux fois. Gardez-en un ou donnez-leur des noms différents.`,
+    duration: (name) => `Indiquez combien de minutes dure « ${name} ». L’assistante en a besoin pour trouver un créneau.`,
+    price: (name, value) => (value
+      ? `Le prix de « ${name} » est illisible : « ${value} ». Écrivez par exemple 65, à partir de 75 $, 220–320 $, +15 $, 5 $/ongle, Gratuit ou Sur consultation.`
+      : `Ajoutez un prix pour « ${name} », par exemple 65, à partir de 75 $, 220–320 $, Gratuit ou Sur consultation. Ou cochez « Sur consultation seulement ».`),
+    noStaff: "Ajoutez au moins une personne qui fait le travail, même si c’est seulement vous.",
+    staffDup: (name) => `« ${name} » apparaît deux fois.`,
+    staffService: (member, service) => `${member} fait « ${service} », mais aucun service ne porte ce nom. Choisissez-le dans votre liste.`,
+    staffNoDays: (member) => `${member} n’a aucun jour de travail. L’assistante ne proposera pas ses disponibilités.`
   },
   ru: {
     name: "Впишите название салона.",
@@ -215,7 +523,9 @@ const MESSAGES = {
     serviceName: (index) => `У услуги №${index} нет названия.`,
     serviceDup: (name) => `«${name}» указана дважды. Оставьте одну или назовите по-разному.`,
     duration: (name) => `Укажите, сколько минут длится «${name}». Без этого ассистент не найдёт свободное время.`,
-    price: (name, value) => `Не понятна цена «${name}»: «${value}». Напишите числом, например 65 или «от $110».`,
+    price: (name, value) => (value
+      ? `Не получается прочитать цену «${name}»: «${value}». Пишите так: 65, от $75, $220–$320, +$15, $5/ноготь, Бесплатно или По консультации.`
+      : `Укажите цену «${name}», например 65, от $75, $220–$320, Бесплатно или По консультации. Или отметьте «Только консультация».`),
     noStaff: "Добавьте хотя бы одного мастера, пусть даже это вы.",
     staffDup: (name) => `«${name}» указан дважды.`,
     staffService: (member, service) => `У мастера ${member} стоит услуга «${service}», а такой услуги нет в списке. Выберите её из списка.`,
@@ -225,8 +535,47 @@ const MESSAGES = {
 
 const DAY_NAMES = {
   en: { sun: "Sunday", mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday" },
+  fr: { sun: "dimanche", mon: "lundi", tue: "mardi", wed: "mercredi", thu: "jeudi", fri: "vendredi", sat: "samedi" },
   ru: { sun: "воскресенье", mon: "понедельник", tue: "вторник", wed: "среду", thu: "четверг", fri: "пятницу", sat: "субботу" }
 };
+
+// Client-facing lines the tenancy layer sends itself (outside Maya), in the
+// client's language: en, fr, ru, uk.
+const CLIENT_TEXT = {
+  settingUp: {
+    en: "This salon's assistant is still being set up. Please contact the salon directly for now.",
+    fr: "L'assistante de ce salon est encore en préparation. Pour l'instant, contactez directement le salon.",
+    ru: "Ассистент этого салона ещё настраивается. Пожалуйста, свяжитесь с салоном напрямую.",
+    uk: "Асистент цього салону ще налаштовується. Будь ласка, зв'яжіться із салоном напряму."
+  },
+  paused: {
+    en: "The salon's online assistant is paused right now. Please contact the salon directly.",
+    fr: "L'assistante en ligne du salon est en pause pour le moment. Contactez directement le salon.",
+    ru: "Онлайн-ассистент салона сейчас на паузе. Пожалуйста, свяжитесь с салоном напрямую.",
+    uk: "Онлайн-асистент салону зараз на паузі. Будь ласка, зв'яжіться із салоном напряму."
+  },
+  shareNumber: { en: "📱 Share my number", fr: "📱 Partager mon numéro", ru: "📱 Поделиться номером", uk: "📱 Поділитися номером" },
+  myPhone: { en: "My phone number is {phone}", fr: "Mon numéro de téléphone : {phone}", ru: "Мой номер телефона: {phone}", uk: "Мій номер телефону: {phone}" },
+  textOnly: {
+    en: "I can only read text for now. Please type your message.",
+    fr: "Pour l'instant, je lis seulement le texte. Écrivez-moi votre message, s'il vous plaît.",
+    ru: "Пока я читаю только текст. Напишите, пожалуйста, сообщением.",
+    uk: "Поки що я читаю лише текст. Напишіть, будь ласка, повідомленням."
+  },
+  slowDown: { en: "That was fast 🙂 Give me a minute.", fr: "C'était rapide 🙂 Laissez-moi une minute.", ru: "Слишком быстро 🙂 Подождите минутку.", uk: "Занадто швидко 🙂 Зачекайте хвилинку." }
+};
+
+function pickText(pack, lang) {
+  return pack[lang] || pack.en;
+}
+
+// The client's language for tenancy-level lines: the message text first,
+// then the app/browser language code, then English.
+function clientLanguage(text, languageCode) {
+  const detected = mayaLanguage.detectMessageLanguage(text);
+  if (detected.language && (detected.confident || !mayaLanguage.normalizeLanguageCode(languageCode))) return detected.language;
+  return mayaLanguage.normalizeLanguageCode(languageCode) || detected.language || "en";
+}
 
 function validateSetup(doc, language = "en") {
   const t = MESSAGES[language] || MESSAGES.en;
@@ -257,7 +606,7 @@ function validateSetup(doc, language = "en") {
     if (serviceNames.has(key)) add(`services.${index}.name`, t.serviceDup(service.name));
     serviceNames.add(key);
     if (!(service.durationMinutes > 0 && service.durationMinutes <= 720)) add(`services.${index}.durationMinutes`, t.duration(service.name));
-    if (parsePrice(service.price) === null) add(`services.${index}.price`, t.price(service.name, service.price));
+    if (!service.consultOnly && !parsePriceText(service.price).ok) add(`services.${index}.price`, t.price(service.name, service.price));
   });
 
   if (!doc.staff.length) add("staff", t.noStaff);
@@ -286,16 +635,22 @@ function setupToStore(doc) {
   doc.services.forEach((service) => {
     const category = service.category || "Services";
     if (!byCategory.has(category)) byCategory.set(category, []);
-    const priceValue = parsePrice(service.price) || 0;
+    const parsed = parsePriceText(service.price);
+    const priceValue = service.consultOnly ? 0 : (parsed.ok ? parsed.value : 0);
     byCategory.get(category).push({
       name: service.name,
       durationMinutes: service.durationMinutes || 60,
       priceValue,
-      // The owner's own wording ("from $110") is what the assistant quotes;
-      // priceValue is what the quote guard checks against.
-      priceLabel: /[^\d.,\s$]/.test(service.price) ? service.price : `$${priceValue.toFixed(2)}`,
+      // The owner's own wording ("from $110", "$220–$320", "Free") is what the
+      // assistant quotes; priceValue is what the quote guard checks against.
+      // A consultation-only service never carries a number to quote.
+      priceLabel: service.consultOnly
+        ? "By consultation"
+        : /[^\d.,\s$]/.test(service.price) ? service.price : `$${priceValue.toFixed(2)}`,
       requiresDeposit: service.deposit,
-      description: service.note || `${service.name} — ${category}.`,
+      description: service.consultOnly
+        ? `${service.note ? `${service.note} ` : ""}Consultation only: do not quote a price; offer a consultation or hand the client to the team.`
+        : service.note || `${service.name} — ${category}.`,
       keywords: service.keywords
     });
   });
@@ -346,7 +701,14 @@ function setupToStore(doc) {
   }
   push("late_policy", doc.faq.late);
   doc.faq.custom.forEach((entry, index) => push(`custom_${index + 1}`, entry.q ? `${entry.q} — ${entry.a}` : entry.a));
+  const consultOnly = doc.services.filter((service) => service.consultOnly).map((service) => service.name);
+  if (consultOnly.length) {
+    push("consultation_only", `Consultation only, never quote a price for: ${consultOnly.join(", ")}. Offer a consultation or pass the client to the salon team.`);
+  }
   if (doc.assistant.forbidden) push("forbidden_topics", `Topics we do not discuss: ${doc.assistant.forbidden}.`);
+  if (doc.assistant.healthPrivacy) {
+    push("medical_questions", "Medical questions (health conditions, medications, pregnancy or breastfeeding, dosing, side effects, whether a treatment is safe for someone) always go to a person on the salon team. Do not answer them yourself.");
+  }
 
   return { hours, categories, staff, topics };
 }
@@ -402,7 +764,7 @@ function htmlToText(html) {
 
 // ---------------------------------------------------------------------------
 
-function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, publicBaseUrl, platformNotify, secret } = {}) {
+function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, publicBaseUrl, platformNotify, secret, alertDelayMs } = {}) {
   const db = store.db;
   const http = fetchImpl || ((...args) => fetch(...args));
   const PUBLIC_BASE = String(publicBaseUrl || process.env.PUBLIC_BASE_URL || "https://aibeaty.remolda.com").replace(/\/+$/, "");
@@ -410,6 +772,13 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
   const notifyPlatform = typeof platformNotify === "function" ? platformNotify : () => {};
   let assistant = null;
   const signupAttempts = new Map();
+  // Events about one conversation that land within this window become one
+  // Telegram message (a booking plus Maya's note about it, a handoff plus its
+  // reason). Env override for tests.
+  const delayCandidate = Number(alertDelayMs !== undefined ? alertDelayMs : process.env.OWNER_ALERT_DELAY_MS);
+  const ALERT_DELAY_MS = Number.isFinite(delayCandidate) && delayCandidate >= 0 ? delayCandidate : 1500;
+  const alertQueue = new Map();      // `${slug}|${conversationId}` → { events, timer }
+  const lastAttentionAt = new Map(); // `${slug}|${conversationId}` → ms
 
   // Bot tokens are encrypted with a key derived from the session secret, so a
   // copied database file alone does not hand out the salons' bots.
@@ -472,6 +841,8 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
   if (!db.prepare(`PRAGMA table_info(tenants)`).all().some((column) => column.name === "notices_json")) {
     db.exec(`ALTER TABLE tenants ADD COLUMN notices_json TEXT NOT NULL DEFAULT '{}'`);
   }
+  // Plan choice and payment state (backend/billing.js).
+  billing.ensureBillingSchema(db);
   // One row per Telegram booking: the evening before the visit, the client
   // gets a reminder in the same chat. Cuts no-shows, needs nothing from the owner.
   db.exec(`
@@ -485,6 +856,39 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       sent_at TEXT NOT NULL DEFAULT '',
       PRIMARY KEY (salon_slug, appointment_id)
     );
+  `);
+
+  // Every owner alert that is about one conversation: the owner answers a
+  // client by replying to the alert in Telegram, and this map finds the thread.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tenant_alert_messages (
+      salon_slug TEXT NOT NULL,
+      chat_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      conversation_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (salon_slug, chat_id, message_id)
+    );
+    CREATE TABLE IF NOT EXISTS tenant_preview_sessions (
+      salon_slug TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (salon_slug, session_id)
+    );
+    -- Busy time the owner blocked on the Bookings screen: one staff member
+    -- (stylist_id) or the whole salon (stylist_id = ''). Maya never offers or
+    -- books a slot that overlaps one.
+    CREATE TABLE IF NOT EXISTS tenant_busy_blocks (
+      id TEXT PRIMARY KEY,
+      salon_slug TEXT NOT NULL,
+      stylist_id TEXT NOT NULL DEFAULT '',
+      block_date TEXT NOT NULL,
+      start_minutes INTEGER NOT NULL,
+      end_minutes INTEGER NOT NULL,
+      reason TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS tenant_busy_blocks_day ON tenant_busy_blocks (salon_slug, block_date);
   `);
 
   function attachAssistant(instance) {
@@ -502,11 +906,14 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     }
     const trialEnds = new Date(row.trial_ends_at);
     const msLeft = trialEnds.getTime() - clock().getTime();
+    const billingInfo = billing.billingState(row);
     return {
       slug: row.salon_slug,
       plan: row.plan,
+      planStatus: billingInfo.status,
+      billing: billingInfo,
       businessType: row.business_type,
-      language: row.language,
+      language: normalizeLanguage(row.language),
       trialEndsAt: row.trial_ends_at,
       trialDaysLeft: row.plan === "trial" ? Math.max(0, Math.ceil(msLeft / 86400000)) : null,
       active: row.plan !== "trial" || msLeft > 0,
@@ -539,8 +946,8 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
   }
 
   function signup(input, request) {
-    const language = input.language === "ru" ? "ru" : "en";
-    const say = (en, ru) => (language === "ru" ? ru : en);
+    const language = normalizeLanguage(input.language);
+    const say = (en, ru, fr) => pick(language, { en, ru, fr: fr || en });
     const email = String(input.email || "").trim().toLowerCase();
     const password = String(input.password || "");
     const salonName = cleanText(input.salonName, 120);
@@ -549,22 +956,22 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     const ip = auth.clientIp(request);
 
     if (signupRateLimited(ip)) {
-      return { ok: false, status: 429, error: "rate_limited", message: say("Too many sign-ups from this network. Try again in an hour.", "Слишком много регистраций из этой сети. Попробуйте через час.") };
+      return { ok: false, status: 429, error: "rate_limited", message: say("Too many sign-ups from this network. Try again in an hour.", "Слишком много регистраций из этой сети. Попробуйте через час.", "Trop d’inscriptions depuis ce réseau. Réessayez dans une heure.") };
     }
     const fieldErrors = [];
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fieldErrors.push({ field: "email", message: say("Enter a valid email.", "Введите корректный email.") });
-    if (password.length < 10) fieldErrors.push({ field: "password", message: say("Use at least 10 characters.", "Нужно не меньше 10 символов.") });
-    if (!salonName) fieldErrors.push({ field: "salonName", message: say("Enter your salon's name.", "Введите название салона.") });
-    if (!validTimezone(timezone)) fieldErrors.push({ field: "timezone", message: say("Pick your time zone.", "Выберите часовой пояс.") });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fieldErrors.push({ field: "email", message: say("Enter a valid email.", "Введите корректный email.", "Entrez une adresse courriel valide.") });
+    if (password.length < 10) fieldErrors.push({ field: "password", message: say("Use at least 10 characters.", "Нужно не меньше 10 символов.", "Utilisez au moins 10 caractères.") });
+    if (!salonName) fieldErrors.push({ field: "salonName", message: say("Enter your salon's name.", "Введите название салона.", "Entrez le nom de votre salon.") });
+    if (!validTimezone(timezone)) fieldErrors.push({ field: "timezone", message: say("Pick your time zone.", "Выберите часовой пояс.", "Choisissez votre fuseau horaire.") });
     if (fieldErrors.length) return { ok: false, status: 400, error: "invalid", errors: fieldErrors };
     // createOwner upserts by email; without this check a sign-up would take over
     // an existing account.
     if (auth.getOwnerByEmail(email)) {
-      return { ok: false, status: 409, error: "account_exists", errors: [{ field: "email", message: say("This email already has an account. Sign in instead.", "На этот email уже есть аккаунт. Войдите.") }] };
+      return { ok: false, status: 409, error: "account_exists", errors: [{ field: "email", message: say("This email already has an account. Sign in instead.", "На этот email уже есть аккаунт. Войдите.", "Ce courriel a déjà un compte. Connectez-vous plutôt.") }] };
     }
 
     const slug = uniqueSlug(salonName);
-    const setup = emptySetup({ salonName, city: input.city, phone: input.phone, timezone });
+    const setup = emptySetup({ salonName, city: input.city, phone: input.phone, timezone, ownerName: input.ownerName, businessType, language });
     const converted = setupToStore(setup);
     const created = nowIso(clock);
     const trialEnds = new Date(clock().getTime() + TRIAL_DAYS * 86400000).toISOString();
@@ -595,7 +1002,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
 
     notifyPlatform({
       subject: `New AIbeaty trial: ${salonName}`,
-      lines: [`Salon: ${salonName} (${slug})`, `Email: ${email}`, `City: ${setup.salon.city || "—"}`, `Type: ${businessType}`, `Trial ends: ${trialEnds.slice(0, 10)}`]
+      lines: [`Salon: ${salonName} (${slug})`, `Email: ${email}`, `City: ${setup.salon.city || "—"}`, `Type: ${businessType}`, `Language: ${language}`, `Trial ends: ${trialEnds.slice(0, 10)}`]
     });
 
     const login = auth.login({ email, password, request });
@@ -606,7 +1013,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
   function saveSetup(slug, input, { language } = {}) {
     const tenant = getTenant(slug);
     const doc = normalizeSetup(input);
-    const lang = language || (tenant && tenant.language) || "en";
+    const lang = normalizeLanguage(language || (tenant && tenant.language) || "en");
     const { errors, warnings } = validateSetup(doc, lang);
     const complete = errors.length === 0;
     const stamp = nowIso(clock);
@@ -650,6 +1057,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     if (errors.length || !tenant.setupComplete) return { ok: false, error: "incomplete", errors };
     if (!tenant.launched) {
       db.prepare(`UPDATE tenants SET launched_at = ?, updated_at = ? WHERE salon_slug = ?`).run(nowIso(clock), nowIso(clock), slug);
+      clearTestBookings(slug);
       const record = store.getSalonRecord(slug) || {};
       notifyPlatform({
         subject: `AIbeaty: ${record.name || slug} went live`,
@@ -745,29 +1153,36 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
   async function chat(slug, payload, { preview = false } = {}) {
     const tenant = getTenant(slug);
     if (tenant) {
-      const ru = /[а-яёіїє]/i.test(String(payload.message || ""));
+      const lang = clientLanguage(payload.message, payload.languageHint);
       if (!tenant.setupComplete || (!tenant.launched && !preview)) {
         return {
-          reply: ru
-            ? "Ассистент этого салона ещё настраивается. Пожалуйста, свяжитесь с салоном напрямую."
-            : "This salon's assistant is still being set up. Please contact the salon directly for now.",
+          reply: pickText(CLIENT_TEXT.settingUp, lang),
           state: { reason: "setup_incomplete" }
         };
       }
       if (!tenant.active) {
         return {
-          reply: ru
-            ? "Онлайн-ассистент салона сейчас на паузе. Пожалуйста, свяжитесь с салоном напрямую."
-            : "The salon's online assistant is paused right now. Please contact the salon directly.",
+          reply: pickText(CLIENT_TEXT.paused, lang),
           state: { reason: "trial_ended" }
         };
       }
+    }
+    if (tenant && preview && payload.sessionId && !/^tg:/.test(String(payload.sessionId))) {
+      // The owner's own test chats are tagged in the inbox and in alerts.
+      db.prepare(`INSERT OR IGNORE INTO tenant_preview_sessions (salon_slug, session_id, created_at) VALUES (?, ?, ?)`)
+        .run(slug, String(payload.sessionId).slice(0, 120), nowIso(clock));
     }
     return assistant.chat(Object.assign({}, payload, { salon: slug }));
   }
 
   // ---------- hooks for createAssistant ----------
   const hooks = {
+    // Last-resort language for Maya when the client's own message and channel
+    // say nothing (the client's language always wins).
+    languageFor(salonId) {
+      const tenant = getTenant(salonId);
+      return tenant ? tenant.language : "";
+    },
     dailyTurnsCapFor(salonId) {
       const tenant = getTenant(salonId);
       return tenant && tenant.plan === "trial" ? TRIAL_TURNS_CAP : undefined;
@@ -777,16 +1192,55 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     alertEmailFor(salonId) {
       return getTenant(salonId) ? "" : String(process.env.ALERT_EMAIL || "");
     },
+    // Owner-blocked busy time for one salon day ("YYYY-MM-DD"): the whole
+    // salon's blocks plus this staff member's own.
+    busyBlocksFor(salonId, isoDate, stylistId) {
+      return db.prepare(`
+        SELECT start_minutes, end_minutes FROM tenant_busy_blocks
+        WHERE salon_slug = ? AND block_date = ? AND (stylist_id = '' OR stylist_id = ?)
+      `).all(String(salonId || ""), String(isoDate || ""), String(stylistId || ""));
+    },
     onEvent(salonId, type, payload) {
       trackReminder(salonId, type, payload);
-      const text = ownerEventText(salonId, type, payload);
-      if (text) notifyOwner(salonId, text);
+      if (type === "client_waiting") return noteClientWaiting(salonId, payload);
+      queueOwnerAlert(salonId, type, payload);
+    },
+    // The salon owner's own chats with Maya: the wizard preview, the web chat
+    // opened while signed in, and the owner's linked Telegram chat. A handoff
+    // there never locks Maya and bookings there are test bookings.
+    isTestSession(salonId, sessionId) {
+      return isTestSessionId(salonId, sessionId);
     }
   };
 
+  function isTestSessionId(slug, sessionId) {
+    const id = String(sessionId || "");
+    if (!id || !getTenant(slug)) return false;
+    if (db.prepare(`SELECT 1 FROM tenant_preview_sessions WHERE salon_slug = ? AND session_id = ?`).get(slug, id)) return true;
+    const tg = /^tg:(\d+):(-?\d+)$/.exec(id);
+    if (tg) {
+      const row = getTelegram(slug);
+      return Boolean(row && row.bot_id === tg[1] && row.owner_chat_id && row.owner_chat_id === tg[2]);
+    }
+    return false;
+  }
+
+  // Test-chat bookings go when the salon goes live and when the owner resets
+  // the test chat, so they never hold a real client's slot.
+  function clearTestBookings(slug) {
+    const scope = store.forSalon(slug);
+    if (!scope || typeof scope.deleteTestAppointments !== "function") return 0;
+    return scope.deleteTestAppointments();
+  }
+
+  function resetTestChat(slug) {
+    if (!getTenant(slug)) return { ok: false, error: "not_self_serve" };
+    return { ok: true, removedBookings: clearTestBookings(slug) };
+  }
+
   // ---------- client reminders ----------
   function trackReminder(salonId, type, payload) {
-    if (!payload.appointmentId) return;
+    if (!payload.appointmentId || payload.test) return;
     if (type === "cancellation") {
       db.prepare(`DELETE FROM tenant_reminders WHERE salon_slug = ? AND appointment_id = ?`).run(salonId, payload.appointmentId);
       return;
@@ -860,11 +1314,15 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
         continue;
       }
       if (appointment.appt_date !== tomorrow || now.minutes < REMINDER_FROM || now.minutes >= REMINDER_UNTIL) continue;
-      const ru = /^(ru|uk)/.test(row.language);
-      const time = clockLabel(appointment.start_minutes);
-      const text = ru
-        ? `Напоминаем: завтра в ${time} — ${appointment.service_name}${appointment.stylist ? `, мастер ${appointment.stylist}` : ""}, салон «${record.name}».${record.address ? ` Адрес: ${record.address}.` : ""} Если планы изменились, напишите сюда: перенесём или отменим.`
-        : `Reminder: tomorrow at ${time} — ${appointment.service_name}${appointment.stylist ? ` with ${appointment.stylist}` : ""} at ${record.name}.${record.address ? ` Address: ${record.address}.` : ""} If your plans changed, reply here and we'll reschedule or cancel.`;
+      const lang = mayaLanguage.normalizeLanguageCode(row.language) || "en";
+      const time = lang === "en" ? clockLabel(appointment.start_minutes) : `${Math.floor(appointment.start_minutes / 60)}:${String(appointment.start_minutes % 60).padStart(2, "0")}`;
+      const staff = appointment.stylist || "";
+      const text = pickText({
+        en: `Reminder: tomorrow at ${time} — ${appointment.service_name}${staff ? ` with ${staff}` : ""} at ${record.name}.${record.address ? ` Address: ${record.address}.` : ""} If your plans changed, reply here and we'll reschedule or cancel.`,
+        fr: `Rappel : demain à ${time}, ${appointment.service_name}${staff ? ` avec ${staff}` : ""} chez ${record.name}.${record.address ? ` Adresse : ${record.address}.` : ""} Si vos plans ont changé, répondez ici et on déplace ou on annule.`,
+        ru: `Напоминаем: завтра в ${time} — ${appointment.service_name}${staff ? `, мастер ${staff}` : ""}, салон «${record.name}».${record.address ? ` Адрес: ${record.address}.` : ""} Если планы изменились, напишите сюда: перенесём или отменим.`,
+        uk: `Нагадуємо: завтра о ${time} — ${appointment.service_name}${staff ? `, майстер ${staff}` : ""}, салон «${record.name}».${record.address ? ` Адреса: ${record.address}.` : ""} Якщо плани змінилися, напишіть сюди: перенесемо або скасуємо.`
+      }, lang);
       try {
         await sendTelegram(row, row.chat_id, text);
         db.prepare(`UPDATE tenant_reminders SET status = 'sent', sent_at = ? WHERE salon_slug = ? AND appointment_id = ?`).run(nowIso(clock), row.salon_slug, row.appointment_id);
@@ -885,22 +1343,28 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       if (!tenant) return;
       let notices = {};
       try { notices = JSON.parse(row.notices_json || "{}"); } catch (error) { notices = {}; }
-      const ru = tenant.language === "ru";
+      // A salon waiting on its invoice keeps Maya on; no nagging about the trial.
+      if (tenant.planStatus === "pending_payment" && tenant.active) return;
+      const lang = tenant.language;
       const planLink = `${PUBLIC_BASE}/screens/setup.html#7`;
       let key = "";
       let text = "";
       if (!tenant.active && !notices.ended) {
         key = "ended";
-        text = ru
-          ? `Пробный период закончился, и Майя поставлена на паузу для клиентов. Чтобы продолжить, нажмите «Оставить ассистента» здесь: ${planLink}`
-          : `Your trial has ended and Maya is paused for clients. To keep her, press "Keep the assistant" here: ${planLink}`;
+        text = pick(lang, {
+          en: `Your trial has ended and Maya is paused for clients. To keep her, choose a plan here (from $39/month): ${planLink}`,
+          fr: `Votre essai est terminé et Maya est en pause pour vos clients. Pour la garder, choisissez un forfait ici (à partir de 39 $/mois) : ${planLink}`,
+          ru: `Пробный период закончился, и Майя поставлена на паузу для клиентов. Чтобы продолжить, выберите тариф здесь (от $39 в месяц): ${planLink}`
+        });
         const record = store.getSalonRecord(row.salon_slug) || {};
         notifyPlatform({ subject: `AIbeaty trial ended: ${record.name || row.salon_slug}`, lines: [`Salon: ${record.name || row.salon_slug}`, `Owner email: ${record.email || "—"}`, `Launched: ${tenant.launched ? "yes" : "no"}`] });
       } else if (tenant.active && tenant.trialDaysLeft <= 3 && !notices.d3) {
         key = "d3";
-        text = ru
-          ? `Пробный период закончится через ${tenant.trialDaysLeft} дн. Чтобы Майя продолжала отвечать клиентам без перерыва, нажмите «Оставить ассистента»: ${planLink}`
-          : `Your trial ends in ${tenant.trialDaysLeft} day(s). To keep Maya answering clients without a gap, press "Keep the assistant": ${planLink}`;
+        text = pick(lang, {
+          en: `Your trial ends in ${tenant.trialDaysLeft} day(s). To keep Maya answering clients without a gap, choose a plan (from $39/month): ${planLink}`,
+          fr: `Votre essai se termine dans ${tenant.trialDaysLeft} jour(s). Pour que Maya continue de répondre sans interruption, choisissez un forfait (à partir de 39 $/mois) : ${planLink}`,
+          ru: `Пробный период закончится через ${tenant.trialDaysLeft} дн. Чтобы Майя продолжала отвечать клиентам без перерыва, выберите тариф (от $39 в месяц): ${planLink}`
+        });
       }
       if (!key) return;
       notices[key] = nowIso(clock);
@@ -911,6 +1375,21 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     return sent;
   }
 
+  // A thread a person took over goes back to Maya after 12 hours with no
+  // staff answer (the client's holding replies stop then).
+  function returnStaleHandoffs() {
+    if (!assistant || typeof assistant.autoReturnStale !== "function") return 0;
+    let returned = 0;
+    db.prepare(`SELECT salon_slug FROM tenants`).all().forEach((row) => {
+      try {
+        returned += Number(assistant.autoReturnStale(row.salon_slug)) || 0;
+      } catch (error) {
+        console.error(`[tenancy] hand-back failed for ${row.salon_slug}: ${String(error.message).slice(0, 140)}`);
+      }
+    });
+    return returned;
+  }
+
   let ticker = null;
   function startTicker(intervalMs = 10 * 60 * 1000) {
     if (ticker) return;
@@ -918,6 +1397,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       Promise.resolve()
         .then(() => sendTrialNotices())
         .then(() => sendDueReminders())
+        .then(() => returnStaleHandoffs())
         .catch((error) => console.error(`[tenancy] tick failed: ${String(error.message).slice(0, 160)}`));
     };
     ticker = setInterval(tick, intervalMs);
@@ -925,36 +1405,255 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     setTimeout(tick, 5000).unref();
   }
 
-  function ownerEventText(salonId, type, payload) {
-    const tenant = getTenant(salonId);
-    const ru = tenant && tenant.language === "ru";
-    const thread = `${PUBLIC_BASE}/screens/unified-inbox-luminous-core.html?conversationId=${encodeURIComponent(payload.conversationId || "")}`;
-    const who = payload.client || (ru ? "клиент" : "a client");
-    const when = [payload.day || payload.date || "", payload.time || payload.timeLabel || ""].filter(Boolean).join(" ");
-    switch (type) {
-      case "booking":
-        return ru
-          ? `✅ Новая запись: ${who} — ${payload.service || ""}${payload.stylist ? `, мастер ${payload.stylist}` : ""}${when ? `, ${when}` : ""}.`
-          : `✅ New booking: ${who} — ${payload.service || ""}${payload.stylist ? ` with ${payload.stylist}` : ""}${when ? `, ${when}` : ""}.`;
-      case "reschedule":
-        return ru
-          ? `🔁 Перенос: ${who} — ${payload.service || ""}${when ? ` → ${when}` : ""}.`
-          : `🔁 Rescheduled: ${who} — ${payload.service || ""}${when ? ` → ${when}` : ""}.`;
-      case "cancellation":
-        return ru ? `❌ Отмена: ${who} — ${payload.service || ""}.` : `❌ Cancelled: ${who} — ${payload.service || ""}.`;
-      case "escalation":
-        return ru
-          ? `🔔 Клиенту нужен человек (${payload.reason || ""}). ${payload.summary || ""}\nПереписка: ${thread}`
-          : `🔔 A client needs a human (${payload.reason || ""}). ${payload.summary || ""}\nConversation: ${thread}`;
-      case "owner_message":
-        return ru ? `✉️ Для вас: ${payload.message || ""}\nПереписка: ${thread}` : `✉️ For you: ${payload.message || ""}\nConversation: ${thread}`;
-      case "usage_alert":
-        return ru
-          ? `⚠️ Ассистент израсходовал ${payload.threshold}% дневного лимита (${payload.turns}/${payload.cap}).`
-          : `⚠️ The assistant used ${payload.threshold}% of today's limit (${payload.turns}/${payload.cap}).`;
-      default:
-        return "";
+  // ---------- owner alerts ----------
+  const ALERT_TYPES = new Set(["booking", "reschedule", "cancellation", "escalation", "owner_message", "usage_alert"]);
+
+  function queueOwnerAlert(salonId, type, payload = {}) {
+    if (!ALERT_TYPES.has(type)) return;
+    if (!getTenant(salonId)) return;
+    const key = `${salonId}|${payload.conversationId || "_"}`;
+    let entry = alertQueue.get(key);
+    if (!entry) {
+      entry = { slug: salonId, conversationId: payload.conversationId || "", events: [], timer: null };
+      alertQueue.set(key, entry);
     }
+    entry.events.push({ type, payload });
+    if (entry.timer) return;
+    const flush = () => {
+      alertQueue.delete(key);
+      entry.timer = null;
+      const text = composeOwnerAlert(entry.slug, entry.conversationId, entry.events);
+      if (text) notifyOwner(entry.slug, text, { conversationId: entry.conversationId });
+    };
+    if (ALERT_DELAY_MS === 0) {
+      entry.timer = true;
+      Promise.resolve().then(flush);
+      return;
+    }
+    entry.timer = setTimeout(flush, ALERT_DELAY_MS);
+    if (entry.timer.unref) entry.timer.unref();
+  }
+
+  // ---------- a client writes while a person handles the thread ----------
+  // Every message is counted; the owner hears at most once per conversation
+  // per WAITING_ALERT_MS, and whatever came in meanwhile goes out with a count
+  // when the window ends. Nothing is dropped.
+  const waitingCandidate = Number(process.env.OWNER_WAITING_ALERT_MS);
+  const WAITING_ALERT_MS = Number.isFinite(waitingCandidate) && waitingCandidate >= 0 ? waitingCandidate : 5 * 60 * 1000;
+  const waitingAlerts = new Map(); // `${slug}|${conversationId}` → { slug, conversationId, pending, lastSentAt, timer }
+
+  function waitingEntry(slug, conversationId) {
+    const key = `${slug}|${conversationId}`;
+    let entry = waitingAlerts.get(key);
+    if (!entry) {
+      entry = { slug, conversationId, pending: [], lastSentAt: 0, timer: null };
+      waitingAlerts.set(key, entry);
+    }
+    return entry;
+  }
+
+  function noteClientWaiting(slug, payload = {}) {
+    if (!getTenant(slug) || !payload.conversationId) return;
+    const entry = waitingEntry(slug, payload.conversationId);
+    entry.pending.push({ text: String(payload.text || ""), client: payload.client || "" });
+    const now = clock().getTime();
+    if (!entry.lastSentAt || now - entry.lastSentAt >= WAITING_ALERT_MS) {
+      flushWaiting(entry);
+      return;
+    }
+    if (!entry.timer) {
+      entry.timer = setTimeout(() => flushWaiting(entry), Math.max(0, entry.lastSentAt + WAITING_ALERT_MS - now));
+      if (entry.timer.unref) entry.timer.unref();
+    }
+  }
+
+  function flushWaiting(entry) {
+    if (entry.timer) clearTimeout(entry.timer);
+    entry.timer = null;
+    if (!entry.pending.length) return;
+    const pending = entry.pending;
+    entry.pending = [];
+    entry.lastSentAt = clock().getTime();
+    const text = composeWaitingAlert(entry.slug, entry.conversationId, pending);
+    if (text) notifyOwner(entry.slug, text, { conversationId: entry.conversationId });
+  }
+
+  function clearWaiting(slug, conversationId) {
+    const entry = waitingAlerts.get(`${slug}|${conversationId}`);
+    if (!entry) return;
+    if (entry.timer) clearTimeout(entry.timer);
+    entry.timer = null;
+    entry.pending = [];
+  }
+
+  // Sends the waiting-client alerts held back by the 5-minute window now
+  // (tests, shutdown).
+  function flushWaitingAlerts() {
+    [...waitingAlerts.values()].forEach((entry) => flushWaiting(entry));
+  }
+
+  function composeWaitingAlert(slug, conversationId, pending) {
+    const tenant = getTenant(slug);
+    if (!tenant) return "";
+    const lang = ownerLang(tenant);
+    const t = ALERT_TEXT[lang];
+    const facts = conversationFacts(slug, conversationId);
+    const rawName = [pending[pending.length - 1].client, facts && facts.name].find((value) => value && !GENERIC_NAME_RE.test(String(value))) ||
+      (facts && facts.name) || "";
+    const name = !rawName || GENERIC_NAME_RE.test(rawName) ? localGenericName(rawName, lang) : rawName;
+    const phone = facts && facts.phone;
+    const lines = [t.waiting(name, pending.length)];
+    if (phone) lines.push(`${name} · ${phone}`);
+    // Medspa / clinic: no client words in a notification (health privacy).
+    if (isMedspa(tenant)) {
+      lines.push(t.textHidden);
+    } else {
+      const shown = pending.slice(-3).map((item) => quote(item.text, 200)).filter(Boolean);
+      if (shown.length) lines.push(`${pending.length > 1 ? t.lastMessage : t.said}${t.colon || ": "}${shown.join("\n")}`);
+    }
+    lines.push(t.waitingNote);
+    const footer = [];
+    if (facts && facts.sessionId) footer.push(facts.telegram ? t.replyHint(name) : t.webHint(name));
+    footer.push(`${t.open}${t.colon || ": "}${PUBLIC_BASE}/screens/unified-inbox-luminous-core.html?conversationId=${encodeURIComponent(conversationId)}`);
+    return `${lines.join("\n")}\n\n${footer.join("\n")}`;
+  }
+
+  // Sends everything still waiting in the alert queue now (tests, shutdown).
+  function flushOwnerAlerts() {
+    [...alertQueue.entries()].forEach(([key, entry]) => {
+      if (entry.timer && entry.timer !== true) clearTimeout(entry.timer);
+      alertQueue.delete(key);
+      const text = composeOwnerAlert(entry.slug, entry.conversationId, entry.events);
+      if (text) notifyOwner(entry.slug, text, { conversationId: entry.conversationId });
+    });
+  }
+
+  function conversationFacts(slug, conversationId) {
+    if (!conversationId) return null;
+    const row = db.prepare(`SELECT id, name, contact_phone, assistant_session_id FROM conversations WHERE salon_id = ? AND id = ?`).get(slug, conversationId);
+    if (!row) return null;
+    const session = row.assistant_session_id
+      ? db.prepare(`SELECT client_phone FROM assistant_sessions WHERE salon_id = ? AND id = ?`).get(slug, row.assistant_session_id)
+      : null;
+    const lastIncoming = db.prepare(`
+      SELECT text_value FROM conversation_messages WHERE salon_id = ? AND conversation_id = ? AND type = 'incoming'
+      ORDER BY sort_order DESC LIMIT 1
+    `).get(slug, conversationId);
+    const preview = row.assistant_session_id
+      ? Boolean(db.prepare(`SELECT 1 FROM tenant_preview_sessions WHERE salon_slug = ? AND session_id = ?`).get(slug, row.assistant_session_id))
+      : false;
+    return {
+      name: row.name,
+      phone: realPhone(row.contact_phone) || realPhone(session && session.client_phone),
+      sessionId: row.assistant_session_id || "",
+      telegram: /^tg:/.test(row.assistant_session_id || ""),
+      lastIncoming: lastIncoming ? String(lastIncoming.text_value) : "",
+      preview
+    };
+  }
+
+  function quote(text, max = 280) {
+    const clean = String(text || "").replace(/\s+/g, " ").trim();
+    if (!clean) return "";
+    return `“${clean.length > max ? `${clean.slice(0, max - 1)}…` : clean}”`;
+  }
+
+  function composeOwnerAlert(slug, conversationId, events) {
+    const tenant = getTenant(slug);
+    if (!tenant) return "";
+    const lang = ownerLang(tenant);
+    const t = ALERT_TEXT[lang];
+    const medspa = isMedspa(tenant);
+    const facts = conversationFacts(slug, conversationId);
+    const key = `${slug}|${conversationId || "_"}`;
+
+    const nameFor = (payload) => {
+      const raw = [payload.client, facts && facts.name].find((value) => value && !GENERIC_NAME_RE.test(String(value))) ||
+        (facts && facts.name) || payload.client || "";
+      return raw && GENERIC_NAME_RE.test(raw) ? localGenericName(raw, lang) : (raw || localGenericName("", lang));
+    };
+    const who = (payload) => [nameFor(payload), realPhone(payload.phone) || (facts && facts.phone) || ""].filter(Boolean).join(" · ");
+    const when = (date, minutes, fallbackDay, fallbackTime) => {
+      const day = formatAlertDate(date, lang) || fallbackDay || "";
+      const time = formatAlertTime(minutes, lang) || fallbackTime || "";
+      return [day, time].filter(Boolean).join(", ");
+    };
+
+    const blocks = [];
+    let attention = null;
+    events.forEach(({ type, payload }) => {
+      if (type === "booking") {
+        blocks.push([
+          t.booking,
+          who(payload),
+          [payload.service, payload.stylist ? t.with(payload.stylist) : ""].filter(Boolean).join(" "),
+          when(payload.date, payload.startMinutes, payload.day, payload.time)
+        ].filter(Boolean).join("\n"));
+      } else if (type === "reschedule") {
+        const from = when(payload.fromDate, payload.fromStartMinutes, "", "");
+        const to = when(payload.date, payload.startMinutes, payload.day, payload.time);
+        blocks.push([
+          t.reschedule,
+          who(payload),
+          [payload.service, payload.stylist ? t.with(payload.stylist) : ""].filter(Boolean).join(" "),
+          from ? `${from} → ${to}` : `→ ${to}`
+        ].filter(Boolean).join("\n"));
+      } else if (type === "cancellation") {
+        blocks.push([
+          t.cancellation,
+          who(payload),
+          [payload.service, when(payload.date, payload.startMinutes, "", "")].filter(Boolean).join(", ")
+        ].filter(Boolean).join("\n"));
+      } else if (type === "usage_alert") {
+        blocks.push(t.usage(Number(payload.threshold) || 0, payload.turns, payload.cap));
+      } else if (type === "escalation" || type === "owner_message") {
+        // One attention block per alert; a handoff beats a note about the same turn.
+        if (!attention || (attention.type === "owner_message" && type === "escalation")) attention = { type, payload };
+      }
+    });
+
+    if (attention) {
+      const now = clock().getTime();
+      const last = lastAttentionAt.get(key) || 0;
+      if (conversationId && now - last < ATTENTION_QUIET_MS) {
+        attention = null;
+      } else {
+        lastAttentionAt.set(key, now);
+        if (conversationId) waitingEntry(slug, conversationId).lastSentAt = now;
+      }
+    }
+    if (attention) {
+      const { type, payload } = attention;
+      const name = nameFor(payload);
+      const reason = type === "escalation"
+        ? (t.reasons[payload.reason] || t.reasons.assistant_requested)
+        : (t.topics[payload.topic] || t.reasons.owner_message);
+      // The client's own words, never Maya's internal note (that one is ours and
+      // in whatever language the prompt was written in).
+      const clientText = (type === "escalation" ? String(payload.summary || "").split(" | ")[0] : "") || (facts && facts.lastIncoming) || "";
+      let body = "";
+      const medical = type === "escalation" && payload.reason === "medical";
+      // Medspa / clinic: health details stay inside the conversation, never in
+      // a Telegram notification that may show up on a lock screen.
+      if (medspa) body = medical ? t.medicalHidden : t.textHidden;
+      else if (clientText) body = `${t.said}${t.colon || ": "}${quote(clientText)}`;
+      blocks.unshift([
+        type === "escalation" ? t.escalation(name) : t.ownerMessage(name),
+        who(payload) !== name ? who(payload) : "",
+        medspa && medical ? "" : reason,
+        body
+      ].filter(Boolean).join("\n"));
+    }
+    if (!blocks.length) return "";
+
+    const footer = [];
+    if (conversationId && facts) {
+      const name = nameFor(events[0].payload);
+      if (facts.sessionId) footer.push(facts.telegram ? t.replyHint(name) : t.webHint(name));
+      footer.push(`${t.open}${t.colon || ": "}${PUBLIC_BASE}/screens/unified-inbox-luminous-core.html?conversationId=${encodeURIComponent(conversationId)}`);
+    }
+    const head = (facts && facts.preview) || events.some((event) => event.payload && event.payload.test) ? `[${t.test}] ` : "";
+    return `${head}${blocks.join("\n\n")}${footer.length ? `\n\n${footer.join("\n")}` : ""}`;
   }
 
   // ---------- Telegram ----------
@@ -993,21 +1692,22 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
   }
 
   async function connectTelegram(slug, rawToken, { language = "en" } = {}) {
-    const say = (en, ru) => (language === "ru" ? ru : en);
+    const lang = normalizeLanguage(language);
+    const say = (en, ru, fr) => pick(lang, { en, ru, fr: fr || en });
     const token = String(rawToken || "").trim();
     if (!/^\d{5,}:[A-Za-z0-9_-]{30,}$/.test(token)) {
-      return { ok: false, message: say("That is not a bot token. It looks like 123456789:AA… and comes from @BotFather.", "Это не токен бота. Он выглядит как 123456789:AA… и приходит от @BotFather.") };
+      return { ok: false, message: say("That is not a bot token. It looks like 123456789:AA… and comes from @BotFather.", "Это не токен бота. Он выглядит как 123456789:AA… и приходит от @BotFather.", "Ce n’est pas un jeton de bot. Il ressemble à 123456789:AA… et vient de @BotFather.") };
     }
     let me;
     try {
       me = await tg(token, "getMe");
     } catch (error) {
-      return { ok: false, message: say("Telegram did not accept this token. Copy it again from @BotFather.", "Telegram не принял этот токен. Скопируйте его ещё раз из @BotFather.") };
+      return { ok: false, message: say("Telegram did not accept this token. Copy it again from @BotFather.", "Telegram не принял этот токен. Скопируйте его ещё раз из @BotFather.", "Telegram n’a pas accepté ce jeton. Copiez-le de nouveau depuis @BotFather.") };
     }
     const botId = String(me.id);
     const taken = db.prepare(`SELECT salon_slug FROM tenant_telegram WHERE bot_id = ?`).get(botId);
     if (taken && taken.salon_slug !== slug) {
-      return { ok: false, message: say("This bot is already connected to another salon. Create a new bot in @BotFather.", "Этот бот уже подключён к другому салону. Создайте нового бота в @BotFather.") };
+      return { ok: false, message: say("This bot is already connected to another salon. Create a new bot in @BotFather.", "Этот бот уже подключён к другому салону. Создайте нового бота в @BotFather.", "Ce bot est déjà relié à un autre salon. Créez un nouveau bot dans @BotFather.") };
     }
     const previous = getTelegram(slug);
     const webhookSecret = crypto.randomBytes(24).toString("hex");
@@ -1020,7 +1720,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
         drop_pending_updates: true
       });
     } catch (error) {
-      return { ok: false, message: say("Telegram refused to connect the bot. Try again in a minute.", "Telegram не дал подключить бота. Попробуйте через минуту.") };
+      return { ok: false, message: say("Telegram refused to connect the bot. Try again in a minute.", "Telegram не дал подключить бота. Попробуйте через минуту.", "Telegram a refusé de connecter le bot. Réessayez dans une minute.") };
     }
     if (previous && previous.bot_id !== botId) {
       // A different bot replaces the old one: stop the old one from calling us.
@@ -1067,21 +1767,37 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     );
   }
 
-  function notifyOwner(slug, text) {
+  // Returns the send promise (tests await it); failures are only logged.
+  function notifyOwner(slug, text, { conversationId } = {}) {
     const row = getTelegram(slug);
-    if (!row || !row.owner_chat_id) return;
-    sendTelegram(row, row.owner_chat_id, text).catch((error) => {
+    if (!row || !row.owner_chat_id) return Promise.resolve(null);
+    return sendTelegram(row, row.owner_chat_id, text).then((sent) => {
+      if (conversationId && sent && sent.message_id !== undefined) {
+        db.prepare(`
+          INSERT OR REPLACE INTO tenant_alert_messages (salon_slug, chat_id, message_id, conversation_id, created_at)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(slug, String(row.owner_chat_id), String(sent.message_id), conversationId, nowIso(clock));
+      }
+      return sent;
+    }).catch((error) => {
       console.error(`[tenancy] owner notify failed for ${slug}: ${String(error.message).slice(0, 140)}`);
+      return null;
     });
   }
 
+  // Telegram /start greeting in the client's language (language_code). It
+  // carries the AI disclosure, so Maya does not introduce herself again.
   function greetingFor(slug, languageCode) {
     const record = store.getSalonRecord(slug) || {};
-    const name = record.name || "the salon";
-    if (/^(ru|uk|be)/.test(String(languageCode || ""))) {
-      return `Здравствуйте! Я Майя, ИИ-ассистент салона «${name}». Могу записать вас, перенести или отменить визит и ответить на вопросы о ценах и услугах. Если нужен живой человек, просто напишите «позвать человека».`;
-    }
-    return `Hi! I'm Maya, the AI assistant at ${name}. I can book, reschedule or cancel a visit and answer questions about prices and services. If you'd rather talk to a person, just write "human".`;
+    const name = record.name || "";
+    const lang = clientLanguage("", languageCode);
+    const pack = {
+      en: `Hi! I'm Maya, the AI assistant${name ? ` at ${name}` : ""}. I can book, move or cancel a visit and answer questions about prices and services. If you'd rather talk to a person, just type "human".`,
+      fr: `Bonjour! Je suis Maya, l'assistante IA${name ? ` de ${name}` : ""}. Je peux réserver, déplacer ou annuler un rendez-vous et répondre à vos questions sur les prix et les services. Pour parler à une personne, écrivez simplement « humain ».`,
+      ru: `Здравствуйте! Я Майя, ИИ-ассистентка${name ? ` салона «${name}»` : ""}. Могу записать вас, перенести или отменить визит и ответить на вопросы о ценах и услугах. Если нужен живой человек, просто напишите «позвать человека».`,
+      uk: `Вітаю! Я Майя, ШІ-асистентка${name ? ` салону «${name}»` : ""}. Можу записати вас, перенести чи скасувати візит і відповісти на питання про ціни та послуги. Якщо потрібна жива людина, просто напишіть «покликати людину».`
+    };
+    return pickText(pack, lang);
   }
 
   // Webhook entry point. Returns an HTTP status right away; the conversation
@@ -1101,24 +1817,228 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     return { status: 200, work };
   }
 
+  function ownerLinks(slug) {
+    return {
+      inbox: `${PUBLIC_BASE}/screens/unified-inbox-luminous-core.html`,
+      chat: `${PUBLIC_BASE}/screens/chat.html?salon=${encodeURIComponent(slug)}`
+    };
+  }
+
+  function ownerChatText(slug) {
+    return OWNER_CHAT_TEXT[ownerLang(getTenant(slug))];
+  }
+
+  // The owner's linked chat is never a client: Maya does not answer it. A
+  // reply to an alert goes to that alert's client; anything else gets help.
+  async function handleOwnerMessage(row, message) {
+    const chatId = String(message.chat.id);
+    const t = ownerChatText(row.salon_slug);
+    const links = ownerLinks(row.salon_slug);
+    const replyTo = message.reply_to_message;
+    const text = String(message.text || "").trim();
+    if (!replyTo) {
+      await sendTelegram(row, chatId, t.help(links.inbox, links.chat));
+      return { action: "help" };
+    }
+    const mapped = db.prepare(`
+      SELECT conversation_id FROM tenant_alert_messages WHERE salon_slug = ? AND chat_id = ? AND message_id = ?
+    `).get(row.salon_slug, chatId, String(replyTo.message_id));
+    if (!mapped) {
+      await sendTelegram(row, chatId, t.unknownAlert(links.inbox));
+      return { action: "unknown_alert" };
+    }
+    if (!text) {
+      await sendTelegram(row, chatId, t.textOnly);
+      return { action: "text_only" };
+    }
+    const result = await sendStaffReply(row.salon_slug, mapped.conversation_id, text.slice(0, 4000), { via: "telegram_owner" });
+    const lang = ownerLang(getTenant(row.salon_slug));
+    const name = result.name && GENERIC_NAME_RE.test(result.name) ? localGenericName(result.name, lang) : (result.name || "");
+    const confirmation = result.delivery === "delivered" ? t.sent(name)
+      : result.delivery === "waiting" ? t.waiting(name)
+        : t.failed(name, `${links.inbox}?conversationId=${encodeURIComponent(mapped.conversation_id)}`);
+    await sendTelegram(row, chatId, confirmation, { reply_to_message_id: message.message_id });
+    return { action: "forwarded", delivery: result.delivery };
+  }
+
+  // A staff member's answer to a client: stored in the thread (author 'staff'),
+  // Maya steps back (takeover), and the text goes to wherever the client is.
+  //   Telegram client → sent through the salon's bot now: 'delivered' / 'failed'
+  //   web chat client → 'waiting' until their chat page fetches it ('seen')
+  //   no live channel (seeded / manual threads) → '' (nothing to deliver)
+  // existingMessageId: the inbox route already stored the message.
+  async function sendStaffReply(slug, conversationId, text, { existingMessageId, via = "inbox", pauseMaya = true } = {}) {
+    const scope = store.forSalon(slug);
+    if (!scope) return { ok: false, error: "unknown_salon" };
+    const conversation = db.prepare(`SELECT id, name, assistant_session_id FROM conversations WHERE salon_id = ? AND id = ?`).get(slug, conversationId);
+    if (!conversation) return { ok: false, error: "not_found" };
+    const body = String(text || "").trim();
+    if (!body) return { ok: false, error: "empty" };
+    const sessionId = conversation.assistant_session_id || "";
+    const tgMatch = /^tg:(\d+):(-?\d+)$/.exec(sessionId);
+    let messageId = existingMessageId;
+    if (!messageId) {
+      messageId = `message-staff-${crypto.randomBytes(6).toString("hex")}`;
+      scope.createConversationMessage(conversationId, { text: body, type: "outgoing", author: "staff", id: messageId, delivery: sessionId ? (tgMatch ? "sending" : "waiting") : "" });
+    }
+    if (pauseMaya && assistant && typeof assistant.noteStaffMessage === "function") assistant.noteStaffMessage(conversationId, slug);
+    // The owner has answered, so the messages still held back for a
+    // "wrote again" alert are read: drop them (the 5-minute window stays).
+    clearWaiting(slug, conversationId);
+
+    let delivery = "";
+    let note = "";
+    if (tgMatch) {
+      const row = getTelegram(slug);
+      if (!row || row.bot_id !== tgMatch[1]) {
+        delivery = "failed";
+        note = "telegram_not_connected";
+      } else {
+        try {
+          await sendTelegram(row, tgMatch[2], body);
+          delivery = "delivered";
+        } catch (error) {
+          delivery = "failed";
+          note = String((error.telegram && error.telegram.description) || error.message || "").slice(0, 160);
+          console.error(`[tenancy] staff reply failed for ${slug}: ${note}`);
+        }
+      }
+    } else if (sessionId) {
+      delivery = "waiting";
+    }
+    scope.setMessageDelivery(messageId, delivery, note);
+    return { ok: true, messageId, delivery, note, name: conversation.name, channel: tgMatch ? "telegram" : (sessionId ? "web" : "") };
+  }
+
+  // The web chat asks for staff answers it has not shown yet. The session id
+  // is the chat's own random id (web-<uuid>); Telegram ids are refused, they
+  // are guessable and those clients get their answers in Telegram anyway.
+  function webUpdates(slug, sessionId, after) {
+    const id = String(sessionId || "");
+    if (!id || /^tg:/.test(id) || id.length > 120) return { messages: [] };
+    const session = db.prepare(`SELECT conversation_id FROM assistant_sessions WHERE salon_id = ? AND id = ?`).get(String(slug || ""), id);
+    if (!session) return { messages: [] };
+    const since = /^\d{4}-\d{2}-\d{2}T/.test(String(after || "")) ? String(after) : "";
+    const rows = db.prepare(`
+      SELECT id, text_value, created_at, delivery FROM conversation_messages
+      WHERE salon_id = ? AND conversation_id = ? AND author = 'staff' AND created_at > ?
+      ORDER BY sort_order ASC LIMIT 50
+    `).all(slug, session.conversation_id, since);
+    const seen = rows.filter((row) => row.delivery === "waiting");
+    if (seen.length) {
+      const mark = db.prepare(`UPDATE conversation_messages SET delivery = 'seen' WHERE salon_id = ? AND id = ?`);
+      db.transaction(() => seen.forEach((row) => mark.run(slug, row.id)))();
+    }
+    return { messages: rows.map((row) => ({ id: row.id, text: row.text_value, createdAt: row.created_at })) };
+  }
+
+  // The owner's inbox for a self-serve salon: only this salon's real threads,
+  // no demo fixtures. Channel and test-chat flags come from the session id.
+  function inboxView(slug) {
+    const scope = store.forSalon(slug);
+    if (!scope) return null;
+    // Threads nobody answered for 12 hours are Maya's again before we show them.
+    if (assistant && typeof assistant.autoReturnStale === "function" && getTenant(slug)) {
+      try { assistant.autoReturnStale(slug); } catch (error) { /* shown as they are */ }
+    }
+    const tenant = getTenant(slug);
+    const record = store.getSalonRecord(slug) || {};
+    const previewIds = new Set(db.prepare(`SELECT session_id FROM tenant_preview_sessions WHERE salon_slug = ?`).all(slug).map((row) => row.session_id));
+    const rows = db.prepare(`
+      SELECT id, name, channel, contact_phone, assistant_session_id, assistant_state, updated_at, created_at
+      FROM conversations WHERE salon_id = ? ORDER BY updated_at DESC
+    `).all(slug);
+    const phoneOf = db.prepare(`SELECT client_phone FROM assistant_sessions WHERE salon_id = ? AND id = ?`);
+    const stateOf = db.prepare(`SELECT state_json FROM assistant_sessions WHERE salon_id = ? AND id = ?`);
+    const conversations = rows.map((row) => {
+      const sessionId = row.assistant_session_id || "";
+      const messages = scope.getConversationMessages(row.id).map((message) => ({
+        id: message.id,
+        type: message.type,
+        author: message.author || (message.type === "incoming" ? "client" : message.type === "system" ? "" : "maya"),
+        text: message.text,
+        delivery: message.delivery,
+        deliveryNote: message.deliveryNote,
+        createdAt: message.createdAt
+      }));
+      const last = [...messages].reverse().find((message) => message.type !== "system") || messages[messages.length - 1];
+      // Client messages that came in while Maya was paused and nobody has
+      // answered yet.
+      let waiting = 0;
+      if (sessionId && row.assistant_state !== "active") {
+        const stateRow = stateOf.get(slug, sessionId);
+        try { waiting = Number(JSON.parse((stateRow && stateRow.state_json) || "{}").waitingCount) || 0; } catch (error) { waiting = 0; }
+      }
+      const session = sessionId ? phoneOf.get(slug, sessionId) : null;
+      return {
+        id: row.id,
+        name: row.name,
+        generic: GENERIC_NAME_RE.test(row.name),
+        kind: /^tg:/.test(sessionId) ? "telegram" : sessionId ? "web" : "other",
+        test: previewIds.has(sessionId),
+        phone: realPhone(row.contact_phone) || realPhone(session && session.client_phone),
+        state: row.assistant_state === "escalated" ? "needs_human" : row.assistant_state === "takeover" ? "takeover" : "maya",
+        preview: last ? String(last.text).slice(0, 140) : "",
+        lastAuthor: last ? last.author : "",
+        waiting,
+        updatedAt: row.updated_at,
+        messages
+      };
+    });
+    // Clients first; the owner's own test chats sink to the bottom.
+    conversations.sort((a, b) => Number(a.test) - Number(b.test));
+    return {
+      salon: { slug, name: record.name || slug, city: record.city || "", timezone: record.timezone || "America/Toronto" },
+      selfServe: Boolean(tenant),
+      language: ownerLang(tenant),
+      businessType: tenant ? tenant.businessType : "",
+      telegram: telegramStatus(slug).connected ? { connected: true, ownerLinked: telegramStatus(slug).ownerLinked } : { connected: false },
+      chatUrl: `/screens/chat.html?salon=${encodeURIComponent(slug)}`,
+      conversations
+    };
+  }
+
+  // A Telegram client's own name replaces the "Telegram client 1a2b" placeholder.
+  function nameTelegramConversation(slug, sessionId, from) {
+    const name = cleanText([from && from.first_name, from && from.last_name].filter(Boolean).join(" "), 60);
+    if (!name) return;
+    const row = db.prepare(`SELECT id, name, client_id FROM conversations WHERE salon_id = ? AND assistant_session_id = ?`).get(slug, sessionId);
+    if (!row || !GENERIC_NAME_RE.test(row.name)) return;
+    db.transaction(() => {
+      db.prepare(`UPDATE conversations SET name = ?, avatar_text = ? WHERE salon_id = ? AND id = ?`)
+        .run(name, name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(), slug, row.id);
+      // The thread's implicit client record carries the same placeholder name.
+      if (row.client_id) {
+        const client = db.prepare(`SELECT name FROM clients WHERE salon_id = ? AND id = ?`).get(slug, row.client_id);
+        if (client && GENERIC_NAME_RE.test(client.name)) {
+          db.prepare(`UPDATE clients SET name = ? WHERE salon_id = ? AND id = ?`).run(name, slug, row.client_id);
+        }
+      }
+    })();
+  }
+
   async function processTelegramMessage(row, message) {
     const chatId = String(message.chat.id);
     const text = String(message.text || "").trim();
     const languageCode = message.from && message.from.language_code;
     const ru = /^(ru|uk|be)/.test(String(languageCode || ""));
+    const lang = clientLanguage(text, languageCode);
+    const fromName = [message.from && message.from.first_name, message.from && message.from.last_name].filter(Boolean).join(" ").trim();
+    const isOwnerChat = Boolean(row.owner_chat_id) && row.owner_chat_id === chatId;
 
     const startMatch = text.match(/^\/start(?:\s+(\S+))?/);
+    if (startMatch && startMatch[1] === `owner-${row.owner_link_code}`) {
+      db.prepare(`UPDATE tenant_telegram SET owner_chat_id = ? WHERE salon_slug = ?`).run(chatId, row.salon_slug);
+      await sendTelegram(row, chatId, ownerChatText(row.salon_slug).linked(ownerLinks(row.salon_slug).chat));
+      return;
+    }
+    if (isOwnerChat) {
+      await handleOwnerMessage(row, message);
+      return;
+    }
     if (startMatch) {
-      const payload = startMatch[1] || "";
-      if (payload === `owner-${row.owner_link_code}`) {
-        db.prepare(`UPDATE tenant_telegram SET owner_chat_id = ? WHERE salon_slug = ?`).run(chatId, row.salon_slug);
-        await sendTelegram(row, chatId, ru
-          ? "Готово: сюда будут приходить новые записи, переносы, отмены и просьбы клиентов позвать человека. Можете и сами написать боту как клиент, чтобы проверить его."
-          : "Done. New bookings, reschedules, cancellations and clients asking for a human will arrive here. You can also message this bot as a client to test it.");
-        return;
-      }
       await sendTelegram(row, chatId, greetingFor(row.salon_slug, languageCode), {
-        reply_markup: { keyboard: [[{ text: ru ? "📱 Поделиться номером" : "📱 Share my number", request_contact: true }]], resize_keyboard: true, one_time_keyboard: true }
+        reply_markup: { keyboard: [[{ text: pickText(CLIENT_TEXT.shareNumber, lang), request_contact: true }]], resize_keyboard: true, one_time_keyboard: true }
       });
       return;
     }
@@ -1127,47 +2047,65 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     let body = text;
     if (message.contact && message.contact.phone_number) {
       clientPhone = String(message.contact.phone_number);
-      body = ru ? `Мой номер телефона: ${clientPhone}` : `My phone number is ${clientPhone}`;
+      body = pickText(CLIENT_TEXT.myPhone, lang).replace("{phone}", clientPhone);
     }
     if (!body) {
-      await sendTelegram(row, chatId, ru ? "Пока я читаю только текст. Напишите, пожалуйста, сообщением." : "I can only read text for now. Please type your message.");
+      await sendTelegram(row, chatId, pickText(CLIENT_TEXT.textOnly, lang));
       return;
     }
 
+    const sessionId = `tg:${row.bot_id}:${chatId}`;
+    nameTelegramConversation(row.salon_slug, sessionId, message.from);
     const tokenForTyping = unseal(row.token_sealed);
     tg(tokenForTyping, "sendChatAction", { chat_id: chatId, action: "typing" }).catch(() => {});
     const typing = setInterval(() => tg(tokenForTyping, "sendChatAction", { chat_id: chatId, action: "typing" }).catch(() => {}), 4500);
     let result;
     try {
       result = await chat(row.salon_slug, {
-        sessionId: `tg:${row.bot_id}:${chatId}`,
+        sessionId,
         message: body.slice(0, 2000),
         channel: "telegram",
-        clientPhone
-      }, { preview: Boolean(row.owner_chat_id) && row.owner_chat_id === chatId });
+        clientPhone,
+        // Maya answers in the client's language: the text decides, the
+        // Telegram app language is the fallback for short messages.
+        languageHint: String(languageCode || ""),
+        clientName: fromName,
+        // Telegram always opens a chat with /start, which already greeted.
+        greeted: true
+      });
     } finally {
       clearInterval(typing);
     }
+    nameTelegramConversation(row.salon_slug, sessionId, message.from);
     if (result && result.reply) {
       await sendTelegram(row, chatId, String(result.reply), { reply_markup: { remove_keyboard: true } });
     } else if (result && result.error === "rate_limited") {
-      await sendTelegram(row, chatId, ru ? "Слишком быстро 🙂 Подождите минутку." : "That was fast 🙂 Give me a minute.");
+      await sendTelegram(row, chatId, pickText(CLIENT_TEXT.slowDown, lang));
     }
   }
 
   // ---------- add-ons ----------
   function listAddons(slug, language = "en") {
+    const lang = normalizeLanguage(language);
     const requested = new Map(
       db.prepare(`SELECT addon, status, created_at FROM tenant_addon_requests WHERE salon_slug = ? ORDER BY created_at`).all(slug)
         .map((row) => [row.addon, row])
     );
     const telegram = getTelegram(slug);
+    const tenant = getTenant(slug);
+    const paidAddons = tenant && tenant.planStatus === "active" ? tenant.billing.addons : [];
     return ADDONS.map((addon) => {
       let status = requested.has(addon.key) ? requested.get(addon.key).status : "available";
       if (addon.key === "telegram" && telegram) status = "active";
       if (addon.key === "owner_alerts" && telegram && telegram.owner_chat_id) status = "active";
-      if (addon.key === "website_widget") status = "active";
-      return { key: addon.key, auto: addon.auto, title: addon.title[language] || addon.title.en, status };
+      // Clients reach the chat link only after Go live: until then it is ready,
+      // not active.
+      if (addon.key === "website_widget") status = tenant && !tenant.launched ? "ready" : "active";
+      if (paidAddons.includes(addon.key) && status === "requested") status = "paid";
+      return Object.assign(
+        { key: addon.key, auto: addon.auto, later: Boolean(addon.later), title: pick(lang, addon.title), status },
+        addon.price ? { price: addon.price } : {}
+      );
     });
   }
 
@@ -1182,14 +2120,414 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     const record = store.getSalonRecord(slug) || {};
     notifyPlatform({
       subject: `AIbeaty add-on request: ${addon.title.en} — ${record.name || slug}`,
-      lines: [`Salon: ${record.name || slug} (${slug})`, `Owner email: ${record.email || "—"}`, `Add-on: ${addon.title.en}`, `Note: ${cleanText(note, 1000) || "—"}`]
+      lines: [`Salon: ${record.name || slug} (${slug})`, `Owner email: ${record.email || "—"}`, `Add-on: ${addon.title.en}${addon.price ? ` (+$${addon.price}/mo)` : ""}`, `Note: ${cleanText(note, 1000) || "—"}`]
     });
     return { ok: true };
+  }
+
+  // ---------- plan & payment (backend/billing.js) ----------
+  function planView(slug, language = "en") {
+    const tenant = getTenant(slug);
+    if (!tenant) return null;
+    const lang = normalizeLanguage(language || tenant.language);
+    return Object.assign(billing.catalog(lang), {
+      status: tenant.planStatus,
+      choice: tenant.billing.choice,
+      chosenAddons: tenant.billing.addons,
+      cycle: tenant.billing.cycle,
+      requestedAt: tenant.billing.requestedAt,
+      activatedAt: tenant.billing.activatedAt,
+      quote: tenant.billing.quote,
+      suggested: billing.suggestPlan(tenant.setup.staff.length, tenant.businessType),
+      staffCount: tenant.setup.staff.length,
+      checkout: billing.stripeEnabled() ? "stripe" : "invoice",
+      // Where the invoice goes: the owner's sign-in email.
+      ownerEmail: (store.getSalonRecord(slug) || {}).email || ""
+    });
+  }
+
+  // The owner pressed "Continue with <plan>" in step 7.
+  async function requestPlan(slug, input = {}, { language } = {}) {
+    const tenant = getTenant(slug);
+    if (!tenant) return { ok: false, status: 409, error: "not_self_serve" };
+    const lang = normalizeLanguage(language || tenant.language);
+    const result = billing.requestPlan(db, slug, { plan: input.plan, addons: input.addons, cycle: input.cycle }, clock);
+    if (!result.ok) {
+      const message = result.error === "already_active"
+        ? pick(lang, { en: "Your plan is already active.", fr: "Votre forfait est déjà actif.", ru: "Тариф уже активен." })
+        : pick(lang, { en: "Pick one of the plans.", fr: "Choisissez un des forfaits.", ru: "Выберите один из тарифов." });
+      return { ok: false, status: result.error === "already_active" ? 409 : 422, error: result.error, message };
+    }
+    const q = result.quote;
+    // Each paid add-on is also an ordinary add-on request, so the connect-it
+    // work shows up in the same list as before.
+    q.addons.forEach((addon) => {
+      const existing = db.prepare(`SELECT id FROM tenant_addon_requests WHERE salon_slug = ? AND addon = ?`).get(slug, addon.key);
+      if (!existing) {
+        db.prepare(`INSERT INTO tenant_addon_requests (id, salon_slug, addon, note, created_at) VALUES (?, ?, ?, ?, ?)`)
+          .run(`addon-${crypto.randomBytes(6).toString("hex")}`, slug, addon.key, `with plan ${q.plan}`, nowIso(clock));
+      }
+    });
+    const record = store.getSalonRecord(slug) || {};
+    const summary = billing.describeQuote(q);
+    notifyPlatform({
+      subject: `AIbeaty plan request: ${record.name || slug} — ${q.planTitle.en} ${billing.money(q.total)}/${q.cycle === "annual" ? "yr" : "mo"} + tax`,
+      lines: [
+        `Salon: ${record.name || slug} (${slug})`,
+        `Owner email: ${record.email || "—"}`,
+        `Plan: ${q.planTitle.en} ${billing.money(q.planPrice)}/mo (${q.staffLimit ? `up to ${q.staffLimit} staff` : "unlimited staff"})`,
+        `Add-ons: ${q.addons.length ? q.addons.map((addon) => `${addon.title.en} +${billing.money(addon.price)}/mo`).join(", ") : "none"}`,
+        `Billing: ${q.cycle}`,
+        `Monthly total: ${billing.money(q.monthly)} ${q.currency} + tax`,
+        q.cycle === "annual" ? `Invoice total: ${billing.money(q.total)} ${q.currency}/year + tax (2 months free)` : `Invoice total: ${billing.money(q.total)} ${q.currency}/month + tax`,
+        `Summary: ${summary}`,
+        `Team size now: ${tenant.setup.staff.length}`,
+        `Province/city: ${record.city || "—"} (for HST/GST/QST)`,
+        `Trial now ends: ${result.trialEndsAt.slice(0, 10)}${result.extended ? " (extended +7 days)" : ""}`,
+        `Send the invoice from ${billing.SELLER} (card link or Interac e-Transfer), then run:`,
+        `node scripts/tenants.mjs activate ${slug} ${q.plan}${q.addons.length ? ` ${q.addons.map((addon) => addon.key).join(" ")}` : ""}${q.cycle === "annual" ? " --annual" : ""}`
+      ]
+    });
+    // The owner's own copy of what they chose, in their Telegram when linked.
+    const ownerLine = (map) => map[lang] || map.en;
+    const addonLine = q.addons.length ? q.addons.map((addon) => `${ownerLine(addon.title)} +${billing.money(addon.price)}`).join(", ") : "";
+    const until = formatAlertDate(result.trialEndsAt.slice(0, 10), lang);
+    const perText = q.cycle === "annual" ? pick(lang, { en: "/year", fr: "/an", ru: " в год" }) : pick(lang, { en: "/month", fr: "/mois", ru: " в месяц" });
+    notifyOwner(slug, pick(lang, {
+      en: [`Thank you! You chose ${q.planTitle.en}${addonLine ? ` with ${addonLine}` : ""}.`,
+        `Total: ${billing.money(q.total)}${perText} + applicable tax (HST/GST/QST).`,
+        `Your trial now runs until ${until}, so nothing stops while you pay.`,
+        `Invoice by email within one business day to ${record.email || "your sign-in email"}, from ${billing.SELLER}, ${billing.SELLER_PLACE}.`].join("\n"),
+      fr: [`Merci! Vous avez choisi ${q.planTitle.fr}${addonLine ? ` avec ${addonLine}` : ""}.`,
+        `Total : ${billing.money(q.total)}${perText} + taxes applicables (TVH/TPS/TVQ).`,
+        `Votre essai va maintenant jusqu’au ${until} : rien ne s’arrête pendant le paiement.`,
+        `Facture par courriel d’ici un jour ouvrable à ${record.email || "votre adresse de connexion"}, de ${billing.SELLER}, ${billing.SELLER_PLACE}.`].join("\n"),
+      ru: [`Спасибо! Вы выбрали тариф «${q.planTitle.ru}»${addonLine ? ` и ${addonLine}` : ""}.`,
+        `Итого: ${billing.money(q.total)}${perText} + налог (HST/GST/QST).`,
+        `Пробный период продлён до ${until}, так что пока вы платите, ничего не остановится.`,
+        `Счёт придёт на почту ${record.email || "для входа"} в течение рабочего дня, от ${billing.SELLER}, ${billing.SELLER_PLACE}.`].join("\n")
+    }));
+    let checkoutUrl = "";
+    if (billing.stripeEnabled()) {
+      try {
+        const session = await billing.createCheckoutSession({
+          slug,
+          email: record.email,
+          q,
+          successUrl: `${PUBLIC_BASE}/screens/setup.html?paid=1#7`,
+          cancelUrl: `${PUBLIC_BASE}/screens/setup.html#7`,
+          fetchImpl: http
+        });
+        if (session) checkoutUrl = session.url;
+      } catch (error) {
+        // The invoice path still works: the owner sees the invoice message.
+        console.error(`[billing] checkout failed for ${slug}: ${String(error.message).slice(0, 160)}`);
+      }
+    }
+    if (assistant) assistant.invalidate(slug);
+    return { ok: true, status: 200, quote: q, trialEndsAt: result.trialEndsAt, extended: result.extended, checkoutUrl, plan: planView(slug, lang) };
+  }
+
+  function activatePlan(slug, input = {}) {
+    const result = billing.activatePlan(db, slug, input, clock);
+    if (result.ok) {
+      const record = store.getSalonRecord(slug) || {};
+      notifyPlatform({ subject: `AIbeaty plan active: ${record.name || slug} — ${result.quote.planTitle.en}`, lines: [`Salon: ${slug}`, billing.describeQuote(result.quote)] });
+      const tenant = getTenant(slug);
+      notifyOwner(slug, pick(tenant ? tenant.language : "en", {
+        en: `Thank you! Your ${result.quote.planTitle.en} plan is active. Maya keeps answering your clients.`,
+        fr: `Merci! Votre forfait ${result.quote.planTitle.fr} est actif. Maya continue de répondre à vos clients.`,
+        ru: `Спасибо! Тариф «${result.quote.planTitle.ru}» активен. Майя продолжает отвечать вашим клиентам.`
+      }));
+    }
+    return result;
+  }
+
+  // Stripe webhook (only reachable when STRIPE_WEBHOOK_SECRET is set).
+  function handleStripeWebhook(rawBody, signatureHeader) {
+    const secret = process.env.STRIPE_WEBHOOK_SECRET || "";
+    if (!secret) return { status: 404, body: { error: "not_configured" } };
+    if (!billing.verifyStripeSignature(rawBody, signatureHeader, secret, { now: clock().getTime() })) {
+      return { status: 400, body: { error: "bad_signature" } };
+    }
+    let event;
+    try {
+      event = JSON.parse(rawBody);
+    } catch (error) {
+      return { status: 400, body: { error: "bad_json" } };
+    }
+    if (event.type !== "checkout.session.completed") return { status: 200, body: { received: true } };
+    const session = (event.data && event.data.object) || {};
+    const metadata = session.metadata || {};
+    const slug = metadata.slug || session.client_reference_id;
+    const result = activatePlan(slug, {
+      plan: metadata.plan,
+      addons: String(metadata.addons || "").split(",").filter(Boolean),
+      cycle: metadata.cycle,
+      stripeCustomer: session.customer || "",
+      stripeSubscription: session.subscription || ""
+    });
+    return { status: 200, body: { received: true, activated: Boolean(result.ok) } };
+  }
+
+  // ---------- owner UI language ----------
+  function setLanguage(slug, language) {
+    const lang = normalizeLanguage(language);
+    db.prepare(`UPDATE tenants SET language = ?, updated_at = ? WHERE salon_slug = ?`).run(lang, nowIso(clock), slug);
+    return lang;
+  }
+
+  // ---------- the salon's own highlights for the chat greeting ----------
+  // The first three services the owner listed, with the price text as written.
+  function highlights(slug) {
+    const tenant = getTenant(slug);
+    if (!tenant || !tenant.setupComplete) return [];
+    return tenant.setup.services
+      .filter((service) => service.name && (service.consultOnly || parsePriceText(service.price).ok))
+      .slice(0, 3)
+      .map((service) => ({ name: service.name, price: service.consultOnly ? "" : service.price, consultOnly: service.consultOnly }));
+  }
+
+  // ---------- owner's Bookings screen (screens/bookings.html) ----------
+  // Real appointments only: the owner's own test chats (preview sessions) and
+  // rows flagged is_test (when that column exists) are never counted, and are
+  // listed only when the owner asks to see them.
+  function appointmentColumns() {
+    return new Set(db.prepare(`PRAGMA table_info(appointments)`).all().map((column) => column.name));
+  }
+
+  // The amount a booking is worth for "booked value": fixed prices in full,
+  // "from $75" and "$220–$320" at their lowest amount (so the total reads "at
+  // least"), never an add-on (+$15), a per-unit price, free or consultation.
+  function bookedAmount(label) {
+    const kind = mayaRules.priceKind(label);
+    if (kind !== "fixed" && kind !== "from" && kind !== "range") return { kind, value: null };
+    const first = mayaRules.amountsIn(label).find((num) => Number.isFinite(num) && num > 0);
+    return { kind, value: first === undefined ? null : first };
+  }
+
+  function salonToday(slug) {
+    const record = store.getSalonRecord(slug) || {};
+    return localParts(record.timezone).date;
+  }
+
+  // appointment id → how it was booked (Maya's booking event and its session).
+  function bookingSources(slug) {
+    const previewIds = new Set(db.prepare(`SELECT session_id FROM tenant_preview_sessions WHERE salon_slug = ?`).all(slug).map((row) => row.session_id));
+    const sessionOf = db.prepare(`SELECT id, conversation_id, language, client_phone FROM assistant_sessions WHERE salon_id = ? AND id = ?`);
+    const sources = new Map();
+    db.prepare(`SELECT session_id, payload_json FROM assistant_events WHERE salon_id = ? AND type = 'booking' ORDER BY created_at ASC`).all(slug).forEach((row) => {
+      let payload = {};
+      try { payload = JSON.parse(row.payload_json || "{}"); } catch (error) { payload = {}; }
+      if (!payload.appointmentId) return;
+      const session = sessionOf.get(slug, row.session_id) || {};
+      const sessionId = String(row.session_id || "");
+      sources.set(payload.appointmentId, {
+        sessionId,
+        conversationId: session.conversation_id || "",
+        language: session.language || "",
+        phone: realPhone(payload.phone) || realPhone(session.client_phone),
+        channel: /^tg:/.test(sessionId) ? "telegram" : sessionId ? "web" : "",
+        test: previewIds.has(sessionId)
+      });
+    });
+    return sources;
+  }
+
+  function bookingsView(slug, { days = 14, includeTests = false } = {}) {
+    const tenant = getTenant(slug);
+    if (!tenant) return null;
+    store.syncDayAnchor(slug);
+    const record = store.getSalonRecord(slug) || {};
+    const today = salonToday(slug);
+    const span = Math.max(1, Math.min(31, Number(days) || 14));
+    const until = addDaysIso(today, span - 1);
+    const anchorRow = db.prepare(`SELECT value FROM metadata WHERE salon_id = ? AND key = 'day_anchor'`).get(slug);
+    const anchor = anchorRow && /^\d{4}-\d{2}-\d{2}$/.test(anchorRow.value) ? anchorRow.value : today;
+    const hasIsTest = appointmentColumns().has("is_test");
+    const rows = db.prepare(`
+      SELECT a.id, a.stylist_id, a.service_name, a.client_name, a.start_minutes, a.end_minutes,
+             a.price_label, a.appointment_status, a.checked_out, a.notes,
+             ${hasIsTest ? "a.is_test" : "0"} AS is_test,
+             date(?, printf('%+d days', a.day_offset)) AS appt_date,
+             s.name AS staff, c.phone AS client_phone
+      FROM appointments a
+      LEFT JOIN stylists s ON s.salon_id = a.salon_id AND s.id = a.stylist_id
+      LEFT JOIN clients c ON c.salon_id = a.salon_id AND c.id = a.client_id
+      WHERE a.salon_id = ? AND date(?, printf('%+d days', a.day_offset)) BETWEEN ? AND ?
+      ORDER BY appt_date ASC, a.start_minutes ASC
+    `).all(anchor, slug, anchor, today, until);
+    const sources = bookingSources(slug);
+    let testCount = 0;
+    let value = 0;
+    let counted = 0;
+    let atLeast = false;
+    let notCounted = 0;
+    const bookings = [];
+    rows.forEach((row) => {
+      const source = sources.get(row.id) || null;
+      const test = Boolean(Number(row.is_test)) || Boolean(source && source.test);
+      const status = Number(row.checked_out) ? "done"
+        : row.appointment_status === "canceled" ? "cancelled"
+        : row.appointment_status === "no_show" ? "no_show" : "booked";
+      if (test) testCount += 1;
+      if (!test && status !== "cancelled" && status !== "no_show") {
+        const amount = bookedAmount(row.price_label);
+        if (amount.value === null) notCounted += 1;
+        else {
+          value += amount.value;
+          counted += 1;
+          if (amount.kind !== "fixed") atLeast = true;
+        }
+      }
+      if (test && !includeTests) return;
+      bookings.push({
+        id: row.id,
+        date: row.appt_date,
+        start: row.start_minutes,
+        end: row.end_minutes,
+        client: row.client_name,
+        phone: (source && source.phone) || realPhone(row.client_phone),
+        service: row.service_name,
+        price: row.price_label,
+        staff: row.staff || "",
+        staffId: row.stylist_id,
+        channel: source ? source.channel : "",
+        bookedBy: source ? "maya" : "owner",
+        status,
+        test
+      });
+    });
+    const staff = db.prepare(`SELECT id, name FROM stylists WHERE salon_id = ? ORDER BY sort_order ASC, name ASC`).all(slug);
+    return {
+      salon: { slug, name: record.name || slug, timezone: record.timezone || "America/Toronto" },
+      language: ownerLang(tenant),
+      today,
+      until,
+      days: span,
+      launched: tenant.launched,
+      telegram: telegramStatus(slug).connected,
+      staff: staff.map((row) => ({ id: row.id, name: row.name })),
+      bookings,
+      blocks: listBlocks(slug),
+      testCount,
+      // Real, non-test, not cancelled bookings only.
+      bookedValue: { amount: Math.round(value * 100) / 100, counted, atLeast, notCounted, currency: "CAD" }
+    };
+  }
+
+  function listBlocks(slug) {
+    const today = salonToday(slug);
+    const names = new Map(db.prepare(`SELECT id, name FROM stylists WHERE salon_id = ?`).all(slug).map((row) => [row.id, row.name]));
+    return db.prepare(`
+      SELECT id, stylist_id, block_date, start_minutes, end_minutes, reason FROM tenant_busy_blocks
+      WHERE salon_slug = ? AND block_date >= ? ORDER BY block_date ASC, start_minutes ASC
+    `).all(slug, today).map((row) => ({
+      id: row.id,
+      staffId: row.stylist_id,
+      staff: row.stylist_id ? (names.get(row.stylist_id) || "") : "",
+      date: row.block_date,
+      start: row.start_minutes,
+      end: row.end_minutes,
+      reason: row.reason
+    }));
+  }
+
+  function clockToMinutes(value) {
+    const match = /^(\d{1,2}):(\d{2})$/.exec(String(value || "").trim());
+    if (!match) return null;
+    const minutes = Number(match[1]) * 60 + Number(match[2]);
+    return Number(match[1]) <= 24 && Number(match[2]) < 60 && minutes <= 24 * 60 ? minutes : null;
+  }
+
+  function addBlock(slug, input = {}) {
+    const tenant = getTenant(slug);
+    if (!tenant) return { ok: false, status: 409, error: "not_self_serve" };
+    const lang = ownerLang(tenant);
+    const today = salonToday(slug);
+    const date = String(input.date || "").trim();
+    const staffId = String(input.staffId || "").trim();
+    const allDay = Boolean(input.allDay);
+    const start = allDay ? 0 : clockToMinutes(input.from);
+    const end = allDay ? 24 * 60 : clockToMinutes(input.to);
+    const errors = [];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < today || date > addDaysIso(today, 180)) {
+      errors.push({ field: "date", message: pick(lang, { en: "Pick a day from today on.", fr: "Choisissez un jour à partir d’aujourd’hui.", ru: "Выберите день, начиная с сегодняшнего." }) });
+    }
+    if (start === null || end === null || end <= start) {
+      errors.push({ field: "time", message: pick(lang, { en: "Set a start and an end time, the end after the start.", fr: "Indiquez une heure de début et une heure de fin, la fin après le début.", ru: "Укажите начало и конец, конец позже начала." }) });
+    }
+    if (staffId && !db.prepare(`SELECT 1 FROM stylists WHERE salon_id = ? AND id = ?`).get(slug, staffId)) {
+      errors.push({ field: "staffId", message: pick(lang, { en: "Pick someone from your team, or the whole salon.", fr: "Choisissez une personne de l’équipe, ou tout le salon.", ru: "Выберите мастера или весь салон." }) });
+    }
+    if (errors.length) return { ok: false, status: 422, error: "invalid", errors, message: errors[0].message };
+    const id = `block-${crypto.randomBytes(6).toString("hex")}`;
+    db.prepare(`
+      INSERT INTO tenant_busy_blocks (id, salon_slug, stylist_id, block_date, start_minutes, end_minutes, reason, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, slug, staffId, date, start, end, cleanText(input.reason, 120), nowIso(clock));
+    // Bookings already inside the blocked time stay booked; the owner decides.
+    const overlapping = (bookingsView(slug, { days: 181, includeTests: true }) || { bookings: [] }).bookings.filter((booking) =>
+      booking.status === "booked" && booking.date === date && (!staffId || booking.staffId === staffId) &&
+      booking.start < end && booking.end > start
+    ).length;
+    return { ok: true, status: 201, id, overlapping, blocks: listBlocks(slug) };
+  }
+
+  function removeBlock(slug, id) {
+    const result = db.prepare(`DELETE FROM tenant_busy_blocks WHERE salon_slug = ? AND id = ?`).run(slug, String(id || ""));
+    return result.changes ? { ok: true, blocks: listBlocks(slug) } : { ok: false, error: "not_found" };
+  }
+
+  // The owner cancels a visit. The client hears it where they booked: their
+  // Telegram chat through the salon bot, or their web chat the next time it
+  // opens. Maya stays on for that client, so they can pick another time.
+  async function cancelBooking(slug, appointmentId, { reason = "" } = {}) {
+    const tenant = getTenant(slug);
+    if (!tenant) return { ok: false, status: 409, error: "not_self_serve" };
+    const scope = store.forSalon(slug);
+    store.syncDayAnchor(slug);
+    const anchorRow = db.prepare(`SELECT value FROM metadata WHERE salon_id = ? AND key = 'day_anchor'`).get(slug);
+    const row = db.prepare(`
+      SELECT a.*, date(?, printf('%+d days', a.day_offset)) AS appt_date, s.name AS staff
+      FROM appointments a LEFT JOIN stylists s ON s.salon_id = a.salon_id AND s.id = a.stylist_id
+      WHERE a.salon_id = ? AND a.id = ?
+    `).get(anchorRow ? anchorRow.value : salonToday(slug), slug, String(appointmentId || ""));
+    if (!row) return { ok: false, status: 404, error: "not_found" };
+    if (row.appointment_status !== "scheduled" || Number(row.checked_out)) return { ok: false, status: 409, error: "not_active" };
+    const note = cleanText(reason, 200);
+    const done = scope.cancelAppointment(row.id, { reason: note ? `Cancelled by the salon: ${note}` : "Cancelled by the salon" });
+    if (!done || done.error) return { ok: false, status: 409, error: (done && done.error) || "not_active" };
+    db.prepare(`DELETE FROM tenant_reminders WHERE salon_slug = ? AND appointment_id = ?`).run(slug, row.id);
+    const source = bookingSources(slug).get(row.id);
+    let told = { channel: "", delivery: "" };
+    if (source && source.conversationId && source.channel) {
+      const record = store.getSalonRecord(slug) || {};
+      const raw = mayaLanguage.normalizeLanguageCode(source.language) || "en";
+      const lang = ["en", "fr", "ru", "uk"].includes(raw) ? raw : "en";
+      const date = formatAlertDate(row.appt_date, lang === "uk" ? "ru" : lang);
+      const time = formatAlertTime(row.start_minutes, lang === "uk" ? "ru" : lang);
+      const text = pickText({
+        en: `Hello ${row.client_name}, ${record.name || "the salon"} had to cancel your visit: ${row.service_name}, ${date} at ${time}.${note ? ` ${note}` : ""} We're sorry. Reply here and Maya will find you another time.`,
+        fr: `Bonjour ${row.client_name}, ${record.name || "le salon"} a dû annuler votre rendez-vous : ${row.service_name}, ${date} à ${time}.${note ? ` ${note}` : ""} Désolés. Répondez ici et Maya vous trouvera un autre moment.`,
+        ru: `Здравствуйте, ${row.client_name}! Салон «${record.name || ""}» вынужден отменить вашу запись: ${row.service_name}, ${date} в ${time}.${note ? ` ${note}` : ""} Просим прощения. Напишите сюда, и Майя подберёт другое время.`,
+        uk: `Вітаємо, ${row.client_name}! Салон «${record.name || ""}» мусить скасувати ваш запис: ${row.service_name}, ${date} о ${time}.${note ? ` ${note}` : ""} Перепрошуємо. Напишіть сюди, і Майя підбере інший час.`
+      }, lang);
+      const sent = await sendStaffReply(slug, source.conversationId, text, { pauseMaya: false, via: "bookings" });
+      if (sent.ok) told = { channel: sent.channel, delivery: sent.delivery };
+    }
+    if (assistant && typeof assistant.invalidate === "function") assistant.invalidate(slug);
+    return { ok: true, status: 200, id: row.id, told };
   }
 
   return {
     hooks,
     attachAssistant,
+    bookingsView,
+    listBlocks,
+    addBlock,
+    removeBlock,
+    cancelBooking,
     getTenant,
     signup,
     saveSetup,
@@ -1201,8 +2539,22 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     connectTelegram,
     disconnectTelegram,
     handleTelegramUpdate,
+    sendStaffReply,
+    webUpdates,
+    inboxView,
+    flushOwnerAlerts,
+    flushWaitingAlerts,
+    resetTestChat,
+    returnStaleHandoffs,
+    isTestSession: isTestSessionId,
     listAddons,
     requestAddon,
+    planView,
+    requestPlan,
+    activatePlan,
+    handleStripeWebhook,
+    setLanguage,
+    highlights,
     sendDueReminders,
     sendTrialNotices,
     startTicker,
@@ -1216,7 +2568,10 @@ module.exports = {
   normalizeSetup,
   validateSetup,
   setupToStore,
+  emptySetup,
   parseHours,
+  parsePriceText,
+  normalizeLanguage,
   isPrivateAddress,
   htmlToText,
   TRIAL_DAYS,

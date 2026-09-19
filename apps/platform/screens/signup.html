@@ -65,12 +65,11 @@
   }
   .mark .name { font-family: var(--font-headline); font-weight: 800; font-size: 17px; letter-spacing: -0.02em; color: var(--ink); line-height: 1.15; }
   .mark .sub { font-size: 12px; color: var(--on-surface-variant); font-weight: 500; margin-top: 2px; }
-  .lang {
-    margin-left: auto; font: 600 12px var(--font-body); color: var(--on-surface-variant);
-    background: none; border: 1px solid var(--surface-variant); border-radius: var(--r-xl);
-    padding: 6px 10px; cursor: pointer;
-  }
-  .lang:hover { border-color: var(--outline); color: var(--on-surface); }
+  /* Language: EN · FR, plus RU only when the browser asks for ru/uk. */
+  .langs { margin-left: auto; display: inline-flex; border: 1px solid var(--surface-variant); border-radius: var(--r-xl); overflow: hidden; }
+  .langs button { font: 700 11.5px var(--font-body); letter-spacing: .04em; color: var(--on-surface-variant); background: none; border: 0; padding: 6px 10px; cursor: pointer; }
+  .langs button + button { border-left: 1px solid var(--surface-variant); }
+  .langs button[aria-pressed="true"] { background: var(--ink); color: #fff; }
 
   .shelf h1 {
     font-family: var(--font-headline); font-weight: 800; font-size: 36px;
@@ -100,7 +99,7 @@
   .card h2 { font-family: var(--font-headline); font-weight: 800; font-size: 22px; letter-spacing: -0.02em; margin: 0 0 4px; color: var(--ink); }
   .card .h2-sub { font-size: 13px; color: var(--on-surface-variant); margin: 0 0 22px; }
 
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; align-items: start; }
   .field { display: grid; gap: 6px; margin-bottom: 15px; }
   .field label { font-size: 12px; font-weight: 700; color: var(--on-surface-variant); text-transform: uppercase; letter-spacing: 0.04em; }
   .field .opt { text-transform: none; letter-spacing: 0; font-weight: 500; }
@@ -139,6 +138,16 @@
   button.submit:active { transform: scale(.985); }
   button.submit[disabled] { opacity: .6; cursor: default; }
   .fine { font-size: 12px; color: var(--on-surface-variant); line-height: 1.5; margin: 12px 0 0; text-align: center; }
+  .fine a { color: var(--primary); font-weight: 600; }
+  /* Plans in one ruled line: the owner sees what it costs before signing up. */
+  .prices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--surface-variant); border-bottom: 1px solid var(--surface-variant); margin-top: 18px; }
+  .prices > div { padding: 10px 8px; text-align: center; }
+  .prices > div + div { border-left: 1px solid var(--surface-variant); }
+  .prices b { display: block; font: 800 16px var(--font-headline); color: var(--ink); letter-spacing: -0.01em; }
+  .prices span { font-size: 11.5px; color: var(--on-surface-variant); line-height: 1.35; display: block; margin-top: 2px; }
+  .price-line { font-size: 13px; font-weight: 600; color: var(--ink); text-align: center; margin: 16px 0 0; }
+  .billed { font-size: 12px; color: var(--on-surface-variant); text-align: center; margin: 4px 0 0; }
+  .field .note { font-size: 12px; color: var(--on-surface-variant); }
 
   .alert {
     display: none; gap: 9px; align-items: flex-start;
@@ -183,17 +192,17 @@
       <div class="name">AIbeaty</div>
       <div class="sub" data-i18n="markSub">AI front desk for salons</div>
     </div>
-    <button class="lang" id="lang" type="button" aria-label="Switch language">Русский</button>
+    <div class="langs" id="langs" role="group" aria-label="Language"></div>
   </div>
 
   <section class="shelf settle d3">
     <h1 data-i18n="h1">Maya answers your clients tonight.</h1>
-    <p class="lede" data-i18n="lede">She books, reschedules and answers price questions in your salon's own Telegram bot. You get every booking on your phone.</p>
+    <p class="lede" data-i18n="lede">She answers questions, quotes your prices word for word and books clients into your open times, day and night. Clients reach her from your chat link: in your Instagram bio, your Google profile and your website.</p>
     <div class="ledger">
       <div class="row"><div><div class="t" data-i18n="s1t">Create your account</div><div class="d" data-i18n="s1d">Two minutes. No card.</div></div></div>
       <div class="row"><div><div class="t" data-i18n="s2t">Paste your price list or website</div><div class="d" data-i18n="s2d">Maya drafts your services and prices, you check them.</div></div></div>
-      <div class="row"><div><div class="t" data-i18n="s3t">Connect your Telegram bot</div><div class="d" data-i18n="s3d">Step-by-step, about five minutes with @BotFather.</div></div></div>
-      <div class="row"><div><div class="t" data-i18n="s4t">14 days free</div><div class="d" data-i18n="s4d">Instagram, WhatsApp, SMS and calendar sync on request.</div></div></div>
+      <div class="row"><div><div class="t" data-i18n="s3t">Test her, then share your chat link</div><div class="d" data-i18n="s3d">A link and a QR code for Instagram, Google and the front desk. Telegram is optional.</div></div></div>
+      <div class="row"><div><div class="t" data-i18n="s4t">14 days free, then from $39/month</div><div class="d" data-i18n="s4d">Month-to-month, cancel anytime. Instagram Direct, WhatsApp, SMS and calendar sync are add-ons.</div></div></div>
     </div>
   </section>
 
@@ -209,28 +218,30 @@
     <form id="form" novalidate="">
       <div class="field" data-field="salonName">
         <label for="salonName" data-i18n="salonName">Salon name</label>
-        <input id="salonName" autocomplete="organization" required/>
+        <input id="salonName" autocomplete="organization" required data-ph="phSalon" placeholder="e.g. Petal Nails"/>
         <div class="err"></div>
       </div>
       <div class="field">
-        <label data-i18n="type">What do you do?</label>
-        <div class="types" id="types" role="group">
+        <label id="typeLabel" data-i18n="type">What do you do?</label>
+        <div class="types" id="types" role="group" aria-labelledby="typeLabel">
           <button type="button" data-type="hair" aria-pressed="false" data-i18n="tHair">Hair</button>
           <button type="button" data-type="nails" aria-pressed="false" data-i18n="tNails">Nails</button>
           <button type="button" data-type="lashes_brows" aria-pressed="false" data-i18n="tLashes">Lashes &amp; brows</button>
           <button type="button" data-type="barber" aria-pressed="false" data-i18n="tBarber">Barber</button>
           <button type="button" data-type="spa" aria-pressed="false" data-i18n="tSpa">Spa &amp; massage</button>
+          <button type="button" data-type="medspa" aria-pressed="false" data-i18n="tMedspa">Medspa / clinic</button>
           <button type="button" data-type="multi" aria-pressed="true" data-i18n="tMulti">A bit of everything</button>
         </div>
       </div>
       <div class="grid2">
         <div class="field">
           <label for="ownerName" data-i18n="ownerName">Your name</label>
-          <input id="ownerName" autocomplete="name"/>
+          <input id="ownerName" autocomplete="name" data-ph="phOwner" placeholder="e.g. Olena Kovalenko" aria-describedby="ownerNote"/>
+          <div class="note" id="ownerNote" data-i18n="ownerNote">We add you as the first team member.</div>
         </div>
         <div class="field">
           <label for="city" data-i18n="city">City</label>
-          <input id="city" autocomplete="address-level2"/>
+          <input id="city" autocomplete="address-level2" data-ph="phCity" placeholder="e.g. Ottawa"/>
         </div>
       </div>
       <div class="field" data-field="timezone">
@@ -253,7 +264,7 @@
       </div>
       <div class="field" data-field="email">
         <label for="email" data-i18n="email">Email</label>
-        <input id="email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false"/>
+        <input id="email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" data-ph="phEmail" placeholder="e.g. you@yoursalon.ca"/>
         <div class="err"></div>
       </div>
       <div class="field" data-field="password">
@@ -265,8 +276,17 @@
         <span class="spinner" aria-hidden="true"></span>
         <span data-i18n="submit">Create my assistant</span>
       </button>
-      <p class="fine" data-i18n="fine">14 days free. Nothing to install. Your clients see that Maya is an AI and can ask for a person any time.</p>
+      <p class="fine" data-i18n="terms">By creating an account you agree to the <a href="https://aibeaty.pages.dev/terms/" target="_blank" rel="noopener">Terms</a> and <a href="https://aibeaty.pages.dev/privacy/" target="_blank" rel="noopener">Privacy Policy</a>.</p>
     </form>
+
+    <p class="price-line" data-i18n="priceLine">14 days free, then from $39/month</p>
+    <p class="billed" data-i18n="billedBy">Billed by INNOVA CONSULT LTD, Ottawa, Canada</p>
+    <div class="prices" aria-label="Plans">
+      <div><b data-i18n="pSolo">Solo $39</b><span data-i18n="pSoloD">1 staff member</span></div>
+      <div><b data-i18n="pSalon">Salon $79</b><span data-i18n="pSalonD">up to 6 staff</span></div>
+      <div><b data-i18n="pPro">Pro $149</b><span data-i18n="pProD">any team, clinics, set up for you</span></div>
+    </div>
+    <p class="fine" data-i18n="fine">CAD per month plus tax, month-to-month, cancel anytime. No card for the trial. Your clients see that Maya is an AI and can ask for a person any time.</p>
 
     <div class="foot"><span data-i18n="haveAccount">Already have an account?</span> <a href="login.html" data-i18n="signIn">Sign in</a></div>
   </section>
@@ -276,59 +296,110 @@
 (function () {
   var TEXT = {
     en: {},
+    fr: {
+      markSub: "Réception IA pour salons",
+      h1: "Maya répond à vos clients dès ce soir.",
+      lede: "Elle répond aux questions, cite vos prix mot pour mot et réserve vos clients dans vos heures libres, jour et nuit. Vos clients la joignent avec votre lien de chat : dans votre bio Instagram, votre fiche Google et votre site.",
+      s1t: "Créez votre compte", s1d: "Deux minutes. Sans carte.",
+      s2t: "Collez votre liste de prix ou votre site", s2d: "Maya prépare vos services et vos prix, vous vérifiez.",
+      s3t: "Testez-la, puis partagez votre lien de chat", s3d: "Un lien et un code QR pour Instagram, Google et l’accueil. Telegram est facultatif.",
+      s4t: "14 jours gratuits, puis à partir de 39 $/mois", s4d: "Au mois, annulable en tout temps. Instagram Direct, WhatsApp, SMS et synchronisation d’agenda en option.",
+      cardTitle: "Commencez votre essai gratuit", cardSub: "Votre salon a sa propre assistante et son propre espace.",
+      salonName: "Nom du salon", type: "Que faites-vous?",
+      tHair: "Coiffure", tNails: "Ongles", tLashes: "Cils et sourcils", tBarber: "Barbier", tSpa: "Spa et massage", tMedspa: "Médi-spa / clinique", tMulti: "Un peu de tout",
+      ownerName: "Votre nom", ownerNote: "Nous vous ajoutons comme premier membre de l’équipe.", city: "Ville", timezone: "Fuseau horaire", email: "Courriel", password: "Mot de passe", passwordHint: "· 10 caractères ou plus",
+      submit: "Créer mon assistante",
+      terms: "En créant un compte, vous acceptez les <a href=\"https://aibeaty.pages.dev/terms/\" target=\"_blank\" rel=\"noopener\">Conditions</a> et la <a href=\"https://aibeaty.pages.dev/privacy/\" target=\"_blank\" rel=\"noopener\">Politique de confidentialité</a>.",
+      priceLine: "14 jours gratuits, puis à partir de 39 $/mois",
+      billedBy: "Facturé par INNOVA CONSULT LTD, Ottawa, Canada",
+      pSolo: "Solo 39 $", pSoloD: "1 personne", pSalon: "Salon 79 $", pSalonD: "jusqu’à 6 personnes", pPro: "Pro 149 $", pProD: "toute équipe, cliniques, configuré pour vous",
+      fine: "En dollars canadiens par mois, taxes en sus, au mois, annulable en tout temps. Sans carte pour l’essai. Vos clients savent que Maya est une IA et peuvent demander une personne en tout temps.",
+      haveAccount: "Vous avez déjà un compte?", signIn: "Se connecter",
+      phSalon: "ex. Ongles Pétale", phOwner: "ex. Chloé Tremblay", phCity: "ex. Gatineau", phEmail: "ex. vous@votresalon.ca"
+    },
     ru: {
       markSub: "ИИ-администратор для салонов",
       h1: "Майя ответит вашим клиентам уже сегодня.",
-      lede: "Она записывает, переносит визиты и отвечает про цены в собственном Telegram-боте вашего салона. Каждая запись приходит вам на телефон.",
+      lede: "Она отвечает на вопросы, называет ваши цены слово в слово и записывает клиентов в ваше свободное время, днём и ночью. Клиенты пишут ей по ссылке на чат: в описании Instagram, в профиле Google и на сайте.",
       s1t: "Создайте аккаунт", s1d: "Две минуты. Без карты.",
       s2t: "Вставьте прайс или ссылку на сайт", s2d: "Майя сама составит список услуг и цен, вы проверите.",
-      s3t: "Подключите Telegram-бота", s3d: "Пошагово, минут пять с @BotFather.",
-      s4t: "14 дней бесплатно", s4d: "Instagram, WhatsApp, SMS и синхронизация календаря по запросу.",
+      s3t: "Проверьте её и поделитесь ссылкой на чат", s3d: "Ссылка и QR-код для Instagram, Google и ресепшена. Telegram по желанию.",
+      s4t: "14 дней бесплатно, дальше от $39 в месяц", s4d: "Помесячно, отмена в любой момент. Instagram Direct, WhatsApp, SMS и синхронизация календаря — дополнения.",
       cardTitle: "Бесплатный пробный период", cardSub: "Вашему салону — свой ассистент и свой кабинет.",
       salonName: "Название салона", type: "Чем вы занимаетесь?",
-      tHair: "Волосы", tNails: "Ногти", tLashes: "Ресницы и брови", tBarber: "Барбершоп", tSpa: "Спа и массаж", tMulti: "Всего понемногу",
-      ownerName: "Ваше имя", city: "Город", timezone: "Часовой пояс", email: "Почта", password: "Пароль", passwordHint: "· от 10 символов",
+      tHair: "Волосы", tNails: "Ногти", tLashes: "Ресницы и брови", tBarber: "Барбершоп", tSpa: "Спа и массаж", tMedspa: "Медспа / клиника", tMulti: "Всего понемногу",
+      ownerName: "Ваше имя", ownerNote: "Добавим вас первым мастером.", city: "Город", timezone: "Часовой пояс", email: "Почта", password: "Пароль", passwordHint: "· от 10 символов",
       submit: "Создать ассистента",
-      fine: "14 дней бесплатно. Ничего не нужно устанавливать. Клиенты видят, что Майя — ИИ, и могут в любой момент позвать человека.",
-      haveAccount: "Уже есть аккаунт?", signIn: "Войти"
+      terms: "Создавая аккаунт, вы принимаете <a href=\"https://aibeaty.pages.dev/terms/\" target=\"_blank\" rel=\"noopener\">Условия</a> и <a href=\"https://aibeaty.pages.dev/privacy/\" target=\"_blank\" rel=\"noopener\">Политику конфиденциальности</a>.",
+      priceLine: "14 дней бесплатно, дальше от $39 в месяц",
+      billedBy: "Счёт выставляет INNOVA CONSULT LTD, Оттава, Канада",
+      pSolo: "Соло $39", pSoloD: "1 мастер", pSalon: "Салон $79", pSalonD: "до 6 мастеров", pPro: "Про $149", pProD: "любая команда, клиники, настроим за вас",
+      fine: "Канадские доллары в месяц плюс налоги, помесячно, отмена в любой момент. Для пробного периода карта не нужна. Клиенты видят, что Майя — ИИ, и могут в любой момент позвать человека.",
+      haveAccount: "Уже есть аккаунт?", signIn: "Войти",
+      phSalon: "напр. Petal Nails", phOwner: "напр. Олена Коваленко", phCity: "напр. Оттава", phEmail: "напр. you@yoursalon.ca"
     }
   };
   var MSG = {
-    en: { required: "Fill in the salon name, email and password.", network: "The server did not respond. Try again.", rate: "Too many sign-ups from this network. Try again in an hour." },
-    ru: { required: "Заполните название салона, почту и пароль.", network: "Сервер не ответил. Попробуйте ещё раз.", rate: "Слишком много регистраций из этой сети. Попробуйте через час." }
+    en: { required: "Fill in the salon name, email and password.", network: "The server did not respond. Try again.", rate: "Too many sign-ups from this network. Try again in an hour.", title: "AIbeaty — Start your free trial" },
+    fr: { required: "Remplissez le nom du salon, le courriel et le mot de passe.", network: "Le serveur n’a pas répondu. Réessayez.", rate: "Trop d’inscriptions depuis ce réseau. Réessayez dans une heure.", title: "AIbeaty — Commencez votre essai gratuit" },
+    ru: { required: "Заполните название салона, почту и пароль.", network: "Сервер не ответил. Попробуйте ещё раз.", rate: "Слишком много регистраций из этой сети. Попробуйте через час.", title: "AIbeaty — бесплатный пробный период" }
   };
 
+  // EN and FR for everyone; RU only when the browser asks for ru/uk.
+  function browserLangs() {
+    try { return (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language]).map(function (code) { return String(code || "").toLowerCase(); }); } catch (error) { return []; }
+  }
+  var wantsRu = browserLangs().some(function (code) { return /^(ru|uk)/.test(code); });
+  var offered = wantsRu ? ["en", "fr", "ru"] : ["en", "fr"];
   var lang = "en";
-  try {
-    var stored = localStorage.getItem("aibeaty-lang");
-    if (stored === "ru" || stored === "en") lang = stored;
-    else if (/^(ru|uk)/.test(navigator.language || "")) lang = "ru";
-  } catch (error) { /* storage blocked: stay English */ }
+  var stored = null;
+  try { stored = localStorage.getItem("aibeaty-lang"); } catch (error) { /* storage blocked */ }
+  if (stored && offered.indexOf(stored) !== -1) lang = stored;
+  else {
+    var first = browserLangs()[0] || "";
+    lang = /^fr/.test(first) ? "fr" : /^(ru|uk)/.test(first) ? "ru" : "en";
+  }
 
   var english = {};
   document.querySelectorAll("[data-i18n]").forEach(function (node) { english[node.getAttribute("data-i18n")] = node.innerHTML; });
+  document.querySelectorAll("[data-ph]").forEach(function (node) { english[node.getAttribute("data-ph")] = node.getAttribute("placeholder"); });
 
   function applyLang() {
-    document.documentElement.lang = lang;
+    document.documentElement.lang = lang === "fr" ? "fr-CA" : lang;
+    var table = TEXT[lang] || {};
     document.querySelectorAll("[data-i18n]").forEach(function (node) {
       var key = node.getAttribute("data-i18n");
-      node.innerHTML = lang === "ru" && TEXT.ru[key] ? TEXT.ru[key] : english[key];
+      node.innerHTML = table[key] || english[key];
     });
-    document.getElementById("lang").textContent = lang === "ru" ? "English" : "Русский";
-    document.title = lang === "ru" ? "AIbeaty — бесплатный пробный период" : "AIbeaty — Start your free trial";
+    document.querySelectorAll("[data-ph]").forEach(function (node) {
+      var key = node.getAttribute("data-ph");
+      node.setAttribute("placeholder", table[key] || english[key]);
+    });
+    document.getElementById("langs").innerHTML = offered.map(function (code) {
+      return '<button type="button" data-lang="' + code + '" aria-pressed="' + (code === lang) + '">' + code.toUpperCase() + '</button>';
+    }).join("");
+    document.title = MSG[lang].title;
   }
-  document.getElementById("lang").addEventListener("click", function () {
-    lang = lang === "ru" ? "en" : "ru";
+  document.getElementById("langs").addEventListener("click", function (event) {
+    var button = event.target.closest("button[data-lang]");
+    if (!button) return;
+    lang = button.getAttribute("data-lang");
     try { localStorage.setItem("aibeaty-lang", lang); } catch (error) { /* ignore */ }
     applyLang();
   });
   applyLang();
 
-  // Guess the time zone from the browser when it is one of ours.
+  // Take the time zone from the browser, adding it to the list when it is not there.
   try {
     var zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     var select = document.getElementById("timezone");
-    if (zone && select.querySelector('option[value="' + zone + '"]')) select.value = zone;
+    if (zone && !select.querySelector('option[value="' + zone + '"]')) {
+      var option = document.createElement("option");
+      option.value = zone;
+      option.textContent = zone.replace(/_/g, " ");
+      select.insertBefore(option, select.firstChild);
+    }
+    if (zone) select.value = zone;
   } catch (error) { /* keep Toronto */ }
 
   var businessType = "multi";

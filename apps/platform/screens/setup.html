@@ -3,15 +3,17 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <meta content="noindex, nofollow" name="robots"/>
-<title>AIbeaty — Set up your assistant</title>
+<title>AIbeaty — Set up Maya</title>
 <link href="https://fonts.googleapis.com" rel="preconnect"/>
 <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@500;700;800&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- QR codes for the salon's chat link, drawn in the browser (MIT, kazuhikoarase). -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" integrity="sha384-mZT2gIty7ZDdOGkxfP6joZcYdMW1Jvj9dRlfpTmaJAKKXTqzygtB22k7FLe+KZC1" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
 <style>
   /* Luminous Core M3 light (tailwind.config.js), mirrored like login.html / digest.html.
      The wizard's one layout primitive is the ledger row: the step rail, the service
-     list, the team and the add-ons are all hairline-ruled rows, never card grids. */
+     list, the team, the plans and the add-ons are all hairline-ruled rows, never card grids. */
   :root {
     --bg: #f5f6f7;
     --surface-lowest: #ffffff;
@@ -25,6 +27,7 @@
     --ink: #17181b;
     --primary: #4d2afa;
     --primary-dim: #400aef;
+    --primary-tint: rgba(77, 42, 250, .06);
     --on-primary: #ffffff;
     --tertiary-container: #c79eff;
     --on-tertiary-container: #450087;
@@ -33,6 +36,7 @@
     --ok: #0b6b3a;
     --ok-bg: rgba(11, 107, 58, .08);
     --error: #b41340;
+    --error-bg: rgba(180, 19, 64, .06);
     --on-error-container: #510017;
     --r-sm: 0.25rem;
     --r-xl: 0.5rem;
@@ -48,6 +52,7 @@
   .material-symbols-outlined { font-variation-settings: "FILL" 0, "wght" 400; vertical-align: middle; font-size: 20px; }
   a { color: var(--primary); }
   button { font-family: var(--font-body); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
   /* ---- top bar ---- */
   .bar {
@@ -71,11 +76,22 @@
     border: 1px solid var(--surface-variant); border-radius: var(--r-xl); padding: 6px 10px; cursor: pointer; text-decoration: none; white-space: nowrap;
   }
   .ghost:hover { border-color: var(--outline); color: var(--on-surface); }
-  #saved { font-size: 12px; color: var(--on-surface-variant); min-width: 60px; text-align: right; }
+  #saved { font-size: 12px; color: var(--on-surface-variant); text-align: right; white-space: nowrap; }
+  #saved.err { color: var(--error); font-weight: 600; }
+  /* Language: a segmented EN · FR (· RU only for ru/uk browsers). */
+  .langs { display: inline-flex; border: 1px solid var(--surface-variant); border-radius: var(--r-xl); overflow: hidden; }
+  .langs button { font: 700 11.5px var(--font-body); letter-spacing: .04em; color: var(--on-surface-variant); background: none; border: 0; padding: 6px 9px; cursor: pointer; }
+  .langs button + button { border-left: 1px solid var(--surface-variant); }
+  .langs button[aria-pressed="true"] { background: var(--ink); color: #fff; }
 
   /* ---- layout: step rail + panel ---- */
   .wrap { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 40px; max-width: 1120px; margin: 0 auto; padding: 32px 24px 80px; }
-  .rail { position: sticky; top: 84px; align-self: start; border-top: 1px solid var(--surface-variant); }
+  .side { position: sticky; top: 84px; align-self: start; }
+  .progress { margin: 0 0 12px; }
+  .progress .txt { font-size: 12.5px; font-weight: 600; color: var(--on-surface-variant); margin-bottom: 7px; }
+  .progress .track { height: 4px; border-radius: 99px; background: var(--surface-container); overflow: hidden; }
+  .progress .fill { height: 100%; background: var(--primary); border-radius: 99px; transition: width 300ms var(--settle); }
+  .rail { border-top: 1px solid var(--surface-variant); }
   .rail button {
     width: 100%; display: grid; grid-template-columns: 26px 1fr 20px; align-items: center; gap: 8px;
     padding: 11px 4px; background: none; border: 0; border-bottom: 1px solid var(--surface-variant);
@@ -85,9 +101,10 @@
   .rail button:hover { color: var(--on-surface); }
   .rail button[aria-current="step"] { color: var(--ink); }
   .rail button[aria-current="step"] .n { color: var(--primary); }
-  .rail button .st { font-size: 18px; color: var(--outline-variant); }
-  .rail button .st.done { color: var(--ok); }
-  .rail button .st.todo { color: var(--error); }
+  .rail .st { font-size: 18px; color: var(--outline-variant); display: flex; justify-content: center; }
+  .rail .st.done { color: var(--ok); }
+  .rail .st.fix { color: var(--error); }
+  .rail .dot { width: 8px; height: 8px; border-radius: 99px; border: 1.5px solid var(--outline-variant); display: inline-block; }
 
   .panel { min-width: 0; }
   .panel h1 { font: 800 28px/1.12 var(--font-headline); letter-spacing: -0.03em; color: var(--ink); margin: 0 0 8px; }
@@ -98,7 +115,7 @@
 
   /* ---- fields ---- */
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
-  .field { display: grid; gap: 6px; margin-bottom: 14px; }
+  .field { display: grid; gap: 6px; margin-bottom: 14px; align-content: start; }
   .field > label, .lbl { font-size: 12px; font-weight: 700; color: var(--on-surface-variant); text-transform: uppercase; letter-spacing: 0.04em; }
   .hint { font-size: 12.5px; color: var(--on-surface-variant); line-height: 1.45; }
   input, select, textarea {
@@ -110,30 +127,36 @@
   textarea { resize: vertical; min-height: 84px; line-height: 1.5; }
   input:hover, select:hover, textarea:hover { border-color: var(--outline); }
   input:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(77, 42, 250, .14); }
-  .bad { border-color: var(--error) !important; background: rgba(180, 19, 64, .04); }
-  input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--primary); padding: 0; }
+  input::placeholder, textarea::placeholder { color: #8b8e8f; }
+  .bad { border-color: var(--error) !important; background: var(--error-bg); }
+  input[type="checkbox"], input[type="radio"] { width: 17px; height: 17px; accent-color: var(--primary); padding: 0; margin: 0; flex-shrink: 0; }
+  .ferr { display: none; font-size: 12.5px; line-height: 1.45; color: var(--error); font-weight: 500; }
+  .ferr.on { display: block; }
 
   .btn {
     font: 700 14px var(--font-body); color: var(--on-primary); background: var(--primary);
     border: 1px solid var(--primary); border-radius: var(--r-xl); padding: 11px 16px; cursor: pointer;
-    display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none;
     transition: background 150ms var(--settle), transform 120ms var(--settle);
   }
   .btn:hover { background: var(--primary-dim); }
   .btn:active { transform: scale(.985); }
-  .btn[disabled] { opacity: .55; cursor: default; }
+  .btn[disabled] { opacity: .5; cursor: not-allowed; }
+  .btn[disabled]:hover { background: var(--primary); }
   .btn.quiet { background: var(--surface-lowest); color: var(--on-surface); border-color: var(--outline-variant); }
   .btn.quiet:hover { border-color: var(--outline); background: var(--surface-low); }
   .btn.small { font-size: 13px; padding: 7px 11px; }
+  .btn.wide { width: 100%; }
   .linkbtn { background: none; border: 0; color: var(--primary); font: 600 13px var(--font-body); cursor: pointer; padding: 4px 0; }
   .linkbtn:hover { text-decoration: underline; }
-  .iconbtn { background: none; border: 0; color: var(--outline); cursor: pointer; padding: 4px; border-radius: var(--r-sm); }
-  .iconbtn:hover { color: var(--error); background: rgba(180, 19, 64, .06); }
+  .iconbtn { background: none; border: 0; color: var(--outline); cursor: pointer; padding: 4px; border-radius: var(--r-sm); display: inline-flex; }
+  .iconbtn:hover { color: var(--error); background: var(--error-bg); }
   .nav { display: flex; justify-content: space-between; gap: 12px; margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--surface-variant); }
 
   /* ---- hours ---- */
   .hours { border-top: 1px solid var(--surface-variant); }
   .hours .row { display: grid; grid-template-columns: 120px 110px 1fr; align-items: center; gap: 12px; padding: 8px 2px; border-bottom: 1px solid var(--surface-variant); }
+  .hours .row .ferr { grid-column: 1 / -1; }
   .hours .row .day { font-weight: 600; }
   .hours .times { display: flex; align-items: center; gap: 8px; }
   .hours .times input { width: 110px; font-family: var(--font-mono); font-size: 13.5px; }
@@ -153,11 +176,16 @@
 
   /* ---- ruled rows for services / team / Q&A ---- */
   .rows { border-top: 1px solid var(--surface-variant); }
-  .srow { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.3fr) 82px 104px 64px 30px; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--surface-variant); }
-  .srow.head { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--on-surface-variant); padding: 8px 0; }
-  .srow input { padding: 8px 10px; font-size: 14px; }
-  .srow .dep { display: flex; justify-content: center; }
-  .srow.flag input[data-k="price"] { border-color: var(--on-tertiary-container); }
+  .shead, .srow .l1 { display: grid; grid-template-columns: minmax(0, 1.5fr) 84px minmax(0, 1.25fr) 30px; gap: 8px; align-items: start; }
+  .shead { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--on-surface-variant); padding: 8px 0; border-bottom: 1px solid var(--surface-variant); }
+  .srow { padding: 9px 0; border-bottom: 1px solid var(--surface-variant); display: grid; gap: 7px; }
+  .srow input, .srow textarea { padding: 8px 10px; font-size: 14px; }
+  .srow textarea.price { min-height: 0; height: 38px; resize: none; overflow: hidden; field-sizing: content; line-height: 1.4; }
+  .srow .l2 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+  .srow .l2 input.cat { width: 200px; padding: 6px 9px; font-size: 13px; }
+  .srow .opt { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--on-surface-variant); cursor: pointer; }
+  .srow .guess { font-size: 12px; color: var(--on-tertiary-container); }
+  .srow.consult textarea.price { color: var(--on-surface-variant); background: var(--surface-low); }
   .trow { padding: 12px 0; border-bottom: 1px solid var(--surface-variant); display: grid; gap: 10px; }
   .trow .top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 30px; gap: 8px; align-items: center; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -167,68 +195,157 @@
   }
   .chip[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
   .qrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) 30px; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--surface-variant); }
+  .aside { font-size: 12.5px; color: var(--on-surface-variant); line-height: 1.5; padding: 10px 12px; border-left: 2px solid var(--surface-variant); margin: 14px 0 0; }
 
   /* ---- go live ---- */
   .todo { border-top: 1px solid var(--surface-variant); margin-bottom: 18px; }
   .todo .item { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: start; padding: 10px 2px; border-bottom: 1px solid var(--surface-variant); font-size: 13.5px; line-height: 1.45; }
-  .todo .item .material-symbols-outlined { font-size: 18px; color: var(--error); margin-top: 1px; }
+  .todo .item .material-symbols-outlined { font-size: 18px; color: var(--outline); margin-top: 1px; }
+  .todo .item.ok .material-symbols-outlined { color: var(--ok); }
   .livebox { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 28px; align-items: start; }
-  .phone { border: 1px solid var(--surface-variant); border-radius: 18px; overflow: hidden; height: 600px; background: var(--surface-lowest); }
+  .chatcol { display: grid; gap: 12px; }
+  .chathead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .chathead .lbl { margin: 0; }
+  .phone { border: 1px solid var(--surface-variant); border-radius: 18px; overflow: hidden; height: 560px; background: var(--surface-lowest); }
   .phone iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .golive { border-top: 1px solid var(--surface-variant); padding-top: 14px; display: grid; gap: 8px; }
   .status { display: flex; gap: 10px; align-items: flex-start; padding: 14px; border-radius: var(--r-full); margin-bottom: 18px; line-height: 1.5; }
   .status.ok { background: var(--ok-bg); color: var(--ok); }
   .status.wait { background: var(--surface-container); color: var(--on-surface); }
+  .status.warn { background: rgba(180,19,64,.07); color: var(--on-error-container); }
   .tries { margin: 8px 0 0; padding-left: 18px; color: var(--on-surface-variant); line-height: 1.7; }
 
+  /* ---- chat link + QR (step 6 hero, step 5 success) ---- */
+  .linkwrap { container-type: inline-size; }
+  @container (max-width: 560px) {
+    .linkbox { grid-template-columns: minmax(0, 1fr) !important; justify-items: start; }
+    .linkbox > div:last-child { width: 100%; }
+  }
+  .linkbox { display: grid; grid-template-columns: 172px minmax(0, 1fr); gap: 22px; align-items: start; padding: 18px; background: var(--surface-lowest); border: 1px solid var(--surface-variant); border-radius: var(--r-full); }
+  .qr { width: 172px; height: 172px; border-radius: var(--r-xl); border: 1px solid var(--surface-variant); background: #fff; display: flex; align-items: center; justify-content: center; }
+  .qr canvas { width: 156px; height: 156px; image-rendering: pixelated; }
+  .linkbox .url { font-family: var(--font-mono); font-size: 13px; background: var(--surface-low); border: 1px solid var(--surface-variant); border-radius: var(--r-xl); padding: 9px 11px; overflow-wrap: anywhere; color: var(--ink); }
+  .linkbox .acts { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 12px; }
+  .where { border-top: 1px solid var(--surface-variant); margin: 0; padding: 0; }
+  .where li { list-style: none; display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 8px 2px; border-bottom: 1px solid var(--surface-variant); font-size: 13px; line-height: 1.45; }
+  .where li .material-symbols-outlined { font-size: 18px; color: var(--outline); }
+
   /* ---- channels ---- */
-  .howto { counter-reset: how; border-top: 1px solid var(--surface-variant); margin: 6px 0 16px; }
+  .howto { counter-reset: how; border-top: 1px solid var(--surface-variant); margin: 6px 0 16px; padding: 0; }
   .howto li { list-style: none; counter-increment: how; display: grid; grid-template-columns: 28px 1fr; gap: 8px; padding: 10px 2px; border-bottom: 1px solid var(--surface-variant); line-height: 1.5; }
   .howto li::before { content: counter(how); font: 700 12px var(--font-headline); color: var(--outline); padding-top: 2px; }
-  .howto { padding: 0; }
   code, .mono { font-family: var(--font-mono); font-size: 12.5px; }
   code { background: var(--surface-container); padding: 1px 5px; border-radius: var(--r-sm); }
   pre.snippet { font-family: var(--font-mono); font-size: 12px; background: var(--ink); color: #e9e8f5; padding: 14px; border-radius: var(--r-xl); overflow-x: auto; white-space: pre; margin: 8px 0; }
-  .connected { display: grid; gap: 10px; border-top: 1px solid var(--surface-variant); }
+  .connected { display: grid; border-top: 1px solid var(--surface-variant); }
   .connected .line { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: center; padding: 10px 2px; border-bottom: 1px solid var(--surface-variant); }
   .connected .line .material-symbols-outlined { color: var(--ok); font-size: 19px; }
   .connected .line.pending .material-symbols-outlined { color: var(--outline); }
+  .ownerqr { display: none; grid-template-columns: 148px 1fr; gap: 16px; align-items: center; padding: 12px 2px 12px 32px; border-bottom: 1px solid var(--surface-variant); }
+  .ownerqr.ready { display: grid; }
+  .ownerqr .qrbox { width: 148px; height: 148px; padding: 8px; background: #fff; border: 1px solid var(--surface-variant); border-radius: var(--r-xl); }
+  .ownerqr .qrbox img, .ownerqr .qrbox canvas { display: block; width: 132px; height: 132px; }
+  .ownerqr .hint { margin: 0; max-width: 40ch; }
+  @media (max-width: 760px) { .ownerqr, .ownerqr.ready { display: none; } }
+  .sechead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .sechead h2 { margin-bottom: 6px; }
+  .sechead .tag { position: relative; top: -2px; }
 
   /* ---- plan ---- */
-  .addons { border-top: 1px solid var(--surface-variant); }
-  .addons .a { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding: 12px 2px; border-bottom: 1px solid var(--surface-variant); }
-  .addons .a .t { font-weight: 600; }
-  .tag { font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 999px; white-space: nowrap; }
-  .tag.active { background: var(--ok-bg); color: var(--ok); }
+  .seg { display: inline-flex; border: 1px solid var(--outline-variant); border-radius: var(--r-xl); overflow: hidden; margin-bottom: 14px; }
+  .seg button { font: 600 13px var(--font-body); background: var(--surface-lowest); border: 0; padding: 8px 13px; cursor: pointer; color: var(--on-surface-variant); }
+  .seg button + button { border-left: 1px solid var(--outline-variant); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+  .plans, .addons { border-top: 1px solid var(--surface-variant); }
+  .prow { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 14px 10px; border-bottom: 1px solid var(--surface-variant); cursor: pointer; transition: background 150ms var(--settle); }
+  .prow:hover { background: var(--surface-low); }
+  .prow.on { background: var(--primary-tint); box-shadow: inset 3px 0 0 var(--primary); }
+  .prow .t { font: 800 16px var(--font-headline); color: var(--ink); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .prow .d { font-size: 13px; color: var(--on-surface-variant); margin-top: 3px; line-height: 1.45; }
+  .prow .p { text-align: right; white-space: nowrap; }
+  .prow .p b { font: 800 22px var(--font-headline); color: var(--ink); letter-spacing: -0.02em; }
+  .prow .p span { font-size: 12.5px; color: var(--on-surface-variant); }
+  .prow .p .sub { display: block; font-size: 11.5px; }
+  .arow { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 10px; border-bottom: 1px solid var(--surface-variant); cursor: pointer; }
+  .arow:hover { background: var(--surface-low); }
+  .arow .t { font-weight: 600; color: var(--on-surface); }
+  .arow .d { font-size: 12.5px; color: var(--on-surface-variant); margin-top: 2px; }
+  .arow .p { font-weight: 700; white-space: nowrap; color: var(--ink); }
+  .a2 { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 10px; border-bottom: 1px solid var(--surface-variant); }
+  .a2 .t { font-weight: 600; }
+  .total { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center; margin-top: 20px; padding: 16px 18px; background: var(--surface-lowest); border: 1px solid var(--surface-variant); border-radius: var(--r-full); }
+  .total .sum { font: 800 24px var(--font-headline); color: var(--ink); letter-spacing: -0.02em; }
+  .total .sum small { font: 500 13px var(--font-body); color: var(--on-surface-variant); letter-spacing: 0; }
+  .total .how { font-size: 12.5px; color: var(--on-surface-variant); margin-top: 4px; line-height: 1.45; }
+  .tag { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .tag.active, .tag.paid { background: var(--ok-bg); color: var(--ok); }
   .tag.requested { background: var(--secondary-container); color: var(--on-secondary-container); }
+  .tag.ready { background: var(--surface-container); color: var(--on-surface-variant); }
+  .tag.fit { background: rgba(77, 42, 250, .1); color: var(--primary); font-family: var(--font-body); font-size: 11.5px; font-weight: 700; letter-spacing: 0; }
+  .billedline { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--on-surface-variant); margin: -16px 0 20px; }
+  .billedline .material-symbols-outlined { font-size: 17px; }
+  .how.billed { margin-top: 4px; }
+  .confirmed { margin-bottom: 22px; }
+  .confirmed:focus { outline: none; }
+  .facts { list-style: none; margin: 4px 0 14px; padding: 0; display: grid; gap: 9px; }
+  .facts li { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; line-height: 1.5; color: var(--on-surface); }
+  .facts .material-symbols-outlined { font-size: 18px; color: var(--primary); margin-top: 1px; }
+  .summary { border-top: 1px solid var(--surface-variant); margin: 14px 0; }
+  .summary div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 2px; border-bottom: 1px solid var(--surface-variant); font-size: 13.5px; }
+  .summary div b { white-space: nowrap; }
 
-  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); opacity: 0; background: var(--ink); color: #fff; padding: 10px 16px; border-radius: var(--r-xl); font-size: 13.5px; transition: all 220ms var(--settle); pointer-events: none; z-index: 20; }
+  /* ---- dialog ---- */
+  dialog { border: 1px solid var(--surface-variant); border-radius: var(--r-full); padding: 0; max-width: 460px; width: calc(100% - 32px); color: var(--on-surface); background: var(--surface-lowest); }
+  dialog::backdrop { background: rgba(23, 24, 27, .45); }
+  dialog .in { padding: 22px 22px 18px; }
+  dialog h3 { font: 800 20px var(--font-headline); color: var(--ink); margin: 0 0 6px; letter-spacing: -0.02em; }
+  dialog p { margin: 0 0 12px; line-height: 1.5; color: var(--on-surface-variant); }
+  dialog .acts { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); opacity: 0; background: var(--ink); color: #fff; padding: 10px 16px; border-radius: var(--r-xl); font-size: 13.5px; transition: all 220ms var(--settle); pointer-events: none; z-index: 20; max-width: calc(100% - 32px); }
   .toast.on { opacity: 1; transform: translateX(-50%); }
   .spin { width: 14px; height: 14px; border-radius: 999px; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; animation: rot 800ms linear infinite; display: inline-block; }
   .btn.quiet .spin { border-color: var(--surface-variant); border-top-color: var(--primary); }
   @keyframes rot { to { transform: rotate(360deg); } }
 
   @media (max-width: 900px) {
-    .wrap { grid-template-columns: minmax(0, 1fr); gap: 18px; padding: 16px 16px 60px; }
-    .rail { position: static; display: flex; overflow-x: auto; border-top: 0; border-bottom: 1px solid var(--surface-variant); gap: 2px; scrollbar-width: none; }
+    .wrap { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 14px 16px 60px; }
+    .side { position: static; }
+    .progress { margin-bottom: 8px; }
+    .rail { display: flex; overflow-x: auto; border-top: 0; border-bottom: 1px solid var(--surface-variant); gap: 2px; scrollbar-width: none; }
     .rail button { width: auto; grid-template-columns: auto auto; border-bottom: 2px solid transparent; padding: 10px 8px; white-space: nowrap; }
-    .rail button .st { display: none; }
+    .rail .st { display: none; }
     .rail button[aria-current="step"] { border-bottom-color: var(--primary); }
     .bar { padding: 10px 16px; gap: 8px; }
-    .bar .hide-sm, .pill .hide-sm, #saved, .bar .salon { display: none; }
+    .bar .hide-sm, .pill .hide-sm, .bar .salon { display: none; }
+    #saved { font-size: 11.5px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
     .livebox { grid-template-columns: minmax(0, 1fr); }
-    .phone { height: 540px; }
-    .srow { grid-template-columns: minmax(0, 1fr) 70px 90px 30px; }
-    .srow .cat, .srow .dep, .srow.head .cat, .srow.head .dep { display: none; }
+    .phone { height: 600px; }
     .hours .row { grid-template-columns: 1fr auto; }
     .hours .row .times { grid-column: 1 / -1; }
+    .hours .row .closed { display: none; }
     .panel h1 { font-size: 23px; }
   }
-  @media (max-width: 480px) {
+  @media (max-width: 600px) {
     .grid2 { grid-template-columns: 1fr; }
+    .shead { display: none; }
+    .srow .l1 { grid-template-columns: 76px minmax(0, 1fr) 30px; }
+    .srow .l1 .nm { grid-column: 1 / 3; grid-row: 1; }
+    .srow .l1 .rm { grid-column: 3; grid-row: 1; }
+    .srow .l1 .mn { grid-column: 1; grid-row: 2; }
+    .srow .l1 .pr { grid-column: 2 / 4; grid-row: 2; }
+    .srow .l2 input.cat { width: 100%; }
     .trow .top { grid-template-columns: minmax(0, 1fr) 30px; }
     .trow .top .role { grid-column: 1 / 2; }
     .qrow { grid-template-columns: minmax(0, 1fr) 30px; }
     .qrow textarea { grid-column: 1 / 2; }
+    .linkbox { grid-template-columns: minmax(0, 1fr); justify-items: start; }
+    .total { grid-template-columns: minmax(0, 1fr); }
+    .total .btn { width: 100%; }
+    .prow { padding: 13px 6px; }
+    .prow .p b { font-size: 19px; }
+    .bar .langs button { padding: 6px 7px; }
+    #logout { display: none; }
   }
   @media (prefers-reduced-motion: reduce) {
     .step { animation: none; }
@@ -244,152 +361,381 @@
   <span class="pill" id="planPill"></span>
   <div class="grow"></div>
   <span id="saved" aria-live="polite"></span>
-  <button class="ghost" id="lang" type="button">Русский</button>
-  <a class="ghost hide-sm" href="/screens/salon-performance-luminous-core.html" id="dashLink">Dashboard</a>
+  <div class="langs" id="langs" role="group" aria-label="Language"></div>
+  <a class="ghost" href="/screens/inbox.html" id="inboxLink">Inbox</a>
+  <a class="ghost hide-sm" href="/screens/bookings.html" id="dashLink">Bookings</a>
   <button class="ghost" id="logout" type="button">Sign out</button>
 </header>
 
 <div class="wrap">
-  <nav class="rail" id="rail" aria-label="Setup steps"></nav>
+  <div class="side">
+    <div class="progress" id="progress" aria-live="polite"></div>
+    <nav class="rail" id="rail" aria-label="Setup steps"></nav>
+  </div>
   <main class="panel" id="panel"></main>
 </div>
 <div class="toast" id="toast" role="status"></div>
+
+<dialog id="confirm" aria-labelledby="confirmTitle">
+  <div class="in">
+    <h3 id="confirmTitle"></h3>
+    <p id="confirmLead"></p>
+    <div class="todo" id="confirmList"></div>
+    <div class="acts">
+      <button class="btn quiet" type="button" id="confirmNo"></button>
+      <button class="btn" type="button" id="confirmYes"></button>
+    </div>
+  </div>
+</dialog>
 
 <script>
 (function () {
   "use strict";
 
   // ------------------------------------------------------------------ text
+  // en is complete; fr-CA and ru fall back to en for anything missing.
   var T = {
     en: {
-      dashboard: "Dashboard", signOut: "Sign out", saving: "Saving…", saved: "Saved", offline: "Not saved — check connection",
+      dashboard: "Bookings", inbox: "Inbox", signOut: "Sign out", saving: "Saving…", saved: "Saved", draftSaved: "Draft saved",
+      notSaved: function (n) { return "Not saved — fix " + n + (n === 1 ? " field" : " fields"); },
+      offline: "Not saved — check connection",
       trial: function (days) { return "Trial · " + days + (days === 1 ? " day left" : " days left"); },
-      trialOver: "Trial ended", live: "Live", notLive: "Not live yet",
-      steps: ["Your salon", "Services & prices", "Team", "Answers", "Test & go live", "Channels", "Plan & extras"],
-      next: "Next", back: "Back",
+      trialOver: "Trial ended", live: "Live", notLive: "Not live yet", pendingPill: "Invoice on its way",
+      steps: ["Your salon", "Services & prices", "Team", "Answers", "Test & go live", "Channels", "Plan"],
+      progress: function (done, total, min) { return done + " of " + total + (min > 0 ? " · about " + min + " min left" : ""); },
+      progressDone: "Setup done. Maya is live.", progressReady: "All set. Test Maya and go live.",
+      next: "Next", back: "Back", remove: "Remove",
       s1h: "Your salon", s1l: "The basics Maya tells clients: where you are, how to reach you and when you are open.",
       name: "Salon name", city: "City", address: "Address", phone: "Phone", website: "Website", instagram: "Instagram", timezone: "Time zone",
-      hours: "Opening hours", open: "Open", closed: "Closed", from: "from", to: "to",
+      phName: "e.g. Petal Nails", phCity: "e.g. Ottawa", phAddress: "e.g. 12 Bank St, Unit 3", phPhone: "e.g. (613) 555-0199", phWebsite: "e.g. petalnails.ca", phInstagram: "e.g. @petalnails",
+      hours: "Opening hours", open: "Open", closed: "Closed", to: "to",
       days: { sun: "Sunday", mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday" },
-      s2h: "Services & prices", s2l: "Maya only quotes what is written here, exactly as you write it. Nothing else.",
+      s2h: "Services & prices", s2l: "Maya only quotes what is written here, exactly as you write it.",
       importTitle: "Let Maya read your price list",
       importHint: "Paste your menu from Instagram, a PDF or your booking app, or give a link to your website. You check the result before anything goes live.",
-      importPaste: "Paste your price list here…", importUrl: "https://your-salon.com (optional)", importBtn: "Draft my services",
-      importing: "Reading…", imported: function (s, t) { return "Drafted " + s + " services" + (t ? " and " + t + " team members" : "") + ". Check the prices and times below, then continue."; },
+      importPaste: "e.g. Gel manicure $55 · Pedicure from $70 · Nail art $5/nail", importUrl: "e.g. https://your-salon.com (optional)", importBtn: "Draft my services",
+      importing: "Reading…", imported: function (s, t) { return "Drafted " + s + " services" + (t ? " and " + t + " team members" : "") + ". Check the prices and times below."; },
       importNone: "Maya did not find services in that text. Try pasting only the price list.",
       starter: "Or start from a typical menu", starterNote: "Typical times are filled in, prices are yours to add.",
-      colName: "Service", colCat: "Category", colMin: "Minutes", colPrice: "Price", colDep: "Deposit",
-      phName: "e.g. Gel manicure", phCat: "e.g. Nails", phPrice: "$65 or from $110",
+      colName: "Service", colCat: "Category", colMin: "Minutes", colPrice: "Price",
+      phSvc: "e.g. Gel manicure", phCat: "Category, e.g. Nails", phPrice: "e.g. $65, from $75, Free",
+      deposit: "Deposit", consult: "Consultation only", consultPrice: "By consultation",
+      consultHint: "Consultation only: Maya never quotes a price for it and passes the client to your team.",
+      priceHelp: "Write prices the way you say them: <b>$65</b> · <b>from $75</b> · <b>$220–$320</b> · <b>+$15</b> · <b>$5/nail</b> · <b>Free</b> · <b>By consultation</b>. Maya quotes them word for word.",
+      guessed: "Typical time, please check",
       addService: "Add a service", keywordsHint: "Maya understands everyday words for your services (\"gel nails\", \"shellac\", \"fade\") on her own.",
       s3h: "Team", s3l: "Who does the work and on which days. Maya offers each person's free time only on their days.",
       member: "Name", role: "Role", phMember: "e.g. Olena", phRole: "e.g. Nail tech",
       workDays: "Works on", doesWhat: "Does", allServices: "All services", addMember: "Add a person",
       short: { sun: "Sun", mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat" },
-      s4h: "Answers", s4l: "What clients ask most. Maya uses your words. Leave anything blank that you would rather answer yourself: she hands those to you.",
-      parking: "Parking", payment: "Payment methods", cancellation: "Cancellation policy", deposit: "Deposits", late: "If a client is late",
-      phParking: "Free lot behind the building", phPayment: "Card, cash, e-Transfer", phCancellation: "Free up to 24 hours before", phDeposit: "30% for extensions, non-refundable", phLate: "We wait 15 minutes, then may reschedule",
-      custom: "Other questions", phQ: "Question", phA: "Your answer", addQ: "Add a question",
+      teamPlans: "Plans after the trial: Solo covers 1 person, Salon up to 6, Pro any size. Add your whole team now: the trial has no limit.",
+      s4h: "Answers", s4l: "What clients ask most. Maya uses your words. Leave anything blank that you would rather answer yourself: she passes those to you.",
+      parking: "Parking", payment: "Payment methods", cancellation: "Cancellation policy", deposit2: "Deposits", late: "If a client is late",
+      phParking: "e.g. Free lot behind the building", phPayment: "e.g. Card, cash, e-Transfer", phCancellation: "e.g. Free up to 24 hours before", phDeposit: "e.g. $20 for extensions, non-refundable", phLate: "e.g. We wait 15 minutes, then may reschedule",
+      custom: "Other questions", phQ: "e.g. Do you take walk-ins?", phA: "Your answer", addQ: "Add a question",
       forbidden: "Topics Maya should not discuss", phForbidden: "e.g. medical advice, competitors",
       s5h: "Test & go live", s5l: "Everything you enter is saved as you type. Clients see Maya only after you press Go live.",
       liveOk: "Maya is live for your clients. Changes you make from now on apply right away.",
-      readyTitle: "Ready. Test Maya in the chat: only you can see her for now.", readyLead: "Ask what your clients ask. When the answers look right, go live.",
-      goLive: "Go live", launching: "Going live…", launchedToast: "Maya is live. Next: connect your Telegram bot.",
-      waitTitle: "Almost there. Fix these and Maya goes live:", fix: "Fix",
-      tryThis: "Try asking:", try1: function (name) { return "How much does “" + name + "” cost?"; }, try2: "Can I book for Friday afternoon?", try3: "Where do I park?", try4: "I want to talk to a person",
-      warnings: "Worth a look (not blocking):",
-      s6h: "Channels", s6l: "Where your clients can reach Maya. Telegram and your website are included.",
-      tgTitle: "Your salon's Telegram bot", tgLead: "A bot with your salon's name. Clients open it and Maya answers. It takes about five minutes:",
+      readyTitle: "Ready. Test Maya in the chat: only you can see her for now.", readyLead: "Ask what your clients ask. When the answers look right, go live below the chat.",
+      knows: "What Maya knows",
+      knowsServices: function (n) { return n + (n === 1 ? " service with its price" : " services with prices"); },
+      knowsTeam: function (n) { return n + (n === 1 ? " person on the team" : " people on the team"); },
+      knowsHours: function (n) { return "Open " + n + (n === 1 ? " day" : " days") + " a week"; },
+      knowsAnswers: function (n) { return n ? n + " answers to common questions" : "No answers yet: she passes those questions to you"; },
+      testCleared: "Bookings from your test chat are removed, so every slot is free for real clients",
+      tryThis: "Try asking:", try1: function (name) { return "How much is " + name + "?"; }, try2: "Can I book for Friday afternoon?", try3: "Where do I park?", try4: "I want to talk to a person",
+      testChat: "Test chat (only you see it)", resetChat: "Reset test chat", resetDone: "Test chat cleared.", resetDoneBookings: "Test chat cleared, and its test bookings are gone from your calendar.",
+      goLive: "Go live", launching: "Going live…",
+      goLiveWait: "Send Maya at least one test message first.", goLiveReady: "Happy with her answers? Go live and clients can reach her.",
+      waitTitle: "Almost there. Fix these and Maya can go live:", fix: "Fix", warnings: "Worth a look (not blocking):",
+      confirmTitle: "Go live now?", confirmLead: "From now on, clients who open your chat link talk to Maya. She quotes only your prices and offers only your open times. You can keep editing everything.",
+      confirmYes: "Yes, go live", confirmNo: "Not yet",
+      successTitle: "Maya is live", successLead: "Clients can reach her now at your chat link. Put it where they already look for you:",
+      successNext: "Next: share your link",
+      s6h: "Channels", s6l: "Where clients reach Maya. Your chat link opens on any phone, with nothing to install.",
+      linkTitle: "Your chat link", mainTag: "Main channel",
+      linkLead: "Put this in your Instagram bio, your Google Business profile, on the front desk and as a button on your website.",
+      linkWait: "Clients can use it after you go live. Until then only you see Maya.",
+      copyLink: "Copy link", downloadQr: "Download QR code", openLink: "Open",
+      where1: "<b>Instagram:</b> Edit profile → Links → Add external link.",
+      where2: "<b>Google Business profile:</b> Edit profile → Contact → Booking link, or Website.",
+      where3: "<b>Front desk:</b> print the QR code so clients can scan it with their camera.",
+      webTitle: "Chat button on your website", webLead: "Paste these two lines before <code>&lt;/body&gt;</code> on your site. A chat button with Maya appears in the corner.",
+      copy: "Copy", copied: "Copied",
+      tgTitle: "Telegram bot", optional: "Optional", tgLead: "If some of your clients use Telegram, give them a bot with your salon's name. It also sends you every booking. About five minutes:",
       tg1: "Open <a href=\"https://t.me/BotFather\" target=\"_blank\" rel=\"noopener\">@BotFather</a> in Telegram and press <b>Start</b>.",
       tg2: "Send <code>/newbot</code>. Give it your salon's name, then a username ending in <code>bot</code>, like <code>petalnails_bot</code>.",
       tg3: "BotFather replies with a token like <code>1234567890:AAH…</code>. Copy it and paste it below.",
-      tokenPh: "Paste the token from BotFather", connect: "Connect bot", connecting: "Connecting…",
+      tokenPh: "Paste the token from BotFather", connect: "Connect bot", connecting: "Connecting…", tokenLabel: "Bot token",
       tgConnected: "Connected", tgOpen: "Open your bot", tgOwner: "Get bookings and alerts in your Telegram", tgOwnerDone: "Bookings and alerts come to your Telegram",
-      tgOwnerHint: "Tap once from the phone where you use Telegram. The bot then messages you on every booking, change and \"call a human\".",
-      tgLink: "Link my Telegram", tgDisconnect: "Disconnect", tgReplace: "Use a different bot",
-      qr: "Put this link on your Instagram bio, Google profile and at the front desk:",
-      webTitle: "Chat on your website", webLead: "Paste these two lines before <code>&lt;/body&gt;</code> on your site. A chat button with Maya appears in the corner.",
-      copy: "Copy", copied: "Copied", chatLink: "Or share this chat link:",
-      moreTitle: "Instagram, WhatsApp, Messenger, SMS", moreLead: "We connect these for you. Request them on the next step.",
-      s7h: "Plan & extras", s7l: "Your trial includes Maya on Telegram and your website, with bookings sent to your phone.",
-      trialLine: function (days, date) { return days > 0 ? "Trial: " + days + " days left (until " + date + ")." : "Your trial ended on " + date + ". Maya is paused for clients."; },
-      paidLine: "Your plan is active.",
-      request: "Request", setUp: "Set up", requested: "Requested", active: "Active", notePh: "Anything we should know? (optional)",
-      requestedToast: "Request sent. We will get back to you within one business day.",
-      addonsLead: "We set these up for you and send the price first. Nothing is charged without your yes.",
-      keepTitle: "Keep Maya after the trial", keepLead: "Tell us you want to continue and we will send you a plan and payment link.",
+      tgOwnerHint: "Tap once from the phone where you use Telegram. The bot then messages you on every booking, change and request for a person.",
+      tgLink: "Link my Telegram", tgDisconnect: "Disconnect",
+      tgOwnerQr: "On a computer? Scan this with your phone's camera. It opens your bot in Telegram and links it to you.",
+      moreTitle: "Instagram Direct, WhatsApp, SMS reminders, calendar sync",
+      moreLead: "Paid add-ons. Pick them on the Plan step and we connect them within 2 business days.", moreBtn: "See add-ons and prices",
+      s7h: "Plan", s7l: "14 days free, then month-to-month. Cancel anytime. Prices in Canadian dollars; sales tax (HST/GST/QST) is added on the invoice.",
+      trialLine: function (days, date) { return days > 0 ? "Trial: " + days + (days === 1 ? " day" : " days") + " left (until " + date + "). Choosing a plan now keeps Maya on without a gap." : "Your trial ended on " + date + ". Maya is paused for clients until you choose a plan."; },
+      monthly: "Monthly", annual: "Yearly · 2 months free",
+      perMonth: "/month", perYear: "/year", perMo: "/mo",
+      annualSub: function (m) { return "$" + m + "/month billed yearly"; },
+      fits: "Fits your team",
+      staffGuide: function (count, limit) { return limit && count > limit ? "You have " + count + " people on the team; this plan covers " + limit + "." : ""; },
+      addonsTitle: "Add-ons", addonsLead: "Tick what you want. We connect each one within 2 business days.",
+      totalLabel: "Total", plusTax: "+ applicable tax",
+      totalHow: function (seller) { return "We email your invoice from " + seller + ". Pay by card link or Interac e-Transfer."; },
+      annualSave: function (s) { return "You save $" + s + " a year."; },
+      continueWith: function (plan) { return "Continue with " + plan; }, sending: "Sending…",
+      pendingTitle: "Thank you! Your invoice is on its way",
+      billedBy: function (seller, place) { return "Billed by " + seller + ", " + place; },
+      doneTax: "Sales tax (HST/GST/QST) is added on the invoice.",
+      doneTrial: function (date) { return "Your trial now runs until " + date + " so nothing stops while you pay."; },
+      doneInvoice: function (email) { return "Invoice by email within one business day to " + (email || "your sign-in email") + ". Pay by card link or Interac e-Transfer."; },
+      doneTg: "We sent the same summary to your Telegram.",
+      pendingLead: function (seller, date) { return "We email your invoice from " + seller + " within one business day. Pay by card link or Interac e-Transfer. Maya keeps working: your trial now runs until " + date + "."; },
+      changeChoice: "Change my choice", keepChoice: "Keep my choice",
+      activeTitle: function (plan) { return "Your plan: " + plan; }, activeLead: "Thank you. To change your plan or add-ons, reply to any invoice email from us.",
+      paidBack: "Thank you. We are confirming your payment; this page updates in a moment.",
+      checkoutGo: "Opening secure checkout…",
+      dfyTitle: "We set it up for you", dfyLead: "Free during the trial. We fill in your services, team and answers with you and connect your channels.",
+      request: "Request", requested: "Requested", paid: "Paid", included: "Included",
+      laterTitle: "Also on our list", laterLead: "Not ready yet. Tell us you want it and we'll write when it is.", tellMe: "Tell me when it's ready",
+      notePh: "Anything we should know? (optional)", noteLabel: "Note for our team",
+      requestedToast: "Request sent. We'll reply within one business day.",
       loadFail: "Could not load your setup. Refresh the page.", managed: "This salon is set up by the AIbeaty team. Write to us to change it."
     },
+    fr: {
+      dashboard: "Rendez-vous", inbox: "Boîte de réception", signOut: "Déconnexion", saving: "Enregistrement…", saved: "Enregistré", draftSaved: "Brouillon enregistré",
+      notSaved: function (n) { return "Non enregistré — " + n + (n === 1 ? " champ à corriger" : " champs à corriger"); },
+      offline: "Non enregistré — vérifiez la connexion",
+      trial: function (days) { return "Essai · " + days + (days === 1 ? " jour restant" : " jours restants"); },
+      trialOver: "Essai terminé", live: "En ligne", notLive: "Pas encore en ligne", pendingPill: "Facture en route",
+      steps: ["Votre salon", "Services et prix", "Équipe", "Réponses", "Tester et lancer", "Canaux", "Forfait"],
+      progress: function (done, total, min) { return done + " sur " + total + (min > 0 ? " · environ " + min + " min restantes" : ""); },
+      progressDone: "Configuration terminée. Maya est en ligne.", progressReady: "Tout est prêt. Testez Maya et lancez-la.",
+      next: "Suivant", back: "Retour", remove: "Retirer",
+      s1h: "Votre salon", s1l: "L’essentiel que Maya dit aux clients : où vous êtes, comment vous joindre et quand vous êtes ouverts.",
+      name: "Nom du salon", city: "Ville", address: "Adresse", phone: "Téléphone", website: "Site Web", instagram: "Instagram", timezone: "Fuseau horaire",
+      phName: "ex. Ongles Pétale", phCity: "ex. Gatineau", phAddress: "ex. 12, rue Principale, local 3", phPhone: "ex. 819 555-0199", phWebsite: "ex. onglespetale.ca", phInstagram: "ex. @onglespetale",
+      hours: "Heures d’ouverture", open: "Ouvert", closed: "Fermé", to: "à",
+      days: { sun: "Dimanche", mon: "Lundi", tue: "Mardi", wed: "Mercredi", thu: "Jeudi", fri: "Vendredi", sat: "Samedi" },
+      s2h: "Services et prix", s2l: "Maya ne cite que ce qui est écrit ici, exactement comme vous l’écrivez.",
+      importTitle: "Laissez Maya lire votre liste de prix",
+      importHint: "Collez votre menu depuis Instagram, un PDF ou votre application de réservation, ou donnez le lien de votre site. Vous vérifiez le résultat avant le lancement.",
+      importPaste: "ex. Manucure gel 55 $ · Pédicure à partir de 70 $", importUrl: "ex. https://votre-salon.ca (facultatif)", importBtn: "Préparer mes services",
+      importing: "Lecture…", imported: function (s, t) { return s + " services préparés" + (t ? " et " + t + " membres de l’équipe" : "") + ". Vérifiez les prix et les durées ci-dessous."; },
+      importNone: "Maya n’a trouvé aucun service dans ce texte. Essayez de coller seulement la liste de prix.",
+      starter: "Ou partez d’un menu type", starterNote: "Les durées types sont remplies, à vous d’ajouter les prix.",
+      colName: "Service", colCat: "Catégorie", colMin: "Minutes", colPrice: "Prix",
+      phSvc: "ex. Manucure gel", phCat: "Catégorie, ex. Ongles", phPrice: "ex. 65 $, à partir de 75 $, Gratuit",
+      deposit: "Dépôt", consult: "Sur consultation seulement", consultPrice: "Sur consultation",
+      consultHint: "Sur consultation seulement : Maya ne donne jamais de prix et confie le client à votre équipe.",
+      priceHelp: "Écrivez les prix comme vous les dites : <b>65 $</b> · <b>à partir de 75 $</b> · <b>220–320 $</b> · <b>+15 $</b> · <b>5 $/ongle</b> · <b>Gratuit</b> · <b>Sur consultation</b>. Maya les cite mot pour mot.",
+      guessed: "Durée type, à vérifier",
+      addService: "Ajouter un service", keywordsHint: "Maya comprend d’elle-même les mots de tous les jours pour vos services (« ongles gel », « shellac », « dégradé »).",
+      s3h: "Équipe", s3l: "Qui fait le travail et quels jours. Maya propose les disponibilités de chaque personne seulement ses jours de travail.",
+      member: "Nom", role: "Rôle", phMember: "ex. Chloé", phRole: "ex. Technicienne en ongles",
+      workDays: "Travaille le", doesWhat: "Fait", allServices: "Tous les services", addMember: "Ajouter une personne",
+      short: { sun: "Dim", mon: "Lun", tue: "Mar", wed: "Mer", thu: "Jeu", fri: "Ven", sat: "Sam" },
+      teamPlans: "Forfaits après l’essai : Solo pour 1 personne, Salon jusqu’à 6, Pro sans limite. Ajoutez toute votre équipe maintenant : l’essai n’a pas de limite.",
+      s4h: "Réponses", s4l: "Les questions les plus fréquentes. Maya utilise vos mots. Laissez vide ce que vous préférez répondre vous-même : elle vous le transmet.",
+      parking: "Stationnement", payment: "Modes de paiement", cancellation: "Politique d’annulation", deposit2: "Dépôts", late: "Si un client est en retard",
+      phParking: "ex. Stationnement gratuit derrière l’édifice", phPayment: "ex. Carte, comptant, virement Interac", phCancellation: "ex. Gratuit jusqu’à 24 heures avant", phDeposit: "ex. 20 $ pour les rallonges, non remboursable", phLate: "ex. Nous attendons 15 minutes, puis nous pouvons déplacer le rendez-vous",
+      custom: "Autres questions", phQ: "ex. Acceptez-vous les clients sans rendez-vous?", phA: "Votre réponse", addQ: "Ajouter une question",
+      forbidden: "Sujets que Maya ne doit pas aborder", phForbidden: "ex. conseils médicaux, concurrents",
+      s5h: "Tester et lancer", s5l: "Tout est enregistré pendant que vous tapez. Les clients voient Maya seulement après « Lancer ».",
+      liveOk: "Maya est en ligne pour vos clients. Vos changements s’appliquent tout de suite.",
+      readyTitle: "Prête. Testez Maya dans le chat : pour l’instant, vous seul la voyez.", readyLead: "Posez les questions de vos clients. Si les réponses sont justes, lancez-la sous le chat.",
+      knows: "Ce que Maya sait",
+      knowsServices: function (n) { return n + (n === 1 ? " service avec son prix" : " services avec leurs prix"); },
+      knowsTeam: function (n) { return n + (n === 1 ? " personne dans l’équipe" : " personnes dans l’équipe"); },
+      knowsHours: function (n) { return "Ouvert " + n + (n === 1 ? " jour" : " jours") + " par semaine"; },
+      knowsAnswers: function (n) { return n ? n + " réponses aux questions fréquentes" : "Aucune réponse encore : elle vous transmet ces questions"; },
+      testCleared: "Les rendez-vous de votre chat de test sont supprimés : toutes les plages restent libres pour vos vrais clients",
+      tryThis: "Essayez :", try1: function (name) { return "Combien coûte " + name + "?"; }, try2: "Puis-je réserver vendredi après-midi?", try3: "Où puis-je me stationner?", try4: "Je veux parler à une personne",
+      testChat: "Chat de test (vous seul le voyez)", resetChat: "Réinitialiser le chat de test", resetDone: "Chat de test effacé.", resetDoneBookings: "Chat de test effacé, et ses rendez-vous de test ont quitté votre agenda.",
+      goLive: "Lancer Maya", launching: "Lancement…",
+      goLiveWait: "Envoyez d’abord au moins un message de test à Maya.", goLiveReady: "Ses réponses vous conviennent? Lancez-la et vos clients pourront lui écrire.",
+      waitTitle: "Presque prêt. Corrigez ceci et Maya pourra être lancée :", fix: "Corriger", warnings: "À vérifier (sans bloquer) :",
+      confirmTitle: "Lancer Maya maintenant?", confirmLead: "Dès maintenant, les clients qui ouvrent votre lien de chat parlent à Maya. Elle cite seulement vos prix et propose seulement vos heures d’ouverture. Vous pouvez tout modifier ensuite.",
+      confirmYes: "Oui, lancer", confirmNo: "Pas encore",
+      successTitle: "Maya est en ligne", successLead: "Vos clients peuvent lui écrire dès maintenant avec votre lien de chat. Placez-le là où ils vous cherchent déjà :",
+      successNext: "Suivant : partager votre lien",
+      s6h: "Canaux", s6l: "Là où vos clients joignent Maya. Votre lien de chat s’ouvre sur n’importe quel téléphone, sans rien installer.",
+      linkTitle: "Votre lien de chat", mainTag: "Canal principal",
+      linkLead: "Mettez-le dans votre bio Instagram, votre fiche Google Business, à l’accueil et comme bouton sur votre site.",
+      linkWait: "Vos clients pourront l’utiliser après le lancement. D’ici là, vous seul voyez Maya.",
+      copyLink: "Copier le lien", downloadQr: "Télécharger le code QR", openLink: "Ouvrir",
+      where1: "<b>Instagram :</b> Modifier le profil → Liens → Ajouter un lien externe.",
+      where2: "<b>Fiche Google Business :</b> Modifier le profil → Coordonnées → Lien de réservation, ou Site Web.",
+      where3: "<b>Accueil :</b> imprimez le code QR pour que les clients le scannent avec leur appareil photo.",
+      webTitle: "Bouton de chat sur votre site", webLead: "Collez ces deux lignes avant <code>&lt;/body&gt;</code> sur votre site. Un bouton de chat avec Maya apparaît dans le coin.",
+      copy: "Copier", copied: "Copié",
+      tgTitle: "Bot Telegram", optional: "Facultatif", tgLead: "Si certains clients utilisent Telegram, offrez-leur un bot au nom de votre salon. Il vous envoie aussi chaque réservation. Environ cinq minutes :",
+      tg1: "Ouvrez <a href=\"https://t.me/BotFather\" target=\"_blank\" rel=\"noopener\">@BotFather</a> dans Telegram et appuyez sur <b>Start</b>.",
+      tg2: "Envoyez <code>/newbot</code>. Donnez le nom de votre salon, puis un nom d’utilisateur qui finit par <code>bot</code>, comme <code>onglespetale_bot</code>.",
+      tg3: "BotFather répond avec un jeton comme <code>1234567890:AAH…</code>. Copiez-le et collez-le ci-dessous.",
+      tokenPh: "Collez le jeton de BotFather", connect: "Connecter le bot", connecting: "Connexion…", tokenLabel: "Jeton du bot",
+      tgConnected: "Connecté", tgOpen: "Ouvrir votre bot", tgOwner: "Recevoir réservations et alertes dans votre Telegram", tgOwnerDone: "Réservations et alertes arrivent dans votre Telegram",
+      tgOwnerHint: "Appuyez une fois depuis le téléphone où vous utilisez Telegram. Le bot vous écrit ensuite à chaque réservation, changement ou demande de parler à une personne.",
+      tgLink: "Lier mon Telegram", tgDisconnect: "Déconnecter",
+      tgOwnerQr: "À l’ordinateur? Scannez ce code avec l’appareil photo de votre téléphone : votre bot s’ouvre dans Telegram et se lie à vous.",
+      moreTitle: "Instagram Direct, WhatsApp, rappels par SMS, synchronisation d’agenda",
+      moreLead: "Options payantes. Choisissez-les à l’étape Forfait et nous les connectons en 2 jours ouvrables.", moreBtn: "Voir les options et les prix",
+      s7h: "Forfait", s7l: "14 jours gratuits, puis au mois. Annulable en tout temps. Prix en dollars canadiens; les taxes (TVH/TPS/TVQ) s’ajoutent sur la facture.",
+      trialLine: function (days, date) { return days > 0 ? "Essai : " + days + (days === 1 ? " jour restant" : " jours restants") + " (jusqu’au " + date + "). Choisir un forfait maintenant garde Maya active sans interruption." : "Votre essai s’est terminé le " + date + ". Maya est en pause pour vos clients jusqu’au choix d’un forfait."; },
+      monthly: "Mensuel", annual: "Annuel · 2 mois gratuits",
+      perMonth: "/mois", perYear: "/an", perMo: "/mois",
+      annualSub: function (m) { return m + " $/mois facturé à l’année"; },
+      fits: "Convient à votre équipe",
+      staffGuide: function (count, limit) { return limit && count > limit ? "Votre équipe compte " + count + " personnes; ce forfait en couvre " + limit + "." : ""; },
+      addonsTitle: "Options", addonsLead: "Cochez ce que vous voulez. Nous connectons chaque option en 2 jours ouvrables.",
+      totalLabel: "Total", plusTax: "+ taxes applicables",
+      totalHow: function (seller) { return "Nous vous envoyons la facture de " + seller + " par courriel. Paiement par lien de carte ou virement Interac."; },
+      annualSave: function (s) { return "Vous économisez " + s + " $ par année."; },
+      continueWith: function (plan) { return "Continuer avec " + plan; }, sending: "Envoi…",
+      pendingTitle: "Merci! Votre facture est en route",
+      billedBy: function (seller, place) { return "Facturé par " + seller + ", " + place; },
+      doneTax: "Les taxes de vente (TVH/TPS/TVQ) s’ajoutent sur la facture.",
+      doneTrial: function (date) { return "Votre essai va maintenant jusqu’au " + date + " : rien ne s’arrête pendant le paiement."; },
+      doneInvoice: function (email) { return "Facture par courriel d’ici un jour ouvrable à " + (email || "votre adresse de connexion") + ". Paiement par lien de carte ou virement Interac."; },
+      doneTg: "Le même résumé vous a été envoyé sur Telegram.",
+      pendingLead: function (seller, date) { return "Nous vous envoyons la facture de " + seller + " par courriel d’ici un jour ouvrable. Paiement par lien de carte ou virement Interac. Maya continue de travailler : votre essai va maintenant jusqu’au " + date + "."; },
+      changeChoice: "Modifier mon choix", keepChoice: "Garder mon choix",
+      activeTitle: function (plan) { return "Votre forfait : " + plan; }, activeLead: "Merci. Pour changer de forfait ou d’options, répondez à n’importe quel courriel de facture.",
+      paidBack: "Merci. Nous confirmons votre paiement; cette page se met à jour dans un instant.",
+      checkoutGo: "Ouverture du paiement sécurisé…",
+      dfyTitle: "Nous configurons tout pour vous", dfyLead: "Gratuit pendant l’essai. Nous remplissons avec vous vos services, votre équipe et vos réponses, et connectons vos canaux.",
+      request: "Demander", requested: "Demandé", paid: "Payé", included: "Inclus",
+      laterTitle: "Aussi sur notre liste", laterLead: "Pas encore prêt. Dites-nous que vous le voulez et nous vous écrirons quand ce sera prêt.", tellMe: "Prévenez-moi",
+      notePh: "Quelque chose à savoir? (facultatif)", noteLabel: "Note pour notre équipe",
+      requestedToast: "Demande envoyée. Nous répondons d’ici un jour ouvrable.",
+      loadFail: "Impossible de charger votre configuration. Actualisez la page.", managed: "Ce salon est configuré par l’équipe AIbeaty. Écrivez-nous pour le modifier."
+    },
     ru: {
-      dashboard: "Кабинет", signOut: "Выйти", saving: "Сохраняю…", saved: "Сохранено", offline: "Не сохранено — проверьте интернет",
+      dashboard: "Записи", inbox: "Входящие", signOut: "Выйти", saving: "Сохраняю…", saved: "Сохранено", draftSaved: "Черновик сохранён",
+      notSaved: function (n) { return "Не сохранено — исправьте поля: " + n; },
+      offline: "Не сохранено — проверьте интернет",
       trial: function (days) { return "Пробный период · осталось " + days + " дн."; },
-      trialOver: "Пробный период закончился", live: "Работает", notLive: "Ещё не запущена",
-      steps: ["Салон", "Услуги и цены", "Мастера", "Ответы", "Проверка и запуск", "Каналы", "Тариф и доп. услуги"],
-      next: "Дальше", back: "Назад",
+      trialOver: "Пробный период закончился", live: "Работает", notLive: "Ещё не запущена", pendingPill: "Счёт в пути",
+      steps: ["Салон", "Услуги и цены", "Мастера", "Ответы", "Проверка и запуск", "Каналы", "Тариф"],
+      progress: function (done, total, min) { return done + " из " + total + (min > 0 ? " · осталось около " + min + " мин" : ""); },
+      progressDone: "Готово. Майя работает.", progressReady: "Всё заполнено. Проверьте Майю и запускайте.",
+      next: "Дальше", back: "Назад", remove: "Удалить",
       s1h: "Ваш салон", s1l: "Основное, что Майя говорит клиентам: где вы находитесь, как с вами связаться и когда вы работаете.",
       name: "Название салона", city: "Город", address: "Адрес", phone: "Телефон", website: "Сайт", instagram: "Instagram", timezone: "Часовой пояс",
-      hours: "Часы работы", open: "Работаем", closed: "Выходной", from: "с", to: "до",
+      phName: "напр. Petal Nails", phCity: "напр. Оттава", phAddress: "напр. 12 Bank St, Unit 3", phPhone: "напр. (613) 555-0199", phWebsite: "напр. petalnails.ca", phInstagram: "напр. @petalnails",
+      hours: "Часы работы", open: "Работаем", closed: "Выходной", to: "до",
       days: { sun: "Воскресенье", mon: "Понедельник", tue: "Вторник", wed: "Среда", thu: "Четверг", fri: "Пятница", sat: "Суббота" },
       s2h: "Услуги и цены", s2l: "Майя называет только то, что написано здесь, и ровно так, как вы написали.",
       importTitle: "Пусть Майя прочитает ваш прайс",
       importHint: "Вставьте прайс из Instagram, PDF или программы записи, либо дайте ссылку на сайт. Вы проверите результат до запуска.",
-      importPaste: "Вставьте прайс сюда…", importUrl: "https://ваш-салон.com (необязательно)", importBtn: "Составить список услуг",
-      importing: "Читаю…", imported: function (s, t) { return "Найдено услуг: " + s + (t ? ", мастеров: " + t : "") + ". Проверьте цены и время ниже и идите дальше."; },
+      importPaste: "напр. Маникюр с покрытием $55 · Педикюр от $70", importUrl: "напр. https://ваш-салон.com (необязательно)", importBtn: "Составить список услуг",
+      importing: "Читаю…", imported: function (s, t) { return "Найдено услуг: " + s + (t ? ", мастеров: " + t : "") + ". Проверьте цены и время ниже."; },
       importNone: "Майя не нашла услуг в этом тексте. Попробуйте вставить только прайс.",
       starter: "Или начните с типового прайса", starterNote: "Время заполнено типовое, цены впишите свои.",
-      colName: "Услуга", colCat: "Категория", colMin: "Минут", colPrice: "Цена", colDep: "Депозит",
-      phName: "напр. Маникюр с покрытием", phCat: "напр. Ногти", phPrice: "$65 или от $110",
+      colName: "Услуга", colCat: "Категория", colMin: "Минут", colPrice: "Цена",
+      phSvc: "напр. Маникюр с покрытием", phCat: "Категория, напр. Ногти", phPrice: "напр. $65, от $75, Бесплатно",
+      deposit: "Депозит", consult: "Только консультация", consultPrice: "По консультации",
+      consultHint: "Только консультация: Майя не называет цену и передаёт клиента вашей команде.",
+      priceHelp: "Пишите цены так, как говорите: <b>$65</b> · <b>от $75</b> · <b>$220–$320</b> · <b>+$15</b> · <b>$5/ноготь</b> · <b>Бесплатно</b> · <b>По консультации</b>. Майя называет их слово в слово.",
+      guessed: "Типовое время, проверьте",
       addService: "Добавить услугу", keywordsHint: "Майя сама понимает, как клиенты называют услуги («гель-лак», «шеллак», «фейд»).",
       s3h: "Мастера", s3l: "Кто работает и в какие дни. Майя предлагает время мастера только в его дни.",
       member: "Имя", role: "Роль", phMember: "напр. Олена", phRole: "напр. Мастер маникюра",
       workDays: "Рабочие дни", doesWhat: "Делает", allServices: "Все услуги", addMember: "Добавить мастера",
       short: { sun: "Вс", mon: "Пн", tue: "Вт", wed: "Ср", thu: "Чт", fri: "Пт", sat: "Сб" },
+      teamPlans: "Тарифы после пробного периода: Соло на 1 мастера, Салон до 6, Про без ограничений. Добавьте всю команду сейчас: в пробный период ограничений нет.",
       s4h: "Ответы", s4l: "Самые частые вопросы клиентов. Майя отвечает вашими словами. Что оставите пустым, она передаст вам.",
-      parking: "Парковка", payment: "Способы оплаты", cancellation: "Правила отмены", deposit: "Депозиты", late: "Если клиент опаздывает",
-      phParking: "Бесплатная парковка за зданием", phPayment: "Карта, наличные, e-Transfer", phCancellation: "Бесплатно за 24 часа", phDeposit: "30% за наращивание, не возвращается", phLate: "Ждём 15 минут, дальше можем перенести",
-      custom: "Другие вопросы", phQ: "Вопрос", phA: "Ваш ответ", addQ: "Добавить вопрос",
+      parking: "Парковка", payment: "Способы оплаты", cancellation: "Правила отмены", deposit2: "Депозиты", late: "Если клиент опаздывает",
+      phParking: "напр. Бесплатная парковка за зданием", phPayment: "напр. Карта, наличные, e-Transfer", phCancellation: "напр. Бесплатно за 24 часа", phDeposit: "напр. $20 за наращивание, не возвращается", phLate: "напр. Ждём 15 минут, дальше можем перенести",
+      custom: "Другие вопросы", phQ: "напр. Принимаете без записи?", phA: "Ваш ответ", addQ: "Добавить вопрос",
       forbidden: "О чём Майе не говорить", phForbidden: "напр. медицинские советы, конкуренты",
       s5h: "Проверка и запуск", s5l: "Всё сохраняется по ходу. Клиенты увидят Майю только после кнопки «Запустить».",
-      liveOk: "Майя работает для ваших клиентов. Изменения отсюда применяются сразу.",
-      readyTitle: "Готово. Проверьте Майю в чате: пока её видите только вы.", readyLead: "Спросите то, что спрашивают клиенты. Если ответы верные, запускайте.",
-      goLive: "Запустить Майю", launching: "Запускаю…", launchedToast: "Майя запущена. Дальше: подключите Telegram-бота.",
-      waitTitle: "Почти готово. Исправьте это, и Майя запустится:", fix: "Исправить",
+      liveOk: "Майя работает для ваших клиентов. Изменения применяются сразу.",
+      readyTitle: "Готово. Проверьте Майю в чате: пока её видите только вы.", readyLead: "Спросите то, что спрашивают клиенты. Если ответы верные, запускайте кнопкой под чатом.",
+      knows: "Что знает Майя",
+      knowsServices: function (n) { return "Услуг с ценами: " + n; },
+      knowsTeam: function (n) { return "Мастеров: " + n; },
+      knowsHours: function (n) { return "Рабочих дней в неделю: " + n; },
+      knowsAnswers: function (n) { return n ? "Ответов на частые вопросы: " + n : "Ответов пока нет: такие вопросы она передаст вам"; },
+      testCleared: "Записи из тестового чата удаляются, всё время свободно для настоящих клиентов",
       tryThis: "Попробуйте спросить:", try1: function (name) { return "Сколько стоит «" + name + "»?"; }, try2: "Можно записаться на пятницу после обеда?", try3: "Где припарковаться?", try4: "Хочу поговорить с человеком",
-      warnings: "Стоит проверить (не мешает запуску):",
-      s6h: "Каналы", s6l: "Где клиенты могут написать Майе. Telegram и сайт входят в пробный период.",
-      tgTitle: "Telegram-бот вашего салона", tgLead: "Бот с названием вашего салона: клиенты открывают его, Майя отвечает. Это минут пять:",
+      testChat: "Тестовый чат (видите только вы)", resetChat: "Очистить тестовый чат", resetDone: "Тестовый чат очищен.", resetDoneBookings: "Тестовый чат очищен, тестовые записи убраны из календаря.",
+      goLive: "Запустить Майю", launching: "Запускаю…",
+      goLiveWait: "Сначала отправьте Майе хотя бы одно тестовое сообщение.", goLiveReady: "Ответы нравятся? Запускайте, и клиенты смогут ей писать.",
+      waitTitle: "Почти готово. Исправьте это, и Майю можно будет запустить:", fix: "Исправить", warnings: "Стоит проверить (не мешает запуску):",
+      confirmTitle: "Запустить Майю сейчас?", confirmLead: "С этого момента клиенты, которые откроют ссылку на чат, будут говорить с Майей. Она называет только ваши цены и предлагает только ваше рабочее время. Всё можно менять и дальше.",
+      confirmYes: "Да, запустить", confirmNo: "Пока нет",
+      successTitle: "Майя работает", successLead: "Клиенты уже могут писать ей по вашей ссылке. Разместите её там, где вас ищут:",
+      successNext: "Дальше: поделиться ссылкой",
+      s6h: "Каналы", s6l: "Где клиенты пишут Майе. Ссылка на чат открывается на любом телефоне, ничего не нужно устанавливать.",
+      linkTitle: "Ваша ссылка на чат", mainTag: "Главный канал",
+      linkLead: "Поставьте её в описание Instagram, в профиль Google Business, на ресепшен и кнопкой на сайт.",
+      linkWait: "Клиенты смогут пользоваться ей после запуска. До этого Майю видите только вы.",
+      copyLink: "Скопировать ссылку", downloadQr: "Скачать QR-код", openLink: "Открыть",
+      where1: "<b>Instagram:</b> Редактировать профиль → Ссылки → Добавить внешнюю ссылку.",
+      where2: "<b>Профиль Google Business:</b> Редактировать профиль → Контакты → Ссылка для записи или Сайт.",
+      where3: "<b>Ресепшен:</b> распечатайте QR-код, чтобы клиенты сканировали его камерой.",
+      webTitle: "Кнопка чата на сайте", webLead: "Вставьте эти две строки перед <code>&lt;/body&gt;</code> на сайте. В углу появится кнопка чата с Майей.",
+      copy: "Скопировать", copied: "Скопировано",
+      tgTitle: "Telegram-бот", optional: "По желанию", tgLead: "Если часть клиентов в Telegram, дайте им бота с названием салона. Он же присылает вам каждую запись. Минут пять:",
       tg1: "Откройте <a href=\"https://t.me/BotFather\" target=\"_blank\" rel=\"noopener\">@BotFather</a> в Telegram и нажмите <b>Start</b>.",
       tg2: "Отправьте <code>/newbot</code>. Дайте имя (название салона), затем адрес, который заканчивается на <code>bot</code>, например <code>petalnails_bot</code>.",
       tg3: "BotFather пришлёт токен вида <code>1234567890:AAH…</code>. Скопируйте его и вставьте ниже.",
-      tokenPh: "Вставьте токен от BotFather", connect: "Подключить бота", connecting: "Подключаю…",
+      tokenPh: "Вставьте токен от BotFather", connect: "Подключить бота", connecting: "Подключаю…", tokenLabel: "Токен бота",
       tgConnected: "Подключён", tgOpen: "Открыть бота", tgOwner: "Получать записи и тревоги в свой Telegram", tgOwnerDone: "Записи и тревоги приходят вам в Telegram",
+      tgOwnerQr: "Вы за компьютером? Наведите камеру телефона на этот код: откроется ваш бот в Telegram и привяжется к вам.",
       tgOwnerHint: "Нажмите один раз с телефона, где у вас Telegram. Бот будет писать вам о каждой записи, изменении и просьбе позвать человека.",
-      tgLink: "Привязать мой Telegram", tgDisconnect: "Отключить", tgReplace: "Подключить другого бота",
-      qr: "Разместите эту ссылку в Instagram, в Google-профиле и на ресепшене:",
-      webTitle: "Чат на вашем сайте", webLead: "Вставьте эти две строки перед <code>&lt;/body&gt;</code> на сайте. В углу появится кнопка чата с Майей.",
-      copy: "Скопировать", copied: "Скопировано", chatLink: "Или отправляйте ссылку на чат:",
-      moreTitle: "Instagram, WhatsApp, Messenger, SMS", moreLead: "Эти каналы подключаем мы. Закажите их на следующем шаге.",
-      s7h: "Тариф и доп. услуги", s7l: "В пробный период входят Майя в Telegram и на сайте, записи приходят вам на телефон.",
-      trialLine: function (days, date) { return days > 0 ? "Пробный период: осталось " + days + " дн. (до " + date + ")." : "Пробный период закончился " + date + ". Для клиентов Майя на паузе."; },
-      paidLine: "Тариф активен.",
-      request: "Заказать", setUp: "Настроить", requested: "Заказано", active: "Работает", notePh: "Что нам стоит знать? (необязательно)",
+      tgLink: "Привязать мой Telegram", tgDisconnect: "Отключить",
+      moreTitle: "Instagram Direct, WhatsApp, SMS-напоминания, синхронизация календаря",
+      moreLead: "Платные дополнения. Выберите их на шаге «Тариф», подключим за 2 рабочих дня.", moreBtn: "Дополнения и цены",
+      s7h: "Тариф", s7l: "14 дней бесплатно, дальше помесячно. Отменить можно в любой момент. Цены в канадских долларах, налоги (HST/GST/QST) добавляются в счёте.",
+      trialLine: function (days, date) { return days > 0 ? "Пробный период: осталось " + days + " дн. (до " + date + "). Если выбрать тариф сейчас, Майя продолжит работать без перерыва." : "Пробный период закончился " + date + ". Для клиентов Майя на паузе, пока вы не выберете тариф."; },
+      monthly: "Помесячно", annual: "На год · 2 месяца в подарок",
+      perMonth: "/мес", perYear: "/год", perMo: "/мес",
+      annualSub: function (m) { return "$" + m + "/мес при оплате за год"; },
+      fits: "Подходит вашей команде",
+      staffGuide: function (count, limit) { return limit && count > limit ? "В команде " + count + " чел., тариф рассчитан на " + limit + "." : ""; },
+      addonsTitle: "Дополнения", addonsLead: "Отметьте, что нужно. Каждое подключаем за 2 рабочих дня.",
+      totalLabel: "Итого", plusTax: "+ налоги",
+      totalHow: function (seller) { return "Счёт от " + seller + " придёт на почту. Оплата по ссылке картой или Interac e-Transfer."; },
+      annualSave: function (s) { return "Экономия $" + s + " в год."; },
+      continueWith: function (plan) { return "Продолжить с тарифом «" + plan + "»"; }, sending: "Отправляю…",
+      pendingTitle: "Спасибо! Счёт уже в пути",
+      billedBy: function (seller, place) { return "Счёт выставляет " + seller + ", " + place.replace("Ottawa, Canada", "Оттава, Канада"); },
+      doneTax: "Налог (HST/GST/QST) добавляется в счёт.",
+      doneTrial: function (date) { return "Пробный период продлён до " + date + ", так что пока вы платите, ничего не остановится."; },
+      doneInvoice: function (email) { return "Счёт придёт на почту " + (email || "для входа") + " в течение рабочего дня. Оплата по ссылке картой или Interac e-Transfer."; },
+      doneTg: "Эту же сводку мы отправили вам в Telegram.",
+      pendingLead: function (seller, date) { return "Счёт от " + seller + " придёт на почту в течение рабочего дня. Оплата по ссылке картой или Interac e-Transfer. Майя продолжает работать: пробный период продлён до " + date + "."; },
+      changeChoice: "Изменить выбор", keepChoice: "Оставить как есть",
+      activeTitle: function (plan) { return "Ваш тариф: " + plan; }, activeLead: "Спасибо. Чтобы сменить тариф или дополнения, ответьте на любое письмо со счётом.",
+      paidBack: "Спасибо. Подтверждаем оплату, страница обновится через минуту.",
+      checkoutGo: "Открываю защищённую оплату…",
+      dfyTitle: "Настроим всё за вас", dfyLead: "Бесплатно в пробный период. Вместе с вами заполним услуги, мастеров и ответы и подключим каналы.",
+      request: "Заказать", requested: "Заказано", paid: "Оплачено", included: "Входит",
+      laterTitle: "Скоро", laterLead: "Пока не готово. Скажите, что вам нужно, и мы напишем, когда будет.", tellMe: "Сообщить, когда будет",
+      notePh: "Что нам стоит знать? (необязательно)", noteLabel: "Заметка для команды",
       requestedToast: "Заявка отправлена. Ответим в течение рабочего дня.",
-      addonsLead: "Это настраиваем мы и сначала присылаем цену. Без вашего согласия ничего не списываем.",
-      keepTitle: "Оставить Майю после пробного периода", keepLead: "Сообщите, что хотите продолжить, и мы пришлём тариф и ссылку на оплату.",
       loadFail: "Не удалось загрузить настройки. Обновите страницу.", managed: "Этот салон настраивает команда AIbeaty. Напишите нам, чтобы что-то изменить."
     }
   };
 
   // Typical menus by salon type: durations only. Prices stay empty on purpose —
   // an invented price quoted to a real client is the one mistake we cannot make.
+  // Fourth item true = consultation only (never quoted).
   var STARTERS = {
-    hair: [["Women's haircut", "Hair", 60], ["Men's haircut", "Hair", 30], ["Blow-dry & style", "Hair", 45], ["Root colour", "Colour", 90], ["Full colour", "Colour", 120], ["Balayage", "Colour", 180], ["Toner / gloss", "Colour", 45]],
+    hair: [["Women's haircut", "Hair", 60], ["Men's haircut", "Hair", 30], ["Blow-dry & style", "Hair", 45], ["Root colour", "Colour", 90], ["Full colour", "Colour", 120], ["Balayage", "Colour", 180], ["Toner / gloss", "Colour", 45], ["Colour correction", "Colour", 30, true]],
     nails: [["Classic manicure", "Nails", 45], ["Gel manicure", "Nails", 60], ["Nail extensions", "Nails", 120], ["Gel removal", "Nails", 20], ["Pedicure", "Pedicure", 60], ["Gel pedicure", "Pedicure", 75]],
     lashes_brows: [["Classic lash set", "Lashes", 120], ["Volume lash set", "Lashes", 150], ["Lash fill", "Lashes", 60], ["Lash lift & tint", "Lashes", 60], ["Brow lamination", "Brows", 60], ["Brow shaping", "Brows", 30], ["Brow tint", "Brows", 20]],
     barber: [["Haircut", "Cuts", 30], ["Skin fade", "Cuts", 45], ["Kids haircut", "Cuts", 30], ["Beard trim", "Beard", 20], ["Haircut + beard", "Combo", 50], ["Hot towel shave", "Beard", 30]],
     spa: [["Swedish massage 60 min", "Massage", 60], ["Deep tissue massage 60 min", "Massage", 60], ["Classic facial", "Face", 60], ["Body scrub", "Body", 45]],
+    medspa: [["Injectables consultation", "Injectables", 30, true], ["Neuromodulator (Botox, Dysport)", "Injectables", 30, true], ["Dermal filler", "Injectables", 45, true], ["HydraFacial", "Skin", 60], ["Chemical peel", "Skin", 45], ["Microneedling", "Skin", 60], ["Laser hair removal", "Laser", 30]],
     multi: [["Women's haircut", "Hair", 60], ["Men's haircut", "Hair", 30], ["Gel manicure", "Nails", 60], ["Pedicure", "Nails", 60], ["Lash lift & tint", "Lashes & brows", 60], ["Brow shaping", "Lashes & brows", 30]]
   };
   var DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+  // Rough minutes per required step, for "about N min left".
+  var STEP_MINUTES = [2, 4, 2, 2, 2];
 
   // ------------------------------------------------------------------ state
   var lang = "en";
@@ -400,58 +746,125 @@
   var step = 0;
   var saveTimer = null;
   var saveSeq = 0;
+  var touched = {};       // steps the owner has worked on: only those show error marks
+  var justLaunched = false;
+  var planEdit = false;   // pending payment: owner reopened the picker
+  var picked = null;      // step 7 selection { plan, addons: {}, cycle }
+  var testPoll = null;
 
-  function t(key) { return (T[lang] && T[lang][key] !== undefined) ? T[lang][key] : T.en[key]; }
+  function t(key) {
+    var table = T[lang] || T.en;
+    return table[key] !== undefined ? table[key] : T.en[key];
+  }
   function esc(value) {
     return String(value === undefined || value === null ? "" : value)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   function $(id) { return document.getElementById(id); }
+  function slug() { return (state && state.salon && state.salon.slug) || ""; }
+  function lsGet(key) { try { return localStorage.getItem(key); } catch (error) { return null; } }
+  function lsSet(key, value) { try { localStorage.setItem(key, value); } catch (error) { /* private mode */ } }
+  function lsDel(key) { try { localStorage.removeItem(key); } catch (error) { /* private mode */ } }
   function toast(text) {
     var node = $("toast");
     node.textContent = text;
     node.classList.add("on");
     clearTimeout(node._timer);
-    node._timer = setTimeout(function () { node.classList.remove("on"); }, 2600);
+    node._timer = setTimeout(function () { node.classList.remove("on"); }, 2800);
   }
-  function api(method, url, body) {
-    return fetch(url, {
+  function api(method, url, body, extra) {
+    return fetch(url, Object.assign({
       method: method,
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
       credentials: "same-origin"
-    }).then(function (response) {
+    }, extra || {})).then(function (response) {
       if (response.status === 401) { window.location.replace("/screens/login.html?next=/screens/setup.html"); throw new Error("signed out"); }
       return response.json().then(function (data) { return { status: response.status, data: data }; });
     });
   }
+  function money(amount) { return lang === "fr" ? amount + " $" : "$" + amount; }
+  function dateLabel(iso) {
+    if (!iso) return "";
+    var locale = lang === "fr" ? "fr-CA" : lang === "ru" ? "ru-RU" : "en-CA";
+    return new Date(iso).toLocaleDateString(locale, { day: "numeric", month: "long" });
+  }
+
+  // Languages: EN and FR always; RU only for a ru/uk browser (or a salon
+  // already set to Russian).
+  function browserRu() {
+    var list = [];
+    try { list = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language]) || []; } catch (error) { list = []; }
+    return list.some(function (code) { return /^(ru|uk)/i.test(String(code || "")); });
+  }
+  function languagesOffered() {
+    var offered = ["en", "fr"];
+    if (browserRu() || lang === "ru") offered.push("ru");
+    return offered;
+  }
 
   // ------------------------------------------------------------------ saving
+  // A field-level problem (a bad price, bad hours) means the change did NOT
+  // reach Maya: the bar says so. Missing whole sections (no team yet) is just a
+  // draft in progress.
+  function isGap(field) { return /^(services|staff|hours)$/.test(field); }
+  function fieldErrors() { return errors.filter(function (error) { return !isGap(error.field); }); }
+
   function scheduleSave() {
-    $("saved").textContent = t("saving");
+    setSaved(t("saving"), false);
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(save, 900);
+    saveTimer = setTimeout(save, 700);
+    touch(step);
+  }
+  function flushSave() {
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; return save(); }
+    return Promise.resolve();
+  }
+  function setSaved(text, bad) {
+    var node = $("saved");
+    node.textContent = text;
+    node.className = bad ? "err" : "";
   }
   function save() {
+    saveTimer = null;
     var seq = ++saveSeq;
     return api("PUT", "/api/setup", { setup: doc }).then(function (result) {
       if (seq !== saveSeq) return;
       errors = (result.data && result.data.errors) || [];
       warnings = (result.data && result.data.warnings) || [];
-      if (state.tenant) state.tenant.setupComplete = result.status === 200;
-      $("saved").textContent = t("saved");
+      if (state.tenant) state.tenant.setupComplete = result.status === 200 || (state.tenant.launched && state.tenant.setupComplete);
+      if (result.status === 200) setSaved(t("saved"), false);
+      else if (fieldErrors().length) setSaved(t("notSaved")(fieldErrors().length), true);
+      else setSaved(t("draftSaved"), false);
       paintChrome();
-      if (step === 4) render();
+      paintErrors();
+      if (step === 4 && !document.querySelector(".phone")) render();
     }).catch(function () {
-      $("saved").textContent = t("offline");
+      setSaved(t("offline"), true);
     });
+  }
+  // Leaving the page with a change in flight: send it anyway.
+  window.addEventListener("beforeunload", function () {
+    if (!saveTimer || !doc) return;
+    try {
+      fetch("/api/setup", { method: "PUT", keepalive: true, credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ setup: doc }) });
+    } catch (error) { /* nothing more we can do */ }
+  });
+
+  function touch(index) {
+    if (index > 4 || touched[index]) return;
+    touched[index] = true;
+    lsSet("aibeaty-touched." + slug(), JSON.stringify(Object.keys(touched)));
   }
 
   // ------------------------------------------------------------------ chrome
   function paintChrome() {
-    document.documentElement.lang = lang;
-    $("lang").textContent = lang === "ru" ? "English" : "Русский";
+    document.documentElement.lang = lang === "fr" ? "fr-CA" : lang;
+    $("langs").innerHTML = languagesOffered().map(function (code) {
+      return '<button type="button" data-lang="' + code + '" aria-pressed="' + (code === lang) + '">' + code.toUpperCase() + '</button>';
+    }).join("");
     $("dashLink").textContent = t("dashboard");
+    $("inboxLink").textContent = t("inbox") || "Inbox";
     $("logout").textContent = t("signOut");
     $("salonName").textContent = (doc && doc.salon.name) || (state && state.salon.name) || "";
     var pill = $("planPill");
@@ -459,13 +872,25 @@
     if (tenant) {
       var live = tenant.live;
       pill.className = "pill" + (live ? " live" : "");
-      var planText = tenant.plan === "trial" ? (tenant.active ? t("trial")(tenant.trialDaysLeft) : t("trialOver")) : "";
+      var planText = "";
+      if (tenant.planStatus === "pending_payment") planText = t("pendingPill");
+      else if (tenant.planStatus === "active" && state.plan && state.plan.quote) planText = state.plan.quote.planTitle[lang] || state.plan.quote.planTitle.en;
+      else if (tenant.plan === "trial") planText = tenant.active ? t("trial")(tenant.trialDaysLeft) : t("trialOver");
       pill.innerHTML = esc(live ? t("live") : t("notLive")) + (planText ? '<span class="hide-sm"> · ' + esc(planText) + '</span>' : "");
     }
-    var done = stepStatus();
+    var status = stepStatus();
+    var doneCount = status.slice(0, 5).filter(function (s) { return s === "done"; }).length;
+    var minutes = 0;
+    status.slice(0, 5).forEach(function (s, index) { if (s !== "done") minutes += STEP_MINUTES[index]; });
+    var progressText = tenant && tenant.launched ? t("progressDone")
+      : doneCount === 4 && status[4] !== "done" && !errors.length ? t("progressReady")
+      : t("progress")(doneCount, 5, minutes);
+    $("progress").innerHTML = '<div class="txt">' + esc(progressText) + '</div><div class="track" aria-hidden="true"><div class="fill" style="width:' + Math.round(doneCount / 5 * 100) + '%"></div></div>';
     $("rail").innerHTML = t("steps").map(function (label, index) {
-      var mark = done[index] === "done" ? '<span class="material-symbols-outlined st done" aria-hidden="true">check_circle</span>'
-        : done[index] === "todo" ? '<span class="material-symbols-outlined st todo" aria-hidden="true">error</span>'
+      var s = status[index];
+      var mark = s === "done" ? '<span class="material-symbols-outlined st done" aria-hidden="true">check_circle</span>'
+        : s === "fix" ? '<span class="material-symbols-outlined st fix" aria-hidden="true">error</span>'
+        : index < 5 ? '<span class="st" aria-hidden="true"><span class="dot"></span></span>'
         : '<span class="st"></span>';
       return '<button type="button" data-step="' + index + '"' + (index === step ? ' aria-current="step"' : "") + '>' +
         '<span class="n">' + ("0" + (index + 1)).slice(-2) + '</span><span>' + esc(label) + '</span>' + mark + '</button>';
@@ -477,19 +902,48 @@
     if (/^staff/.test(field)) return 2;
     return 3;
   }
+  // done / fix (only once touched) / todo (neutral dot).
   function stepStatus() {
-    var status = ["", "", "", "", "", "", ""];
+    var status = ["todo", "todo", "todo", "todo", "todo", "", ""];
     if (!doc) return status;
     var bad = {};
     errors.forEach(function (error) { bad[stepOfField(error.field)] = true; });
-    [0, 1, 2].forEach(function (index) { status[index] = bad[index] ? "todo" : "done"; });
-    status[3] = (doc.faq.parking || doc.faq.payment || doc.faq.cancellation) ? "done" : "";
-    status[4] = state.tenant && state.tenant.launched ? "done" : (errors.length ? "todo" : "");
+    var filled = [
+      Boolean(doc.salon.name),
+      doc.services.length > 0,
+      doc.staff.length > 0,
+      Boolean(doc.faq.parking || doc.faq.payment || doc.faq.cancellation || doc.faq.deposit || doc.faq.late || doc.faq.custom.length)
+    ];
+    [0, 1, 2, 3].forEach(function (index) {
+      if (filled[index] && !bad[index]) status[index] = "done";
+      else if (bad[index] && touched[index]) status[index] = "fix";
+    });
+    status[4] = state.tenant && state.tenant.launched ? "done" : "todo";
     status[5] = state.telegram && state.telegram.connected ? "done" : "";
+    status[6] = state.tenant && state.tenant.planStatus === "active" ? "done" : "";
     return status;
   }
-  function fieldBad(path) {
-    return errors.some(function (error) { return error.field === path; }) ? " bad" : "";
+  function errsFor(prefix, exact) {
+    return errors.filter(function (error) {
+      return exact ? error.field === prefix : (error.field === prefix || error.field.indexOf(prefix + ".") === 0);
+    });
+  }
+  function fieldBad(path) { return errsFor(path, true).length ? " bad" : ""; }
+  function slot(key, exact) {
+    var list = errsFor(key, exact);
+    return '<div class="ferr' + (list.length ? " on" : "") + '" data-ferr="' + esc(key) + '"' + (exact ? ' data-exact="1"' : "") + ' role="alert">' +
+      list.map(function (error) { return esc(error.message); }).join("<br/>") + '</div>';
+  }
+  // Refreshes error marks in place, so typing never loses focus.
+  function paintErrors() {
+    document.querySelectorAll("[data-f]").forEach(function (node) {
+      node.classList.toggle("bad", errsFor(node.getAttribute("data-f"), true).length > 0);
+    });
+    document.querySelectorAll("[data-ferr]").forEach(function (node) {
+      var list = errsFor(node.getAttribute("data-ferr"), node.hasAttribute("data-exact"));
+      node.innerHTML = list.map(function (error) { return esc(error.message); }).join("<br/>");
+      node.classList.toggle("on", list.length > 0);
+    });
   }
 
   // ------------------------------------------------------------------ steps
@@ -499,55 +953,73 @@
       (step < 6 ? '<button class="btn" type="button" data-go="' + (step + 1) + '">' + t("next") + ' <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></button>' : "") +
       '</div>';
   }
-  function input(path, value, placeholder, extra) {
-    return '<input data-path="' + path + '" value="' + esc(value) + '" placeholder="' + esc(placeholder || "") + '" class="' + fieldBad(path).trim() + '" ' + (extra || "") + '/>';
+  function input(path, value, placeholder, extra, id) {
+    return '<input id="' + (id || "f-" + path.replace(/\./g, "-")) + '" data-path="' + path + '" data-f="' + path + '" value="' + esc(value) + '" placeholder="' + esc(placeholder || "") + '" class="' + fieldBad(path).trim() + '" ' + (extra || "") + '/>';
+  }
+  function labelled(path, label, control) {
+    return '<div class="field"><label for="f-' + path.replace(/\./g, "-") + '">' + esc(label) + '</label>' + control + slot(path, true) + '</div>';
+  }
+  function openDays() {
+    return DAYS.filter(function (day) { return doc.hours[day] && doc.hours[day] !== "closed"; });
   }
 
   function stepSalon() {
     var s = doc.salon;
-    var zones = ["America/St_Johns", "America/Halifax", "America/Toronto", "America/Winnipeg", "America/Regina", "America/Edmonton", "America/Vancouver", "America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London", "Europe/Kyiv"];
+    var zones = ["America/St_Johns", "America/Halifax", "America/Moncton", "America/Toronto", "America/Winnipeg", "America/Regina", "America/Edmonton", "America/Vancouver", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "Europe/London", "Europe/Kyiv"];
+    var browserZone = "";
+    try { browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (error) { browserZone = ""; }
+    if (browserZone && zones.indexOf(browserZone) === -1) zones.unshift(browserZone);
     if (zones.indexOf(s.timezone) === -1) zones.unshift(s.timezone);
     var hours = DAYS.map(function (day) {
       var raw = doc.hours[day] || "closed";
       var match = /^(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})$/.exec(raw);
       var open = raw !== "closed";
       return '<div class="row">' +
-        '<div class="day">' + esc(t("days")[day]) + '</div>' +
-        '<label class="toggle"><input type="checkbox" data-hours-open="' + day + '"' + (open ? " checked" : "") + '/> ' + (open ? t("open") : t("closed")) + '</label>' +
+        '<div class="day" id="d-' + day + '">' + esc(t("days")[day]) + '</div>' +
+        '<label class="toggle"><input type="checkbox" data-hours-open="' + day + '" aria-labelledby="d-' + day + '"' + (open ? " checked" : "") + '/> ' + (open ? t("open") : t("closed")) + '</label>' +
         (open
-          ? '<div class="times"><input type="time" step="900" data-hours-from="' + day + '" value="' + esc(match ? pad(match[1]) : "10:00") + '" class="' + fieldBad("hours." + day).trim() + '"/>' +
-            '<span class="hint">' + t("to") + '</span><input type="time" step="900" data-hours-to="' + day + '" value="' + esc(match ? pad(match[2]) : "19:00") + '" class="' + fieldBad("hours." + day).trim() + '"/></div>'
+          ? '<div class="times"><input type="time" step="900" data-hours-from="' + day + '" data-f="hours.' + day + '" aria-label="' + esc(t("days")[day] + " " + t("open")) + '" value="' + esc(match ? pad(match[1]) : "10:00") + '" class="' + fieldBad("hours." + day).trim() + '"/>' +
+            '<span class="hint">' + t("to") + '</span><input type="time" step="900" data-hours-to="' + day + '" data-f="hours.' + day + '" aria-label="' + esc(t("days")[day] + " " + t("to")) + '" value="' + esc(match ? pad(match[2]) : "19:00") + '" class="' + fieldBad("hours." + day).trim() + '"/></div>'
           : '<div class="closed">—</div>') +
+        slot("hours." + day, true) +
         '</div>';
     }).join("");
     return '<h1>' + t("s1h") + '</h1><p class="lede">' + t("s1l") + '</p>' +
       '<div class="grid2">' +
-      '<div class="field"><label>' + t("name") + '</label>' + input("salon.name", s.name) + '</div>' +
-      '<div class="field"><label>' + t("city") + '</label>' + input("salon.city", s.city) + '</div>' +
+      labelled("salon.name", t("name"), input("salon.name", s.name, t("phName"), 'autocomplete="organization"')) +
+      labelled("salon.city", t("city"), input("salon.city", s.city, t("phCity"), 'autocomplete="address-level2"')) +
       '</div>' +
-      '<div class="field"><label>' + t("address") + '</label>' + input("salon.address", s.address, "12 Bank St, Unit 3") + '</div>' +
+      labelled("salon.address", t("address"), input("salon.address", s.address, t("phAddress"), 'autocomplete="street-address"')) +
       '<div class="grid2">' +
-      '<div class="field"><label>' + t("phone") + '</label>' + input("salon.phone", s.phone, "(613) 555-0199", 'inputmode="tel"') + '</div>' +
-      '<div class="field"><label>' + t("timezone") + '</label><select data-path="salon.timezone">' +
-      zones.map(function (zone) { return '<option value="' + esc(zone) + '"' + (zone === s.timezone ? " selected" : "") + '>' + esc(zone.replace("America/", "").replace("Europe/", "").replace("_", " ")) + '</option>'; }).join("") +
-      '</select></div>' +
-      '<div class="field"><label>' + t("website") + '</label>' + input("salon.website", s.website, "your-salon.com") + '</div>' +
-      '<div class="field"><label>' + t("instagram") + '</label>' + input("salon.instagram", s.instagram, "@yoursalon") + '</div>' +
+      labelled("salon.phone", t("phone"), input("salon.phone", s.phone, t("phPhone"), 'inputmode="tel" autocomplete="tel"')) +
+      labelled("salon.timezone", t("timezone"), '<select id="f-salon-timezone" data-path="salon.timezone" data-f="salon.timezone">' +
+        zones.map(function (zone) { return '<option value="' + esc(zone) + '"' + (zone === s.timezone ? " selected" : "") + '>' + esc(zone.replace("America/", "").replace("Europe/", "").replace(/_/g, " ")) + '</option>'; }).join("") +
+        '</select>') +
+      labelled("salon.website", t("website"), input("salon.website", s.website, t("phWebsite"), 'inputmode="url"')) +
+      labelled("salon.instagram", t("instagram"), input("salon.instagram", s.instagram, t("phInstagram"))) +
       '</div>' +
-      '<h2>' + t("hours") + '</h2><div class="hours">' + hours + '</div>' + navButtons();
+      '<h2>' + t("hours") + '</h2>' + slot("hours", true) + '<div class="hours">' + hours + '</div>' + navButtons();
   }
   function pad(time) { return time.length === 4 ? "0" + time : time; }
 
   function stepServices() {
     var rows = doc.services.map(function (service, index) {
       var base = "services." + index + ".";
-      return '<div class="srow' + (service._draft && !service.price ? " flag" : "") + '">' +
-        '<input data-list="services" data-i="' + index + '" data-k="name" value="' + esc(service.name) + '" placeholder="' + esc(t("phName")) + '" class="' + fieldBad(base + "name").trim() + '"/>' +
-        '<input class="cat" data-list="services" data-i="' + index + '" data-k="category" value="' + esc(service.category) + '" placeholder="' + esc(t("phCat")) + '"/>' +
-        '<input data-list="services" data-i="' + index + '" data-k="durationMinutes" type="number" min="5" step="5" inputmode="numeric" value="' + esc(service.durationMinutes || "") + '" class="' + fieldBad(base + "durationMinutes").trim() + '"/>' +
-        '<input data-list="services" data-i="' + index + '" data-k="price" value="' + esc(service.price) + '" placeholder="' + esc(t("phPrice")) + '" class="' + fieldBad(base + "price").trim() + '"/>' +
-        '<div class="dep"><input type="checkbox" data-list="services" data-i="' + index + '" data-k="deposit"' + (service.deposit ? " checked" : "") + ' aria-label="' + esc(t("colDep")) + '"/></div>' +
-        '<button class="iconbtn" type="button" data-remove="services" data-i="' + index + '" aria-label="Remove"><span class="material-symbols-outlined">close</span></button>' +
+      var consult = Boolean(service.consultOnly);
+      return '<div class="srow' + (consult ? " consult" : "") + '">' +
+        '<div class="l1">' +
+        '<input class="nm' + fieldBad(base + "name") + '" data-list="services" data-i="' + index + '" data-k="name" data-f="' + base + 'name" value="' + esc(service.name) + '" placeholder="' + esc(t("phSvc")) + '" aria-label="' + esc(t("colName")) + '"/>' +
+        '<input class="mn' + fieldBad(base + "durationMinutes") + '" data-list="services" data-i="' + index + '" data-k="durationMinutes" data-f="' + base + 'durationMinutes" type="number" min="5" step="5" inputmode="numeric" value="' + esc(service.durationMinutes || "") + '" aria-label="' + esc(t("colMin")) + '"/>' +
+        '<textarea rows="1" class="pr price' + fieldBad(base + "price") + '" data-list="services" data-i="' + index + '" data-k="price" data-f="' + base + 'price" maxlength="60" placeholder="' + esc(consult ? t("consultPrice") : t("phPrice")) + '" aria-label="' + esc(t("colPrice")) + '"' + (consult ? " disabled" : "") + '>' + esc(consult ? "" : service.price) + '</textarea>' +
+        '<button class="iconbtn rm" type="button" data-remove="services" data-i="' + index + '" aria-label="' + esc(t("remove") + " " + (service.name || "")) + '"><span class="material-symbols-outlined" aria-hidden="true">close</span></button>' +
+        '</div>' +
+        '<div class="l2">' +
+        '<input class="cat" data-list="services" data-i="' + index + '" data-k="category" value="' + esc(service.category) + '" placeholder="' + esc(t("phCat")) + '" aria-label="' + esc(t("colCat")) + '"/>' +
+        '<label class="opt"><input type="checkbox" data-list="services" data-i="' + index + '" data-k="deposit"' + (service.deposit ? " checked" : "") + '/> ' + esc(t("deposit")) + '</label>' +
+        '<label class="opt" title="' + esc(t("consultHint")) + '"><input type="checkbox" data-list="services" data-i="' + index + '" data-k="consultOnly"' + (consult ? " checked" : "") + '/> ' + esc(t("consult")) + '</label>' +
+        (service._draft ? '<span class="guess">' + esc(t("guessed")) + '</span>' : "") +
+        '</div>' +
+        slot("services." + index) +
         '</div>';
     }).join("");
     var type = (state.tenant && state.tenant.businessType) || "multi";
@@ -555,19 +1027,20 @@
       '<section class="import">' +
       '<div class="head"><div class="disc" aria-hidden="true">M</div><b>' + t("importTitle") + '</b></div>' +
       '<div class="hint">' + t("importHint") + '</div>' +
-      '<div style="margin-top:10px"><textarea id="importText" placeholder="' + esc(t("importPaste")) + '"></textarea></div>' +
-      '<div class="row2"><input id="importUrl" placeholder="' + esc(t("importUrl")) + '" inputmode="url"/>' +
+      '<div style="margin-top:10px"><label class="sr" for="importText">' + esc(t("importTitle")) + '</label><textarea id="importText" placeholder="' + esc(t("importPaste")) + '"></textarea></div>' +
+      '<div class="row2"><label class="sr" for="importUrl">URL</label><input id="importUrl" placeholder="' + esc(t("importUrl")) + '" inputmode="url" value="' + esc(doc.salon.website || "") + '"/>' +
       '<button class="btn" type="button" id="importBtn">' + t("importBtn") + '</button></div>' +
       '<div class="note" id="importNote" role="status"></div>' +
       '</section>' +
+      '<p class="hint" style="margin:0 0 10px">' + t("priceHelp") + '</p>' +
       '<div class="rows">' +
-      '<div class="srow head"><div>' + t("colName") + '</div><div class="cat">' + t("colCat") + '</div><div>' + t("colMin") + '</div><div>' + t("colPrice") + '</div><div class="dep">' + t("colDep") + '</div><div></div></div>' +
-      rows + '</div>' +
+      '<div class="shead"><div>' + t("colName") + '</div><div>' + t("colMin") + '</div><div>' + t("colPrice") + '</div><div></div></div>' +
+      rows + '</div>' + slot("services", true) +
       '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;align-items:center">' +
       '<button class="linkbtn" type="button" data-add="services">+ ' + t("addService") + '</button>' +
       (doc.services.length ? "" : '<button class="linkbtn" type="button" data-starter="' + esc(type) + '">' + t("starter") + '</button><span class="hint">' + t("starterNote") + '</span>') +
       '</div>' +
-      '<p class="hint" style="margin-top:14px">' + t("keywordsHint") + '</p>' + navButtons();
+      '<p class="aside">' + esc(t("consultHint")) + ' ' + esc(t("keywordsHint")) + '</p>' + navButtons();
   }
 
   function stepTeam() {
@@ -577,76 +1050,219 @@
       var all = !member.services.length;
       return '<div class="trow">' +
         '<div class="top">' +
-        '<input data-list="staff" data-i="' + index + '" data-k="name" value="' + esc(member.name) + '" placeholder="' + esc(t("phMember")) + '" class="' + fieldBad(base + "name").trim() + '"/>' +
-        '<input class="role" data-list="staff" data-i="' + index + '" data-k="role" value="' + esc(member.role) + '" placeholder="' + esc(t("phRole")) + '"/>' +
-        '<button class="iconbtn" type="button" data-remove="staff" data-i="' + index + '" aria-label="Remove"><span class="material-symbols-outlined">close</span></button>' +
+        '<input data-list="staff" data-i="' + index + '" data-k="name" data-f="' + base + 'name" value="' + esc(member.name) + '" placeholder="' + esc(t("phMember")) + '" aria-label="' + esc(t("member")) + '" class="' + fieldBad(base + "name").trim() + '"/>' +
+        '<input class="role" data-list="staff" data-i="' + index + '" data-k="role" value="' + esc(member.role) + '" placeholder="' + esc(t("phRole")) + '" aria-label="' + esc(t("role")) + '"/>' +
+        '<button class="iconbtn" type="button" data-remove="staff" data-i="' + index + '" aria-label="' + esc(t("remove") + " " + (member.name || "")) + '"><span class="material-symbols-outlined" aria-hidden="true">close</span></button>' +
         '</div>' +
-        '<div><div class="lbl" style="margin-bottom:6px">' + t("workDays") + '</div><div class="chips">' +
+        '<div><div class="lbl" style="margin-bottom:6px">' + t("workDays") + '</div><div class="chips" role="group" aria-label="' + esc(t("workDays")) + '">' +
         DAYS.map(function (day) {
           return '<button type="button" class="chip" data-day="' + day + '" data-i="' + index + '" aria-pressed="' + (member.workDays.indexOf(day) !== -1) + '">' + t("short")[day] + '</button>';
         }).join("") + '</div></div>' +
-        (names.length ? '<div><div class="lbl" style="margin-bottom:6px">' + t("doesWhat") + '</div><div class="chips' + fieldBad(base + "services") + '">' +
+        (names.length ? '<div><div class="lbl" style="margin-bottom:6px">' + t("doesWhat") + '</div><div class="chips" role="group" aria-label="' + esc(t("doesWhat")) + '">' +
           '<button type="button" class="chip" data-all="' + index + '" aria-pressed="' + all + '">' + t("allServices") + '</button>' +
           names.map(function (name) {
             return '<button type="button" class="chip" data-svc="' + esc(name) + '" data-i="' + index + '" aria-pressed="' + (!all && member.services.indexOf(name) !== -1) + '">' + esc(name) + '</button>';
           }).join("") + '</div></div>' : "") +
+        slot("staff." + index) +
         '</div>';
     }).join("");
     return '<h1>' + t("s3h") + '</h1><p class="lede">' + t("s3l") + '</p>' +
-      '<div class="rows">' + rows + '</div>' +
-      '<button class="linkbtn" type="button" data-add="staff" style="margin-top:12px">+ ' + t("addMember") + '</button>' + navButtons();
+      '<div class="rows">' + rows + '</div>' + slot("staff", true) +
+      '<button class="linkbtn" type="button" data-add="staff" style="margin-top:12px">+ ' + t("addMember") + '</button>' +
+      '<p class="aside">' + esc(t("teamPlans")) + '</p>' + navButtons();
   }
 
   function stepAnswers() {
     var f = doc.faq;
-    function area(key, ph) {
-      return '<div class="field"><label>' + t(key) + '</label><textarea data-path="faq.' + key + '" rows="2" placeholder="' + esc(t(ph)) + '">' + esc(f[key]) + '</textarea></div>';
+    function area(key, label, ph) {
+      return '<div class="field"><label for="f-faq-' + key + '">' + esc(t(label)) + '</label><textarea id="f-faq-' + key + '" data-path="faq.' + key + '" rows="2" placeholder="' + esc(t(ph)) + '">' + esc(f[key]) + '</textarea></div>';
     }
     var custom = f.custom.map(function (entry, index) {
       return '<div class="qrow">' +
-        '<input data-list="custom" data-i="' + index + '" data-k="q" value="' + esc(entry.q) + '" placeholder="' + esc(t("phQ")) + '"/>' +
-        '<textarea rows="2" data-list="custom" data-i="' + index + '" data-k="a" placeholder="' + esc(t("phA")) + '">' + esc(entry.a) + '</textarea>' +
-        '<button class="iconbtn" type="button" data-remove="custom" data-i="' + index + '" aria-label="Remove"><span class="material-symbols-outlined">close</span></button>' +
+        '<input data-list="custom" data-i="' + index + '" data-k="q" value="' + esc(entry.q) + '" placeholder="' + esc(t("phQ")) + '" aria-label="' + esc(t("custom")) + '"/>' +
+        '<textarea rows="2" data-list="custom" data-i="' + index + '" data-k="a" placeholder="' + esc(t("phA")) + '" aria-label="' + esc(t("phA")) + '">' + esc(entry.a) + '</textarea>' +
+        '<button class="iconbtn" type="button" data-remove="custom" data-i="' + index + '" aria-label="' + esc(t("remove")) + '"><span class="material-symbols-outlined" aria-hidden="true">close</span></button>' +
         '</div>';
     }).join("");
     return '<h1>' + t("s4h") + '</h1><p class="lede">' + t("s4l") + '</p>' +
-      '<div class="grid2">' + area("parking", "phParking") + area("payment", "phPayment") + area("cancellation", "phCancellation") + area("deposit", "phDeposit") + '</div>' +
-      area("late", "phLate") +
+      '<div class="grid2">' + area("parking", "parking", "phParking") + area("payment", "payment", "phPayment") + area("cancellation", "cancellation", "phCancellation") + area("deposit", "deposit2", "phDeposit") + '</div>' +
+      area("late", "late", "phLate") +
       '<h2>' + t("custom") + '</h2><div class="rows">' + custom + '</div>' +
       '<button class="linkbtn" type="button" data-add="custom" style="margin-top:10px">+ ' + t("addQ") + '</button>' +
-      '<h2>' + t("forbidden") + '</h2><textarea data-path="assistant.forbidden" rows="2" placeholder="' + esc(t("phForbidden")) + '">' + esc(doc.assistant.forbidden) + '</textarea>' +
+      '<h2><label for="f-assistant-forbidden">' + t("forbidden") + '</label></h2><textarea id="f-assistant-forbidden" data-path="assistant.forbidden" rows="2" placeholder="' + esc(t("phForbidden")) + '">' + esc(doc.assistant.forbidden) + '</textarea>' +
       navButtons();
   }
 
+  // --- chat link + QR ---------------------------------------------------
+  function qrMatrix(text) {
+    if (typeof window.qrcode !== "function") return null;
+    try {
+      var qr = window.qrcode(0, "M");
+      qr.addData(text);
+      qr.make();
+      return qr;
+    } catch (error) { return null; }
+  }
+  function drawQr(canvas, text, px) {
+    var qr = qrMatrix(text);
+    if (!qr || !canvas) return false;
+    var count = qr.getModuleCount();
+    var quiet = 4;
+    var cell = Math.max(1, Math.floor(px / (count + quiet * 2)));
+    var size = cell * (count + quiet * 2);
+    canvas.width = size;
+    canvas.height = size;
+    var ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = "#17181b";
+    for (var r = 0; r < count; r += 1) {
+      for (var c = 0; c < count; c += 1) {
+        if (qr.isDark(r, c)) ctx.fillRect((c + quiet) * cell, (r + quiet) * cell, cell, cell);
+      }
+    }
+    return true;
+  }
+  function paintQrs() {
+    var draw = function () {
+      document.querySelectorAll("canvas[data-qr]").forEach(function (canvas) {
+        if (!drawQr(canvas, canvas.getAttribute("data-qr"), 312)) canvas.parentNode.style.display = "none";
+      });
+    };
+    if (typeof window.qrcode === "function") return draw();
+    // The library loads with defer; try again shortly, then give up quietly.
+    var tries = 0;
+    var timer = setInterval(function () {
+      tries += 1;
+      if (typeof window.qrcode === "function" || tries > 20) { clearInterval(timer); draw(); }
+    }, 150);
+  }
+  function linkBlock(showWait) {
+    var url = state.shortChatUrl || state.publicChatUrl;
+    return '<div class="linkwrap"><div class="linkbox">' +
+      '<div class="qr"><canvas data-qr="' + esc(url) + '" role="img" aria-label="QR code: ' + esc(url) + '"></canvas></div>' +
+      '<div>' +
+      '<div class="url" id="chatUrl">' + esc(url) + '</div>' +
+      '<div class="acts"><button class="btn small" type="button" data-copy="' + esc(url) + '"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span>' + t("copyLink") + '</button>' +
+      '<button class="btn quiet small" type="button" id="qrDownload"><span class="material-symbols-outlined" aria-hidden="true">qr_code_2</span>' + t("downloadQr") + '</button>' +
+      '<a class="btn quiet small" href="' + esc(url) + '" target="_blank" rel="noopener">' + t("openLink") + '</a></div>' +
+      (showWait ? '<p class="hint" style="margin:0 0 10px">' + esc(t("linkWait")) + '</p>' : "") +
+      '<ul class="where">' +
+      '<li><span class="material-symbols-outlined" aria-hidden="true">photo_camera</span><div>' + t("where1") + '</div></li>' +
+      '<li><span class="material-symbols-outlined" aria-hidden="true">storefront</span><div>' + t("where2") + '</div></li>' +
+      '<li><span class="material-symbols-outlined" aria-hidden="true">qr_code_2</span><div>' + t("where3") + '</div></li>' +
+      '</ul></div></div></div>';
+  }
+  function downloadQr() {
+    var canvas = document.createElement("canvas");
+    if (!drawQr(canvas, state.shortChatUrl || state.publicChatUrl, 1024)) return;
+    canvas.toBlob(function (blob) {
+      if (!blob) return;
+      var link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = (slug() || "salon") + "-chat-qr.png";
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(function () { URL.revokeObjectURL(link.href); link.remove(); }, 500);
+    }, "image/png");
+  }
+
+  // --- step 5 -----------------------------------------------------------
+  var LOG_PREFIX = "aibeaty.chat.log.";
+  var SESSION_PREFIX = "aibeaty.chat.session.";
+  function hasTestMessage() {
+    var log = [];
+    try { log = JSON.parse(lsGet(LOG_PREFIX + slug()) || "[]") || []; } catch (error) { log = []; }
+    return log.some(function (entry) { return entry && entry.k === "out"; });
+  }
+  function syncGoLive() {
+    var button = $("launchBtn");
+    if (!button) return;
+    var ok = hasTestMessage();
+    button.disabled = !ok;
+    var hint = $("launchHint");
+    if (hint) hint.textContent = ok ? t("goLiveReady") : t("goLiveWait");
+  }
+  function chatSrc() {
+    return state.chatUrl + "&embed=1&preview=1&lang=" + encodeURIComponent(lang);
+  }
+
   function stepLive() {
-    var ready = state.tenant && state.tenant.setupComplete && !errors.length;
-    var launched = state.tenant && state.tenant.launched;
+    var tenant = state.tenant || {};
+    var ready = tenant.setupComplete && !errors.length;
+    var launched = tenant.launched;
     var body;
-    if (ready) {
-      var firstService = (doc.services[0] && doc.services[0].name) || "";
-      body = (launched
-        ? '<div class="status ok"><span class="material-symbols-outlined" aria-hidden="true">check_circle</span><div>' + t("liveOk")
-        : '<div class="status wait"><span class="material-symbols-outlined" aria-hidden="true">visibility</span><div><b>' + t("readyTitle") + '</b><div style="margin-top:4px">' + t("readyLead") + '</div>') +
-        '<div style="margin-top:8px;color:var(--on-surface)"><b>' + t("tryThis") + '</b><ul class="tries">' +
-        '<li>' + esc(t("try1")(firstService)) + '</li><li>' + t("try2") + '</li><li>' + t("try3") + '</li><li>' + t("try4") + '</li></ul></div></div></div>' +
-        (launched ? "" : '<button class="btn" type="button" id="launchBtn">' + t("goLive") + ' <span class="material-symbols-outlined" aria-hidden="true">rocket_launch</span></button>');
+    if (launched) {
+      body = '<div class="status ok"><span class="material-symbols-outlined" aria-hidden="true">check_circle</span><div><b>' + (justLaunched ? t("successTitle") : t("liveOk")) + '</b>' +
+        (justLaunched ? '<div style="margin-top:2px">' + esc(t("successLead")) + '</div>' : "") + '</div></div>' +
+        linkBlock(false) +
+        '<div style="margin-top:16px"><button class="btn" type="button" data-go="5">' + t("successNext") + ' <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></button></div>';
+    } else if (ready) {
+      var s = doc.services;
+      var firstPriced = s.filter(function (service) { return !service.consultOnly; })[0] || s[0] || { name: "" };
+      var answers = ["parking", "payment", "cancellation", "deposit", "late"].filter(function (key) { return doc.faq[key]; }).length + doc.faq.custom.length;
+      body = '<div class="status wait"><span class="material-symbols-outlined" aria-hidden="true">visibility</span><div><b>' + t("readyTitle") + '</b><div style="margin-top:4px">' + t("readyLead") + '</div></div></div>' +
+        '<div class="lbl" style="margin-bottom:8px">' + t("knows") + '</div>' +
+        '<div class="todo">' +
+        '<div class="item ok"><span class="material-symbols-outlined" aria-hidden="true">check_circle</span><div>' + esc(t("knowsServices")(s.length)) + '</div><button class="linkbtn" type="button" data-go="1">' + esc(t("steps")[1]) + '</button></div>' +
+        '<div class="item ok"><span class="material-symbols-outlined" aria-hidden="true">check_circle</span><div>' + esc(t("knowsTeam")(doc.staff.length)) + '</div><button class="linkbtn" type="button" data-go="2">' + esc(t("steps")[2]) + '</button></div>' +
+        '<div class="item ok"><span class="material-symbols-outlined" aria-hidden="true">check_circle</span><div>' + esc(t("knowsHours")(openDays().length)) + '</div><button class="linkbtn" type="button" data-go="0">' + esc(t("steps")[0]) + '</button></div>' +
+        '<div class="item' + (answers ? " ok" : "") + '"><span class="material-symbols-outlined" aria-hidden="true">' + (answers ? "check_circle" : "radio_button_unchecked") + '</span><div>' + esc(t("knowsAnswers")(answers)) + '</div><button class="linkbtn" type="button" data-go="3">' + esc(t("steps")[3]) + '</button></div>' +
+        '</div>' +
+        '<div style="color:var(--on-surface)"><b>' + t("tryThis") + '</b><ul class="tries">' +
+        '<li>' + esc(t("try1")(firstPriced.name)) + '</li><li>' + esc(t("try2")) + '</li><li>' + esc(t("try3")) + '</li><li>' + esc(t("try4")) + '</li></ul></div>';
     } else {
       body = '<div class="status wait"><span class="material-symbols-outlined" aria-hidden="true">pending</span><div><b>' + t("waitTitle") + '</b></div></div>' +
         '<div class="todo">' + errors.map(function (error) {
-          return '<div class="item"><span class="material-symbols-outlined" aria-hidden="true">error</span><div>' + esc(error.message) + '</div>' +
+          return '<div class="item"><span class="material-symbols-outlined" aria-hidden="true">radio_button_unchecked</span><div>' + esc(error.message) + '</div>' +
             '<button class="linkbtn" type="button" data-go="' + stepOfField(error.field) + '">' + t("fix") + '</button></div>';
         }).join("") + '</div>';
     }
-    if (warnings.length) {
-      body += '<p class="hint"><b>' + t("warnings") + '</b></p><ul class="tries">' + warnings.map(function (w) { return '<li>' + esc(w.message) + '</li>'; }).join("") + '</ul>';
+    if (warnings.length && !launched) {
+      body += '<p class="hint" style="margin-top:14px"><b>' + t("warnings") + '</b></p><ul class="tries">' + warnings.map(function (w) { return '<li>' + esc(w.message) + '</li>'; }).join("") + '</ul>';
     }
-    var phone = ready ? '<div class="phone"><iframe title="Maya" src="' + esc(state.chatUrl) + '&embed=1&v=' + Date.now() + '"></iframe></div>' : "";
+    var chat = (ready || launched)
+      ? '<div class="chatcol">' +
+        '<div class="chathead"><div class="lbl">' + esc(t("testChat")) + '</div><button class="btn quiet small" type="button" id="resetChat"><span class="material-symbols-outlined" aria-hidden="true">restart_alt</span>' + t("resetChat") + '</button></div>' +
+        '<div class="phone"><iframe id="testChat" title="Maya" src="' + esc(chatSrc()) + '"></iframe></div>' +
+        (launched ? "" : '<div class="golive"><button class="btn wide" type="button" id="launchBtn" disabled>' + t("goLive") + ' <span class="material-symbols-outlined" aria-hidden="true">rocket_launch</span></button><div class="hint" id="launchHint">' + esc(t("goLiveWait")) + '</div></div>') +
+        '</div>'
+      : "";
     return '<h1>' + t("s5h") + '</h1><p class="lede">' + t("s5l") + '</p>' +
-      '<div class="livebox"><div>' + body + '</div>' + phone + '</div>' + navButtons();
+      '<div class="livebox"><div>' + body + '</div>' + chat + '</div>' + navButtons();
   }
 
+  function openConfirm() {
+    var answers = ["parking", "payment", "cancellation", "deposit", "late"].filter(function (key) { return doc.faq[key]; }).length + doc.faq.custom.length;
+    $("confirmTitle").textContent = t("confirmTitle");
+    $("confirmLead").textContent = t("confirmLead");
+    $("confirmList").innerHTML = [t("knowsServices")(doc.services.length), t("knowsTeam")(doc.staff.length), t("knowsHours")(openDays().length), t("knowsAnswers")(answers), t("testCleared")].map(function (line) {
+      return '<div class="item ok"><span class="material-symbols-outlined" aria-hidden="true">check_circle</span><div>' + esc(line) + '</div><span></span></div>';
+    }).join("");
+    $("confirmYes").textContent = t("confirmYes");
+    $("confirmNo").textContent = t("confirmNo");
+    var dialog = $("confirm");
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else if (window.confirm(t("confirmTitle"))) launchNow();
+  }
+  function launchNow() {
+    var button = $("launchBtn");
+    if (button) busy(button, t("launching"));
+    return flushSave().then(function () { return api("POST", "/api/setup/launch"); }).then(function (result) {
+      if (button) idle(button);
+      if (result.status !== 200) { errors = (result.data && result.data.errors) || errors; return render(); }
+      state.tenant = Object.assign(state.tenant, { launched: true, live: result.data.tenant.live });
+      (state.addons || []).forEach(function (addon) { if (addon.key === "website_widget") addon.status = "active"; });
+      justLaunched = true;
+      render();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
+
+  // --- step 6 -----------------------------------------------------------
   function stepChannels() {
     var tg = state.telegram || {};
+    var launched = state.tenant && state.tenant.launched;
     var tgBlock;
     if (tg.connected) {
       tgBlock = '<div class="connected">' +
@@ -655,47 +1271,188 @@
         '<div class="line' + (tg.ownerLinked ? "" : " pending") + '"><span class="material-symbols-outlined" aria-hidden="true">' + (tg.ownerLinked ? "check_circle" : "notifications") + '</span>' +
         '<div><b>' + (tg.ownerLinked ? t("tgOwnerDone") : t("tgOwner")) + '</b>' + (tg.ownerLinked ? "" : '<div class="hint">' + t("tgOwnerHint") + '</div>') + '</div>' +
         (tg.ownerLinked ? "<span></span>" : '<a class="btn small" href="' + esc(tg.ownerLink) + '" target="_blank" rel="noopener">' + t("tgLink") + '</a>') + '</div>' +
+        (tg.ownerLinked ? "" : '<div class="ownerqr"><div class="qrbox" data-owner-qr="' + esc(tg.ownerLink) + '" aria-hidden="true"></div><p class="hint">' + t("tgOwnerQr") + '</p></div>') +
         '</div>' +
-        '<p class="hint" style="margin-top:14px">' + t("qr") + '</p><pre class="snippet">' + esc(tg.botLink) + '</pre>' +
-        '<div style="display:flex;gap:10px;margin-top:10px"><button class="btn quiet small" type="button" data-copy="' + esc(tg.botLink) + '">' + t("copy") + '</button>' +
+        '<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap"><button class="btn quiet small" type="button" data-copy="' + esc(tg.botLink) + '">' + t("copy") + ' t.me/' + esc(tg.username) + '</button>' +
         '<button class="btn quiet small" type="button" id="tgDisconnect">' + t("tgDisconnect") + '</button></div>';
     } else {
       tgBlock = '<p class="hint">' + t("tgLead") + '</p><ol class="howto"><li><div>' + t("tg1") + '</div></li><li><div>' + t("tg2") + '</div></li><li><div>' + t("tg3") + '</div></li></ol>' +
-        '<div class="row2" style="display:grid;grid-template-columns:1fr auto;gap:10px"><input id="tgToken" class="mono" placeholder="' + esc(t("tokenPh")) + '" autocomplete="off" spellcheck="false"/>' +
+        '<label class="sr" for="tgToken">' + esc(t("tokenLabel")) + '</label>' +
+        '<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px"><input id="tgToken" class="mono" placeholder="' + esc(t("tokenPh")) + '" autocomplete="off" spellcheck="false"/>' +
         '<button class="btn" type="button" id="tgConnect">' + t("connect") + '</button></div><div class="note" id="tgNote" role="status"></div>';
     }
-    var publicChat = window.location.origin + state.chatUrl;
     return '<h1>' + t("s6h") + '</h1><p class="lede">' + t("s6l") + '</p>' +
-      '<h2>' + t("tgTitle") + '</h2>' + tgBlock +
+      '<div class="sechead"><h2 style="margin-top:0">' + t("linkTitle") + '</h2><span class="tag fit">' + esc(t("mainTag")) + '</span></div>' +
+      '<p class="hint" style="margin:0 0 12px">' + esc(t("linkLead")) + '</p>' +
+      linkBlock(!launched) +
       '<h2>' + t("webTitle") + '</h2><p class="hint">' + t("webLead") + '</p><pre class="snippet" id="snippet">' + esc(state.widgetSnippet) + '</pre>' +
       '<button class="btn quiet small" type="button" data-copy-snippet="1">' + t("copy") + '</button>' +
-      '<p class="hint" style="margin-top:14px">' + t("chatLink") + '</p><pre class="snippet">' + esc(publicChat) + '</pre>' +
-      '<button class="btn quiet small" type="button" data-copy="' + esc(publicChat) + '">' + t("copy") + '</button>' +
-      '<h2>' + t("moreTitle") + '</h2><p class="hint">' + t("moreLead") + '</p>' + navButtons();
+      '<div class="sechead" style="margin-top:12px"><h2>' + t("tgTitle") + '</h2><span class="tag ready">' + esc(t("optional")) + '</span></div>' + tgBlock +
+      '<h2>' + t("moreTitle") + '</h2><p class="hint">' + t("moreLead") + '</p>' +
+      '<button class="btn quiet small" type="button" data-go="6">' + t("moreBtn") + ' <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></button>' +
+      navButtons();
+  }
+
+  // --- step 7 -----------------------------------------------------------
+  function titleOf(plan) {
+    var list = (state.plan && state.plan.plans) || [];
+    var found = list.filter(function (entry) { return entry.key === plan; })[0];
+    return found ? found.title : plan;
+  }
+  // Staff guidance only (never enforced): the smallest plan that covers the
+  // team as it is in the wizard right now. A medspa / clinic is pointed at Pro.
+  function suggestedPlan() {
+    var plan = state.plan || {};
+    if (state.tenant && state.tenant.businessType === "medspa") return "pro";
+    var count = doc ? doc.staff.length : (plan.staffCount || 1);
+    var fit = (plan.plans || []).filter(function (entry) { return entry.staffLimit === null || count <= entry.staffLimit; })[0];
+    return fit ? fit.key : plan.suggested || "salon";
+  }
+  function currentPick() {
+    var plan = state.plan || {};
+    if (!picked) {
+      var addons = {};
+      (plan.chosenAddons || []).forEach(function (key) { addons[key] = true; });
+      picked = { plan: plan.choice || suggestedPlan(), addons: addons, cycle: plan.cycle || "monthly" };
+    }
+    return picked;
+  }
+  function pickTotal(p) {
+    var plan = state.plan;
+    var base = plan.plans.filter(function (entry) { return entry.key === p.plan; })[0];
+    var monthly = (base ? base.price : 0) + plan.addons.reduce(function (sum, addon) { return sum + (p.addons[addon.key] ? addon.price : 0); }, 0);
+    return { monthly: monthly, total: p.cycle === "annual" ? monthly * plan.annualMonthsBilled : monthly, saving: monthly * (12 - plan.annualMonthsBilled) };
   }
 
   function stepPlan() {
     var tenant = state.tenant || {};
-    var date = tenant.trialEndsAt ? new Date(tenant.trialEndsAt).toLocaleDateString(lang === "ru" ? "ru-RU" : "en-CA", { day: "numeric", month: "long" }) : "";
-    var line = tenant.plan === "trial" ? t("trialLine")(tenant.trialDaysLeft, date) : t("paidLine");
-    var extras = state.addons.filter(function (addon) { return !addon.auto && addon.key !== "continue_after_trial"; });
-    var keep = state.addons.filter(function (addon) { return addon.key === "continue_after_trial"; })[0];
-    function row(addon) {
-      var right = addon.status === "requested" ? '<span class="tag requested">' + t("requested") + '</span>'
-        : addon.status === "active" ? '<span class="tag active">' + t("active") + '</span>'
-        : addon.auto ? '<button class="btn quiet small" type="button" data-go="5">' + t("setUp") + '</button>'
-        : '<button class="btn quiet small" type="button" data-request="' + esc(addon.key) + '">' + t("request") + '</button>';
-      return '<div class="a"><div class="t">' + esc(addon.title) + '</div>' + right + '</div>';
+    var plan = state.plan;
+    var html = '<h1>' + t("s7h") + '</h1><p class="lede">' + t("s7l") + '</p>';
+    if (!plan) return html + navButtons();
+    html += '<p class="billedline"><span class="material-symbols-outlined" aria-hidden="true">apartment</span>' + esc(t("billedBy")(plan.seller, plan.sellerPlace || "Ottawa, Canada")) + '</p>';
+    var paidBack = /[?&]paid=1/.test(window.location.search) && tenant.planStatus !== "active";
+    if (paidBack) html += '<div class="status ok"><span class="material-symbols-outlined" aria-hidden="true">hourglass_top</span><div>' + esc(t("paidBack")) + '</div></div>';
+
+    if (tenant.planStatus === "active" && plan.quote) {
+      html += '<div class="status ok"><span class="material-symbols-outlined" aria-hidden="true">verified</span><div><b>' + esc(t("activeTitle")(plan.quote.planTitle[lang] || plan.quote.planTitle.en)) + '</b><div style="margin-top:2px">' + esc(t("activeLead")) + '</div></div></div>' +
+        quoteSummary(plan.quote);
+    } else if (tenant.planStatus === "pending_payment" && plan.quote && !planEdit) {
+      html += '<div class="confirmed" id="planConfirmed" tabindex="-1">' +
+        '<div class="status ok"><span class="material-symbols-outlined" aria-hidden="true">mark_email_read</span><div><b>' + esc(t("pendingTitle")) + '</b></div></div>' +
+        quoteSummary(plan.quote) +
+        '<ul class="facts">' +
+        '<li><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><div>' + esc(t("doneTax")) + '</div></li>' +
+        '<li><span class="material-symbols-outlined" aria-hidden="true">event_available</span><div>' + esc(t("doneTrial")(dateLabel(tenant.trialEndsAt))) + '</div></li>' +
+        '<li><span class="material-symbols-outlined" aria-hidden="true">mail</span><div>' + esc(t("doneInvoice")(plan.ownerEmail)) + '</div></li>' +
+        (state.telegram && state.telegram.ownerLinked ? '<li><span class="material-symbols-outlined" aria-hidden="true">send</span><div>' + esc(t("doneTg")) + '</div></li>' : "") +
+        '<li><span class="material-symbols-outlined" aria-hidden="true">apartment</span><div>' + esc(t("billedBy")(plan.seller, plan.sellerPlace || "Ottawa, Canada")) + '</div></li>' +
+        '</ul></div>' +
+        '<button class="btn quiet small" type="button" id="planEdit">' + t("changeChoice") + '</button>';
+    } else {
+      var date = dateLabel(tenant.trialEndsAt);
+      if (tenant.plan === "trial" && tenant.planStatus !== "pending_payment") {
+        html += '<div class="status ' + (tenant.active ? "wait" : "warn") + '"><span class="material-symbols-outlined" aria-hidden="true">schedule</span><div>' + esc(t("trialLine")(tenant.trialDaysLeft, date)) + '</div></div>';
+      }
+      html += picker();
     }
-    var included = state.addons.filter(function (addon) { return addon.auto; });
-    return '<h1>' + t("s7h") + '</h1><p class="lede">' + t("s7l") + '</p>' +
-      '<div class="status ' + (tenant.active ? "wait" : "") + '" style="' + (tenant.active ? "" : "background:rgba(180,19,64,.07);color:var(--on-error-container)") + '"><span class="material-symbols-outlined" aria-hidden="true">schedule</span><div>' + esc(line) + '</div></div>' +
-      '<div class="addons">' + included.map(row).join("") + '</div>' +
-      '<h2>' + t("moreTitle") + '</h2><p class="hint">' + t("addonsLead") + '</p>' +
-      '<div class="field" style="margin-top:10px"><input id="addonNote" placeholder="' + esc(t("notePh")) + '"/></div>' +
-      '<div class="addons">' + extras.map(row).join("") + '</div>' +
-      (keep ? '<h2>' + t("keepTitle") + '</h2><p class="hint">' + t("keepLead") + '</p><div class="addons">' + row(keep) + '</div>' : "") +
-      navButtons();
+    html += extrasBlock();
+    return html + navButtons();
+  }
+
+  function quoteSummary(q) {
+    var per = q.cycle === "annual" ? t("perYear") : t("perMonth");
+    return '<div class="summary">' +
+      '<div><span>' + esc(q.planTitle[lang] || q.planTitle.en) + '</span><b>' + esc(money(q.planPrice)) + esc(t("perMo")) + '</b></div>' +
+      q.addons.map(function (addon) { return '<div><span>' + esc(addon.title[lang] || addon.title.en) + '</span><b>+' + esc(money(addon.price)) + esc(t("perMo")) + '</b></div>'; }).join("") +
+      '<div><span><b>' + esc(t("totalLabel")) + '</b></span><b>' + esc(money(q.total)) + esc(per) + ' ' + esc(t("plusTax")) + '</b></div>' +
+      '</div>';
+  }
+
+  function picker() {
+    var plan = state.plan;
+    var p = currentPick();
+    var totals = pickTotal(p);
+    var annual = p.cycle === "annual";
+    var staffCount = doc ? doc.staff.length : plan.staffCount;
+    var rows = plan.plans.map(function (entry) {
+      var on = entry.key === p.plan;
+      var guide = t("staffGuide")(staffCount, entry.staffLimit);
+      var price = annual ? entry.price * plan.annualMonthsBilled : entry.price;
+      return '<label class="prow' + (on ? " on" : "") + '">' +
+        '<input type="radio" name="plan" value="' + esc(entry.key) + '"' + (on ? " checked" : "") + '/>' +
+        '<div><div class="t">' + esc(entry.title) + (entry.key === suggestedPlan() ? ' <span class="tag fit">' + esc(t("fits")) + '</span>' : "") + '</div>' +
+        '<div class="d">' + esc(entry.staff) + ' · ' + esc(entry.blurb) + (guide ? '<br/><span style="color:var(--error)">' + esc(guide) + '</span>' : "") + '</div></div>' +
+        '<div class="p"><b>' + esc(money(price)) + '</b><span>' + esc(annual ? t("perYear") : t("perMonth")) + '</span>' +
+        (annual ? '<span class="sub">' + esc(t("annualSub")(entry.price)) + '</span>' : "") + '</div>' +
+        '</label>';
+    }).join("");
+    var addons = plan.addons.map(function (addon) {
+      var on = Boolean(p.addons[addon.key]);
+      return '<label class="arow">' +
+        '<input type="checkbox" data-addon="' + esc(addon.key) + '"' + (on ? " checked" : "") + '/>' +
+        '<div><div class="t">' + esc(addon.title) + '</div><div class="d">' + esc(addon.detail) + '</div></div>' +
+        '<div class="p">+' + esc(money(addon.price)) + esc(t("perMo")) + '</div>' +
+        '</label>';
+    }).join("");
+    var chosen = titleOf(p.plan);
+    return '<div class="seg" role="group" aria-label="Billing">' +
+      '<button type="button" data-cycle="monthly" aria-pressed="' + !annual + '">' + t("monthly") + '</button>' +
+      '<button type="button" data-cycle="annual" aria-pressed="' + annual + '">' + t("annual") + '</button></div>' +
+      '<fieldset style="border:0;margin:0;padding:0"><legend class="sr">' + esc(t("s7h")) + '</legend><div class="plans">' + rows + '</div></fieldset>' +
+      '<h2>' + t("addonsTitle") + '</h2><p class="hint" style="margin-top:-4px">' + t("addonsLead") + '</p>' +
+      '<div class="addons">' + addons + '</div>' +
+      '<div class="total">' +
+      '<div><div class="lbl">' + esc(t("totalLabel")) + '</div>' +
+      '<div class="sum">' + esc(money(totals.total)) + '<small>' + esc(annual ? t("perYear") : t("perMonth")) + ' ' + esc(t("plusTax")) + '</small></div>' +
+      '<div class="how">' + esc(t("totalHow")(plan.seller)) + (annual ? " " + esc(t("annualSave")(totals.saving)) : "") + '</div></div>' +
+      '<div style="display:grid;gap:8px">' +
+      '<button class="btn" type="button" id="planGo">' + esc(t("continueWith")(chosen)) + ' <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></button>' +
+      (planEdit ? '<button class="btn quiet small" type="button" id="planKeep">' + t("keepChoice") + '</button>' : "") +
+      '</div></div>';
+  }
+
+  function extrasBlock() {
+    var byKey = {};
+    (state.addons || []).forEach(function (addon) { byKey[addon.key] = addon; });
+    function right(addon, label) {
+      if (!addon) return "";
+      if (addon.status === "requested") return '<span class="tag requested">' + t("requested") + '</span>';
+      if (addon.status === "active" || addon.status === "paid") return '<span class="tag active">' + t("included") + '</span>';
+      return '<button class="btn quiet small" type="button" data-request="' + esc(addon.key) + '">' + label + '</button>';
+    }
+    var dfy = byKey.done_for_you;
+    var later = (state.addons || []).filter(function (addon) { return addon.later && addon.key !== "continue_after_trial"; });
+    var proActive = state.tenant && state.tenant.planStatus === "active" && state.plan && state.plan.choice === "pro";
+    return '<div class="addons" style="margin-top:28px"><div class="a2"><div><div class="t">' + esc(t("dfyTitle")) + '</div><div class="hint">' + esc(t("dfyLead")) + '</div></div>' +
+      (proActive ? '<span class="tag active">' + t("included") + '</span>' : right(dfy, t("request"))) + '</div></div>' +
+      '<div class="field" style="margin-top:10px"><label for="addonNote" class="sr">' + esc(t("noteLabel")) + '</label><input id="addonNote" placeholder="' + esc(t("notePh")) + '"/></div>' +
+      (later.length ? '<h2>' + t("laterTitle") + '</h2><p class="hint" style="margin-top:-4px">' + t("laterLead") + '</p><div class="addons">' +
+        later.map(function (addon) { return '<div class="a2"><div class="t">' + esc(addon.title) + '</div>' + right(addon, t("tellMe")) + '</div>'; }).join("") + '</div>' : "");
+  }
+
+  function submitPlan(button) {
+    var p = currentPick();
+    var addons = Object.keys(p.addons).filter(function (key) { return p.addons[key]; });
+    busy(button, t("sending"));
+    api("POST", "/api/setup/plan", { plan: p.plan, addons: addons, cycle: p.cycle }).then(function (result) {
+      idle(button);
+      if (result.status !== 200) return toast((result.data && result.data.message) || t("offline"));
+      if (result.data.checkoutUrl) {
+        toast(t("checkoutGo"));
+        window.location.href = result.data.checkoutUrl;
+        return;
+      }
+      state.plan = result.data.plan;
+      state.tenant.planStatus = "pending_payment";
+      state.tenant.trialEndsAt = result.data.trialEndsAt;
+      planEdit = false;
+      return refresh().then(function () {
+        render();
+        var box = $("planConfirmed");
+        if (box) { box.scrollIntoView({ behavior: "smooth", block: "start" }); box.focus({ preventScroll: true }); }
+        else window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+    }).catch(function () { idle(button); toast(t("offline")); });
   }
 
   var STEPS = [stepSalon, stepServices, stepTeam, stepAnswers, stepLive, stepChannels, stepPlan];
@@ -707,12 +1464,41 @@
       return;
     }
     $("panel").innerHTML = '<div class="step">' + STEPS[step]() + '</div>';
+    paintQrCodes();
     var current = document.querySelector('.rail [aria-current="step"]');
     if (current && window.innerWidth <= 900) current.scrollIntoView({ block: "nearest", inline: "center" });
+    if (document.querySelector("canvas[data-qr]")) paintQrs();
+    clearInterval(testPoll);
+    if (step === 4 && $("launchBtn")) {
+      syncGoLive();
+      testPoll = setInterval(syncGoLive, 1500);
+    }
   }
+  // The owner deep link as a QR code, for owners doing setup on a computer:
+  // their Telegram is on the phone. Drawn with qrcode-generator (drawQr).
+  function paintQrCodes(attempt) {
+    var boxes = document.querySelectorAll("[data-owner-qr]");
+    if (!boxes.length || !window.matchMedia("(min-width: 761px)").matches) return;
+    if (typeof window.qrcode !== "function") {
+      if ((attempt || 0) < 30) setTimeout(function () { paintQrCodes((attempt || 0) + 1); }, 200);
+      return;
+    }
+    Array.prototype.forEach.call(boxes, function (box) {
+      if (box.getAttribute("data-painted")) return;
+      var canvas = document.createElement("canvas");
+      if (!drawQr(canvas, box.getAttribute("data-owner-qr"), 264)) return;
+      box.setAttribute("data-painted", "1");
+      box.appendChild(canvas);
+      box.closest(".ownerqr").classList.add("ready");
+    });
+  }
+
   function go(index) {
+    if (step <= 4 && index !== step) touch(step);
     step = Math.max(0, Math.min(STEPS.length - 1, index));
-    try { history.replaceState(null, "", "#" + (step + 1)); } catch (error) { /* ignore */ }
+    if (step !== 4) justLaunched = false;
+    try { history.replaceState(null, "", window.location.pathname + window.location.search + "#" + (step + 1)); } catch (error) { /* ignore */ }
+    flushSave();
     render();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -725,6 +1511,14 @@
     target[parts[parts.length - 1]] = value;
   }
   function listFor(name) { return name === "custom" ? doc.faq.custom : doc[name]; }
+  function sameDays(a, b) { return a.length === b.length && a.every(function (day) { return b.indexOf(day) !== -1; }); }
+  // Staff who still follow the salon's days follow a change in them too.
+  function followHours(before) {
+    var after = openDays();
+    doc.staff.forEach(function (member) {
+      if (sameDays(member.workDays, before)) member.workDays = after.slice();
+    });
+  }
 
   document.addEventListener("input", function (event) {
     var node = event.target;
@@ -744,9 +1538,11 @@
         });
       }
       if (node.type === "checkbox") item[key] = node.checked;
-      else if (key === "durationMinutes") item[key] = Number(node.value) || 0;
+      else if (key === "durationMinutes") { item[key] = Number(node.value) || 0; delete item._draft; }
       else item[key] = node.value;
+      if (node.tagName === "TEXTAREA" && node.classList.contains("price")) autosize(node);
       scheduleSave();
+      if (key === "consultOnly") render();
     } else if (node.hasAttribute("data-hours-from") || node.hasAttribute("data-hours-to")) {
       var day = node.getAttribute("data-hours-from") || node.getAttribute("data-hours-to");
       var from = document.querySelector('[data-hours-from="' + day + '"]').value;
@@ -755,17 +1551,29 @@
       scheduleSave();
     }
   });
+  function autosize(node) {
+    node.style.height = "auto";
+    node.style.height = Math.max(38, node.scrollHeight + 2) + "px";
+  }
 
   document.addEventListener("change", function (event) {
     var node = event.target;
     if (node.hasAttribute("data-hours-open")) {
+      var before = openDays();
       var day = node.getAttribute("data-hours-open");
       doc.hours[day] = node.checked ? "10:00-19:00" : "closed";
+      followHours(before);
       scheduleSave();
       render();
     } else if (node.tagName === "SELECT" && node.hasAttribute("data-path")) {
       setPath(node.getAttribute("data-path"), node.value);
       scheduleSave();
+    } else if (node.name === "plan") {
+      currentPick().plan = node.value;
+      render();
+    } else if (node.hasAttribute("data-addon")) {
+      currentPick().addons[node.getAttribute("data-addon")] = node.checked;
+      render();
     }
   });
 
@@ -774,11 +1582,13 @@
     if (!node) return;
     if (node.hasAttribute("data-step")) return go(Number(node.getAttribute("data-step")));
     if (node.hasAttribute("data-go")) return go(Number(node.getAttribute("data-go")));
+    if (node.hasAttribute("data-lang")) return setLang(node.getAttribute("data-lang"));
     if (node.hasAttribute("data-add")) {
       var list = node.getAttribute("data-add");
-      if (list === "services") doc.services.push({ name: "", category: "", durationMinutes: 60, price: "", deposit: false, keywords: [], note: "" });
-      if (list === "staff") doc.staff.push({ name: "", role: "", services: [], workDays: ["tue", "wed", "thu", "fri", "sat"] });
+      if (list === "services") doc.services.push({ name: "", category: "", durationMinutes: 60, price: "", deposit: false, consultOnly: false, keywords: [], note: "" });
+      if (list === "staff") doc.staff.push({ name: "", role: "", services: [], workDays: openDays() });
       if (list === "custom") doc.faq.custom.push({ q: "", a: "" });
+      touch(step);
       render();
       var inputs = document.querySelectorAll('[data-list="' + list + '"][data-k="' + (list === "custom" ? "q" : "name") + '"]');
       if (inputs.length) inputs[inputs.length - 1].focus();
@@ -789,16 +1599,20 @@
       if (node.getAttribute("data-remove") === "services" && removed) {
         doc.staff.forEach(function (member) { member.services = member.services.filter(function (name) { return name !== removed.name; }); });
       }
-      scheduleSave();
+      touch(step);
+      clearTimeout(saveTimer);
+      save();
       return render();
     }
     if (node.hasAttribute("data-starter")) {
       (STARTERS[node.getAttribute("data-starter")] || STARTERS.multi).forEach(function (row) {
-        doc.services.push({ name: row[0], category: row[1], durationMinutes: row[2], price: "", deposit: false, keywords: [], note: "", _draft: true });
+        doc.services.push({ name: row[0], category: row[1], durationMinutes: row[2], price: "", deposit: false, consultOnly: Boolean(row[3]), keywords: [], note: "", _draft: true });
       });
-      scheduleSave();
+      touch(step);
+      clearTimeout(saveTimer);
+      save();
       render();
-      var firstPrice = document.querySelector('[data-k="price"]');
+      var firstPrice = document.querySelector('textarea.price:not([disabled])');
       if (firstPrice) firstPrice.focus();
       return;
     }
@@ -823,21 +1637,31 @@
       scheduleSave();
       return render();
     }
-    if (node.id === "importBtn") return runImport(node);
-    if (node.id === "launchBtn") {
-      busy(node, t("launching"));
-      clearTimeout(saveTimer);
-      return save().then(function () { return api("POST", "/api/setup/launch"); }).then(function (result) {
-        idle(node);
-        if (result.status !== 200) { errors = (result.data && result.data.errors) || errors; return render(); }
-        state.tenant = Object.assign(state.tenant, { launched: true, live: result.data.tenant.live });
-        toast(t("launchedToast"));
-        go(5);
-      });
+    if (node.hasAttribute("data-cycle")) {
+      currentPick().cycle = node.getAttribute("data-cycle");
+      return render();
     }
+    if (node.id === "importBtn") return runImport(node);
+    if (node.id === "launchBtn") return openConfirm();
+    if (node.id === "resetChat") {
+      lsDel(LOG_PREFIX + slug());
+      lsDel(SESSION_PREFIX + slug());
+      var frame = $("testChat");
+      if (frame) frame.src = chatSrc() + "&r=" + Date.now();
+      syncGoLive();
+      // Test bookings go with the test chat, so they never hold a real slot.
+      return api("POST", "/api/setup/test-chat/reset", {}).then(function (result) {
+        var removed = result && result.data && result.data.removedBookings;
+        toast(removed ? t("resetDoneBookings") : t("resetDone"));
+      }).catch(function () { toast(t("resetDone")); });
+    }
+    if (node.id === "qrDownload") return downloadQr();
+    if (node.id === "planGo") return submitPlan(node);
+    if (node.id === "planEdit") { planEdit = true; picked = null; return render(); }
+    if (node.id === "planKeep") { planEdit = false; picked = null; return render(); }
     if (node.id === "tgConnect") return connectTelegram(node);
     if (node.id === "tgDisconnect") {
-      return api("DELETE", "/api/setup/telegram").then(refresh);
+      return api("DELETE", "/api/setup/telegram").then(refresh).then(render);
     }
     if (node.hasAttribute("data-copy") || node.hasAttribute("data-copy-snippet")) {
       var text = node.hasAttribute("data-copy") ? node.getAttribute("data-copy") : state.widgetSnippet;
@@ -853,21 +1677,41 @@
         render();
       });
     }
-    if (node.id === "lang") {
-      lang = lang === "ru" ? "en" : "ru";
-      try { localStorage.setItem("aibeaty-lang", lang); } catch (error) { /* ignore */ }
-      return render();
-    }
     if (node.id === "logout") {
       return fetch("/api/auth/logout", { method: "POST" }).then(function () { window.location.replace("/screens/login.html"); });
     }
   });
 
+  $("confirmNo").addEventListener("click", function () { $("confirm").close(); });
+  $("confirmYes").addEventListener("click", function () { $("confirm").close(); launchNow(); });
+  // The test chat writes its transcript to this origin's storage: enable Go live
+  // as soon as the owner has sent something.
+  window.addEventListener("storage", function (event) {
+    if (event.key && event.key.indexOf(LOG_PREFIX) === 0) syncGoLive();
+  });
+
+  function setLang(code) {
+    if (code === lang) return;
+    lang = code;
+    lsSet("aibeaty-lang", lang);
+    render();
+    // The salon remembers it: validation messages and alerts follow.
+    if (state && state.tenant) {
+      api("PUT", "/api/setup/language", { language: lang }).then(function () {
+        state.tenant.language = lang;
+        if (doc) save();
+        return api("GET", "/api/setup/plan");
+      }).then(function (result) {
+        if (result && result.status === 200) { state.plan = result.data; if (step === 6) render(); }
+      }).catch(function () { /* offline: stays local */ });
+    }
+  }
+
   // ------------------------------------------------------------------ actions
   function busy(button, label) {
     button.disabled = true;
     button.dataset.label = button.innerHTML;
-    button.innerHTML = '<span class="spin" aria-hidden="true"></span> ' + label;
+    button.innerHTML = '<span class="spin" aria-hidden="true"></span> ' + esc(label);
   }
   function idle(button) {
     button.disabled = false;
@@ -892,27 +1736,33 @@
       var existing = {};
       doc.services.forEach(function (service) { existing[service.name.toLowerCase()] = true; });
       draft.services.forEach(function (service) {
-        if (!existing[service.name.toLowerCase()]) doc.services.push(Object.assign({ deposit: false, keywords: [], note: "" }, service, { _draft: true }));
+        if (!existing[service.name.toLowerCase()]) doc.services.push(Object.assign({ deposit: false, consultOnly: false, keywords: [], note: "" }, service, { _draft: true }));
       });
       var names = {};
       doc.staff.forEach(function (member) { names[member.name.toLowerCase()] = true; });
       var addedStaff = 0;
-      draft.staff.forEach(function (member) {
-        if (member.name && !names[member.name.toLowerCase()]) {
-          doc.staff.push({ name: member.name, role: member.role || "", services: [], workDays: ["tue", "wed", "thu", "fri", "sat"] });
-          addedStaff += 1;
-        }
-      });
+      var before = openDays();
       Object.keys(draft.hours || {}).forEach(function (day) {
         if (DAYS.indexOf(day) !== -1 && draft.hours[day]) doc.hours[day] = draft.hours[day];
+      });
+      followHours(before);
+      draft.staff.forEach(function (member) {
+        if (member.name && !names[member.name.toLowerCase()]) {
+          doc.staff.push({ name: member.name, role: member.role || "", services: [], workDays: openDays() });
+          addedStaff += 1;
+        }
       });
       ["address", "phone", "website", "instagram"].forEach(function (key) {
         if (draft.salon && draft.salon[key] && !doc.salon[key]) doc.salon[key] = draft.salon[key];
       });
+      if (url && !doc.salon.website) doc.salon.website = url;
       ["parking", "payment", "cancellation", "deposit", "late"].forEach(function (key) {
         if (draft.faq && draft.faq[key] && !doc.faq[key]) doc.faq[key] = draft.faq[key];
       });
-      scheduleSave();
+      // The draft is saved right away: a reload must never lose it.
+      touch(1);
+      clearTimeout(saveTimer);
+      save();
       render();
       note("importNote", "ok", t("imported")(draft.services.length, addedStaff));
     }).catch(function () {
@@ -936,37 +1786,47 @@
     });
   }
 
-  // The owner links their Telegram in another app; notice it when they come back.
+  // The owner links Telegram or pays in another tab; notice it when they come back.
   function refresh() {
     return api("GET", "/api/setup").then(function (result) {
       if (result.status !== 200) return;
       state.telegram = result.data.telegram;
       state.addons = result.data.addons;
       state.tenant = result.data.tenant;
+      state.plan = result.data.plan;
       if (step === 5 || step === 6) render(); else paintChrome();
     });
   }
   document.addEventListener("visibilitychange", function () { if (!document.hidden && state) refresh(); });
+  // Links like setup.html#7 (trial notices) work on an open page too.
+  window.addEventListener("hashchange", function () {
+    var target = Number((window.location.hash || "").replace("#", ""));
+    if (state && target >= 1 && target <= STEPS.length && target - 1 !== step) go(target - 1);
+  });
 
   // ------------------------------------------------------------------ boot
-  try {
-    var stored = localStorage.getItem("aibeaty-lang");
-    if (stored === "ru" || stored === "en") lang = stored;
-  } catch (error) { /* ignore */ }
+  var stored = lsGet("aibeaty-lang");
+  if (stored === "en" || stored === "fr" || stored === "ru") lang = stored;
+  else {
+    var nav = "";
+    try { nav = String(navigator.language || ""); } catch (error) { nav = ""; }
+    lang = /^fr/i.test(nav) ? "fr" : /^(ru|uk)/i.test(nav) ? "ru" : "en";
+  }
 
   api("GET", "/api/setup").then(function (result) {
     if (result.status !== 200) { $("panel").textContent = t("loadFail"); return; }
     state = result.data;
-    var chosen = null;
-    try { chosen = localStorage.getItem("aibeaty-lang"); } catch (error) { /* ignore */ }
-    if (state.tenant && !chosen) lang = state.tenant.language || lang;
+    if (state.tenant && !stored) lang = state.tenant.language || lang;
+    if (lang === "ru" && !browserRu() && !(state.tenant && state.tenant.language === "ru")) lang = "en";
     doc = state.setup || null;
+    try { (JSON.parse(lsGet("aibeaty-touched." + slug()) || "[]") || []).forEach(function (index) { touched[index] = true; }); } catch (error) { /* ignore */ }
     var fromHash = Number((window.location.hash || "").replace("#", ""));
     if (fromHash >= 1 && fromHash <= STEPS.length) step = fromHash - 1;
     else if (state.tenant && state.tenant.launched) step = 5;
     render();
     // First validation pass so the rail and the go-live list are accurate at once.
     if (doc) save();
+    if (/[?&]paid=1/.test(window.location.search)) setTimeout(refresh, 4000);
   }).catch(function () { $("panel").textContent = t("loadFail"); });
 })();
 </script>
