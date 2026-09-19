@@ -76,6 +76,24 @@ const PUBLIC_ASSISTANT_PATHS = new Set([
   "/api/assistant/updates"
 ]);
 
+// /c/<slug> → the salon's chat page. Public: it is what clients scan.
+const SHORT_CHAT_RE = /^\/c\/([a-z0-9][a-z0-9-]{0,79})\/?$/;
+
+// The Luminous Core demo screens. A self-serve salon never sees them (their
+// numbers, names and trends are the demo salon's fixtures): the owner gets
+// their Bookings screen instead. The demo salon keeps them all.
+const DEMO_SCREENS = new Set([
+  "/screens/salon-performance-luminous-core.html",
+  "/screens/stylist-schedule-luminous-core.html",
+  "/screens/services-pricing-luminous-core.html",
+  "/screens/client-directory-luminous-core.html",
+  "/screens/automations-marketing-luminous-core.html",
+  "/screens/inventory-management-luminous-core.html",
+  "/screens/digest.html",
+  "/index.html"
+]);
+const BOOKINGS_SCREEN = "/screens/bookings.html";
+
 function isPublicPath(pathname) {
   if (PUBLIC_ASSISTANT_PATHS.has(pathname)) return true;
   // Telegram calls this for every salon bot; each request is authenticated by
@@ -84,6 +102,8 @@ function isPublicPath(pathname) {
   // Stripe calls this; each request is authenticated by its signature inside
   // tenancy.handleStripeWebhook (and it answers 404 until Stripe is configured).
   if (pathname === "/api/billing/stripe-webhook") return true;
+  // The short chat link a salon prints and puts in its Instagram bio.
+  if (SHORT_CHAT_RE.test(pathname)) return true;
   if (pathname.startsWith("/api/auth/")) return true;
   if (PUBLIC_EXACT_PATHS.has(pathname)) return true;
   // Stylesheets are the login page's only asset dependency and carry no salon data.
@@ -951,8 +971,10 @@ async function handleSetupRoutes(request, requestUrl, response) {
       plan: tenant ? tenancy.planView(slug, language) : null,
       owner: { name: (request.session && request.session.displayName) || "" },
       chatUrl: `/screens/chat.html?salon=${encodeURIComponent(slug)}`,
-      // The link clients use: what goes in the Instagram bio and the QR code.
       publicChatUrl: `${tenancy.publicBase}/screens/chat.html?salon=${encodeURIComponent(slug)}`,
+      // The link clients use: what goes in the Instagram bio and the QR code.
+      shortChatUrl: `${tenancy.publicBase}/c/${encodeURIComponent(slug)}`,
+      ownerEmail: (request.session && request.session.email) || "",
       widgetSnippet: `<script>window.AIBEATY_API_BASE = "${tenancy.publicBase}"; window.AIBEATY_SALON = "${slug}";</script>\n<script src="${tenancy.publicBase}/assistant-widget.js" defer></script>`
     });
   }
@@ -1022,6 +1044,53 @@ async function handleSetupRoutes(request, requestUrl, response) {
   }
 
   return json(response, 404, { error: "not_found", message: `Unknown setup endpoint: ${pathname}` });
+}
+
+// The owner's Bookings screen (screens/bookings.html): the next 14 days of
+// real appointments, cancel one (the client is told where they booked), and
+// busy blocks Maya respects. enforceAuth pinned request.salonSlug.
+async function handleBookingsRoutes(request, requestUrl, response) {
+  const pathname = requestUrl.pathname;
+  const slug = request.salonSlug;
+  if (!request.session || request.session.role !== "owner") {
+    return json(response, 403, { error: "forbidden", message: "Only the salon owner can see bookings." });
+  }
+  if (!tenancy.getTenant(slug)) {
+    return json(response, 409, { error: "not_self_serve", message: "This salon is managed by the AIbeaty team." });
+  }
+  const readBody = async () => {
+    try {
+      return await parseRequestBody(request);
+    } catch (error) {
+      return null;
+    }
+  };
+  if (pathname === "/api/bookings" && request.method === "GET") {
+    const days = Number(requestUrl.searchParams.get("days") || 14);
+    const includeTests = requestUrl.searchParams.get("tests") === "1";
+    return json(response, 200, tenancy.bookingsView(slug, { days, includeTests }));
+  }
+  if (pathname === "/api/bookings/blocks" && request.method === "GET") {
+    return json(response, 200, { blocks: tenancy.listBlocks(slug) });
+  }
+  if (pathname === "/api/bookings/blocks" && request.method === "POST") {
+    const body = await readBody();
+    if (!body) return json(response, 400, { error: "bad_request" });
+    const result = tenancy.addBlock(slug, body);
+    return json(response, result.status || (result.ok ? 201 : 422), result);
+  }
+  const blockMatch = pathname.match(/^\/api\/bookings\/blocks\/([^/]+)$/);
+  if (blockMatch && request.method === "DELETE") {
+    const result = tenancy.removeBlock(slug, decodeURIComponent(blockMatch[1]));
+    return json(response, result.ok ? 200 : 404, result);
+  }
+  const cancelMatch = pathname.match(/^\/api\/bookings\/([^/]+)\/cancel$/);
+  if (cancelMatch && request.method === "POST") {
+    const body = (await readBody()) || {};
+    const result = await tenancy.cancelBooking(slug, decodeURIComponent(cancelMatch[1]), { reason: body.reason });
+    return json(response, result.status || (result.ok ? 200 : 422), result);
+  }
+  return json(response, 404, { error: "not_found", message: `Unknown bookings endpoint: ${pathname}` });
 }
 
 // The owner's inbox (screens/inbox.html): read threads, answer a client, hand
@@ -1110,6 +1179,19 @@ async function requestHandler(request, response) {
     return;
   }
 
+  const shortChat = requestUrl.pathname.match(SHORT_CHAT_RE);
+  if (shortChat && request.method === "GET") {
+    const known = store.getSalonRecord(shortChat[1]);
+    if (!known) {
+      response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+      response.end("No salon at this link. Check the address with the salon.");
+      return;
+    }
+    response.writeHead(302, { Location: `/screens/chat.html?salon=${encodeURIComponent(shortChat[1])}`, "Cache-Control": "no-cache" });
+    response.end();
+    return;
+  }
+
   if (!enforceAuth(request, requestUrl, response)) return;
 
   const hookMatch = requestUrl.pathname.match(/^\/api\/telegram\/hook\/(\d+)$/);
@@ -1141,6 +1223,20 @@ async function requestHandler(request, response) {
 
   if (requestUrl.pathname.startsWith("/api/assistant")) {
     await handleAssistantRoutes(request, requestUrl, response);
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/bookings" || requestUrl.pathname.startsWith("/api/bookings/")) {
+    await handleBookingsRoutes(request, requestUrl, response);
+    return;
+  }
+
+  // A self-serve salon's owner never lands on a demo screen: those show the
+  // demo salon's fixtures. Their Bookings screen is the home instead.
+  if (request.method === "GET" && DEMO_SCREENS.has(requestUrl.pathname) &&
+      request.session && tenancy.getTenant(request.session.salonSlug)) {
+    response.writeHead(302, { Location: BOOKINGS_SCREEN, "Cache-Control": "no-store" });
+    response.end();
     return;
   }
 
@@ -1185,7 +1281,10 @@ async function requestHandler(request, response) {
   // (/index.html still serves the self-contained launcher page.)
   if (requestUrl.pathname === "/") {
     const tenant = request.session ? tenancy.getTenant(request.session.salonSlug) : null;
-    const home = tenant && !tenant.setupComplete ? "/screens/setup.html" : "/screens/salon-performance-luminous-core.html";
+    // Self-serve: launched → Bookings, not launched yet → the setup wizard.
+    const home = tenant
+      ? (tenant.launched ? BOOKINGS_SCREEN : "/screens/setup.html")
+      : "/screens/salon-performance-luminous-core.html";
     response.writeHead(302, { Location: home });
     response.end();
     return;

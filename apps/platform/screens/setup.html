@@ -282,6 +282,14 @@
   .tag.requested { background: var(--secondary-container); color: var(--on-secondary-container); }
   .tag.ready { background: var(--surface-container); color: var(--on-surface-variant); }
   .tag.fit { background: rgba(77, 42, 250, .1); color: var(--primary); font-family: var(--font-body); font-size: 11.5px; font-weight: 700; letter-spacing: 0; }
+  .billedline { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--on-surface-variant); margin: -16px 0 20px; }
+  .billedline .material-symbols-outlined { font-size: 17px; }
+  .how.billed { margin-top: 4px; }
+  .confirmed { margin-bottom: 22px; }
+  .confirmed:focus { outline: none; }
+  .facts { list-style: none; margin: 4px 0 14px; padding: 0; display: grid; gap: 9px; }
+  .facts li { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; line-height: 1.5; color: var(--on-surface); }
+  .facts .material-symbols-outlined { font-size: 18px; color: var(--primary); margin-top: 1px; }
   .summary { border-top: 1px solid var(--surface-variant); margin: 14px 0; }
   .summary div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 2px; border-bottom: 1px solid var(--surface-variant); font-size: 13.5px; }
   .summary div b { white-space: nowrap; }
@@ -354,8 +362,8 @@
   <div class="grow"></div>
   <span id="saved" aria-live="polite"></span>
   <div class="langs" id="langs" role="group" aria-label="Language"></div>
-  <a class="ghost" href="/screens/unified-inbox-luminous-core.html" id="inboxLink">Inbox</a>
-  <a class="ghost hide-sm" href="/screens/salon-performance-luminous-core.html" id="dashLink">Dashboard</a>
+  <a class="ghost" href="/screens/inbox.html" id="inboxLink">Inbox</a>
+  <a class="ghost hide-sm" href="/screens/bookings.html" id="dashLink">Bookings</a>
   <button class="ghost" id="logout" type="button">Sign out</button>
 </header>
 
@@ -388,7 +396,7 @@
   // en is complete; fr-CA and ru fall back to en for anything missing.
   var T = {
     en: {
-      dashboard: "Dashboard", inbox: "Inbox", signOut: "Sign out", saving: "Saving…", saved: "Saved", draftSaved: "Draft saved",
+      dashboard: "Bookings", inbox: "Inbox", signOut: "Sign out", saving: "Saving…", saved: "Saved", draftSaved: "Draft saved",
       notSaved: function (n) { return "Not saved — fix " + n + (n === 1 ? " field" : " fields"); },
       offline: "Not saved — check connection",
       trial: function (days) { return "Trial · " + days + (days === 1 ? " day left" : " days left"); },
@@ -477,6 +485,11 @@
       annualSave: function (s) { return "You save $" + s + " a year."; },
       continueWith: function (plan) { return "Continue with " + plan; }, sending: "Sending…",
       pendingTitle: "Thank you! Your invoice is on its way",
+      billedBy: function (seller, place) { return "Billed by " + seller + ", " + place; },
+      doneTax: "Sales tax (HST/GST/QST) is added on the invoice.",
+      doneTrial: function (date) { return "Your trial now runs until " + date + " so nothing stops while you pay."; },
+      doneInvoice: function (email) { return "Invoice by email within one business day to " + (email || "your sign-in email") + ". Pay by card link or Interac e-Transfer."; },
+      doneTg: "We sent the same summary to your Telegram.",
       pendingLead: function (seller, date) { return "We email your invoice from " + seller + " within one business day. Pay by card link or Interac e-Transfer. Maya keeps working: your trial now runs until " + date + "."; },
       changeChoice: "Change my choice", keepChoice: "Keep my choice",
       activeTitle: function (plan) { return "Your plan: " + plan; }, activeLead: "Thank you. To change your plan or add-ons, reply to any invoice email from us.",
@@ -490,7 +503,7 @@
       loadFail: "Could not load your setup. Refresh the page.", managed: "This salon is set up by the AIbeaty team. Write to us to change it."
     },
     fr: {
-      dashboard: "Tableau de bord", inbox: "Boîte de réception", signOut: "Déconnexion", saving: "Enregistrement…", saved: "Enregistré", draftSaved: "Brouillon enregistré",
+      dashboard: "Rendez-vous", inbox: "Boîte de réception", signOut: "Déconnexion", saving: "Enregistrement…", saved: "Enregistré", draftSaved: "Brouillon enregistré",
       notSaved: function (n) { return "Non enregistré — " + n + (n === 1 ? " champ à corriger" : " champs à corriger"); },
       offline: "Non enregistré — vérifiez la connexion",
       trial: function (days) { return "Essai · " + days + (days === 1 ? " jour restant" : " jours restants"); },
@@ -579,6 +592,11 @@
       annualSave: function (s) { return "Vous économisez " + s + " $ par année."; },
       continueWith: function (plan) { return "Continuer avec " + plan; }, sending: "Envoi…",
       pendingTitle: "Merci! Votre facture est en route",
+      billedBy: function (seller, place) { return "Facturé par " + seller + ", " + place; },
+      doneTax: "Les taxes de vente (TVH/TPS/TVQ) s’ajoutent sur la facture.",
+      doneTrial: function (date) { return "Votre essai va maintenant jusqu’au " + date + " : rien ne s’arrête pendant le paiement."; },
+      doneInvoice: function (email) { return "Facture par courriel d’ici un jour ouvrable à " + (email || "votre adresse de connexion") + ". Paiement par lien de carte ou virement Interac."; },
+      doneTg: "Le même résumé vous a été envoyé sur Telegram.",
       pendingLead: function (seller, date) { return "Nous vous envoyons la facture de " + seller + " par courriel d’ici un jour ouvrable. Paiement par lien de carte ou virement Interac. Maya continue de travailler : votre essai va maintenant jusqu’au " + date + "."; },
       changeChoice: "Modifier mon choix", keepChoice: "Garder mon choix",
       activeTitle: function (plan) { return "Votre forfait : " + plan; }, activeLead: "Merci. Pour changer de forfait ou d’options, répondez à n’importe quel courriel de facture.",
@@ -592,7 +610,7 @@
       loadFail: "Impossible de charger votre configuration. Actualisez la page.", managed: "Ce salon est configuré par l’équipe AIbeaty. Écrivez-nous pour le modifier."
     },
     ru: {
-      dashboard: "Кабинет", inbox: "Входящие", signOut: "Выйти", saving: "Сохраняю…", saved: "Сохранено", draftSaved: "Черновик сохранён",
+      dashboard: "Записи", inbox: "Входящие", signOut: "Выйти", saving: "Сохраняю…", saved: "Сохранено", draftSaved: "Черновик сохранён",
       notSaved: function (n) { return "Не сохранено — исправьте поля: " + n; },
       offline: "Не сохранено — проверьте интернет",
       trial: function (days) { return "Пробный период · осталось " + days + " дн."; },
@@ -681,6 +699,11 @@
       annualSave: function (s) { return "Экономия $" + s + " в год."; },
       continueWith: function (plan) { return "Продолжить с тарифом «" + plan + "»"; }, sending: "Отправляю…",
       pendingTitle: "Спасибо! Счёт уже в пути",
+      billedBy: function (seller, place) { return "Счёт выставляет " + seller + ", " + place.replace("Ottawa, Canada", "Оттава, Канада"); },
+      doneTax: "Налог (HST/GST/QST) добавляется в счёт.",
+      doneTrial: function (date) { return "Пробный период продлён до " + date + ", так что пока вы платите, ничего не остановится."; },
+      doneInvoice: function (email) { return "Счёт придёт на почту " + (email || "для входа") + " в течение рабочего дня. Оплата по ссылке картой или Interac e-Transfer."; },
+      doneTg: "Эту же сводку мы отправили вам в Telegram.",
       pendingLead: function (seller, date) { return "Счёт от " + seller + " придёт на почту в течение рабочего дня. Оплата по ссылке картой или Interac e-Transfer. Майя продолжает работать: пробный период продлён до " + date + "."; },
       changeChoice: "Изменить выбор", keepChoice: "Оставить как есть",
       activeTitle: function (plan) { return "Ваш тариф: " + plan; }, activeLead: "Спасибо. Чтобы сменить тариф или дополнения, ответьте на любое письмо со счётом.",
@@ -1112,7 +1135,7 @@
     }, 150);
   }
   function linkBlock(showWait) {
-    var url = state.publicChatUrl;
+    var url = state.shortChatUrl || state.publicChatUrl;
     return '<div class="linkwrap"><div class="linkbox">' +
       '<div class="qr"><canvas data-qr="' + esc(url) + '" role="img" aria-label="QR code: ' + esc(url) + '"></canvas></div>' +
       '<div>' +
@@ -1129,7 +1152,7 @@
   }
   function downloadQr() {
     var canvas = document.createElement("canvas");
-    if (!drawQr(canvas, state.publicChatUrl, 1024)) return;
+    if (!drawQr(canvas, state.shortChatUrl || state.publicChatUrl, 1024)) return;
     canvas.toBlob(function (blob) {
       if (!blob) return;
       var link = document.createElement("a");
@@ -1303,6 +1326,7 @@
     var plan = state.plan;
     var html = '<h1>' + t("s7h") + '</h1><p class="lede">' + t("s7l") + '</p>';
     if (!plan) return html + navButtons();
+    html += '<p class="billedline"><span class="material-symbols-outlined" aria-hidden="true">apartment</span>' + esc(t("billedBy")(plan.seller, plan.sellerPlace || "Ottawa, Canada")) + '</p>';
     var paidBack = /[?&]paid=1/.test(window.location.search) && tenant.planStatus !== "active";
     if (paidBack) html += '<div class="status ok"><span class="material-symbols-outlined" aria-hidden="true">hourglass_top</span><div>' + esc(t("paidBack")) + '</div></div>';
 
@@ -1310,8 +1334,16 @@
       html += '<div class="status ok"><span class="material-symbols-outlined" aria-hidden="true">verified</span><div><b>' + esc(t("activeTitle")(plan.quote.planTitle[lang] || plan.quote.planTitle.en)) + '</b><div style="margin-top:2px">' + esc(t("activeLead")) + '</div></div></div>' +
         quoteSummary(plan.quote);
     } else if (tenant.planStatus === "pending_payment" && plan.quote && !planEdit) {
-      html += '<div class="status ok"><span class="material-symbols-outlined" aria-hidden="true">mark_email_read</span><div><b>' + esc(t("pendingTitle")) + '</b><div style="margin-top:2px">' + esc(t("pendingLead")(plan.seller, dateLabel(tenant.trialEndsAt))) + '</div></div></div>' +
+      html += '<div class="confirmed" id="planConfirmed" tabindex="-1">' +
+        '<div class="status ok"><span class="material-symbols-outlined" aria-hidden="true">mark_email_read</span><div><b>' + esc(t("pendingTitle")) + '</b></div></div>' +
         quoteSummary(plan.quote) +
+        '<ul class="facts">' +
+        '<li><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><div>' + esc(t("doneTax")) + '</div></li>' +
+        '<li><span class="material-symbols-outlined" aria-hidden="true">event_available</span><div>' + esc(t("doneTrial")(dateLabel(tenant.trialEndsAt))) + '</div></li>' +
+        '<li><span class="material-symbols-outlined" aria-hidden="true">mail</span><div>' + esc(t("doneInvoice")(plan.ownerEmail)) + '</div></li>' +
+        (state.telegram && state.telegram.ownerLinked ? '<li><span class="material-symbols-outlined" aria-hidden="true">send</span><div>' + esc(t("doneTg")) + '</div></li>' : "") +
+        '<li><span class="material-symbols-outlined" aria-hidden="true">apartment</span><div>' + esc(t("billedBy")(plan.seller, plan.sellerPlace || "Ottawa, Canada")) + '</div></li>' +
+        '</ul></div>' +
         '<button class="btn quiet small" type="button" id="planEdit">' + t("changeChoice") + '</button>';
     } else {
       var date = dateLabel(tenant.trialEndsAt);
@@ -1369,7 +1401,8 @@
       '<div class="total">' +
       '<div><div class="lbl">' + esc(t("totalLabel")) + '</div>' +
       '<div class="sum">' + esc(money(totals.total)) + '<small>' + esc(annual ? t("perYear") : t("perMonth")) + ' ' + esc(t("plusTax")) + '</small></div>' +
-      '<div class="how">' + esc(t("totalHow")(plan.seller)) + (annual ? " " + esc(t("annualSave")(totals.saving)) : "") + '</div></div>' +
+      '<div class="how">' + esc(t("totalHow")(plan.seller)) + (annual ? " " + esc(t("annualSave")(totals.saving)) : "") + '</div>' +
+      '<div class="how billed">' + esc(t("billedBy")(plan.seller, plan.sellerPlace || "Ottawa, Canada")) + '</div></div>' +
       '<div style="display:grid;gap:8px">' +
       '<button class="btn" type="button" id="planGo">' + esc(t("continueWith")(chosen)) + ' <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></button>' +
       (planEdit ? '<button class="btn quiet small" type="button" id="planKeep">' + t("keepChoice") + '</button>' : "") +
@@ -1411,7 +1444,12 @@
       state.tenant.planStatus = "pending_payment";
       state.tenant.trialEndsAt = result.data.trialEndsAt;
       planEdit = false;
-      return refresh().then(function () { render(); window.scrollTo({ top: 0, behavior: "smooth" }); });
+      return refresh().then(function () {
+        render();
+        var box = $("planConfirmed");
+        if (box) { box.scrollIntoView({ behavior: "smooth", block: "start" }); box.focus({ preventScroll: true }); }
+        else window.scrollTo({ top: 0, behavior: "smooth" });
+      });
     }).catch(function () { idle(button); toast(t("offline")); });
   }
 

@@ -576,7 +576,10 @@ const STYLIST_CORRECTION_RE = /такого (мастера|майстра|ст�
 //                                     every salon, the pre-self-serve behaviour.
 //   dailyTurnsCapFor(salonId)         per-salon daily LLM turn cap (trial plans
 //                                     get a smaller one); falls back to the global cap.
-function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, alertFetch, alertLinkBase, dailyTurnsCap, onEvent, alertEmailFor, dailyTurnsCapFor, languageFor } = {}) {
+//   busyBlocksFor(salonId, date, staffId)  owner-blocked busy time on that salon
+//                                     day ([{start_minutes, end_minutes}]); treated
+//                                     like a booking by every availability check.
+function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, alertFetch, alertLinkBase, dailyTurnsCap, onEvent, alertEmailFor, dailyTurnsCapFor, languageFor, busyBlocksFor } = {}) {
   const db = rootStore.db;
   const clockNow = typeof clock === "function" ? clock : () => new Date();
   // Alert emails: off unless ALERT_EMAIL is set (env or option). No secrets —
@@ -1180,10 +1183,19 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
     }
 
     function busyIntervals(dayOffset, stylistId) {
-      return db.prepare(`
+      const rows = db.prepare(`
         SELECT start_minutes, end_minutes FROM appointments
         WHERE salon_id = ? AND checked_out = 0 AND appointment_status = 'scheduled' AND day_offset = ? AND stylist_id = ?
       `).all(salonId, dayOffset, stylistId);
+      // Time the owner blocked (a staff member's or the whole salon's).
+      if (typeof busyBlocksFor === "function") {
+        try {
+          (busyBlocksFor(salonId, isoDateForOffset(dayOffset), stylistId) || []).forEach((block) => rows.push(block));
+        } catch (error) {
+          console.error(`[assistant] busy blocks lookup failed: ${String((error && error.message) || error).slice(0, 140)}`);
+        }
+      }
+      return rows;
     }
 
     function slotFree(dayOffset, stylistId, startMinutes, endMinutes) {

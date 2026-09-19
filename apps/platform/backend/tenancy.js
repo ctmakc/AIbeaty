@@ -22,6 +22,7 @@ const crypto = require("node:crypto");
 const dns = require("node:dns").promises;
 const net = require("node:net");
 const billing = require("./billing");
+const mayaRules = require("./maya-rules");
 
 const TRIAL_DAYS = Number(process.env.TRIAL_DAYS) || 14;
 const TRIAL_TURNS_CAP = Number(process.env.TRIAL_DAILY_TURNS_CAP) || 150;
@@ -865,6 +866,20 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       created_at TEXT NOT NULL,
       PRIMARY KEY (salon_slug, session_id)
     );
+    -- Busy time the owner blocked on the Bookings screen: one staff member
+    -- (stylist_id) or the whole salon (stylist_id = ''). Maya never offers or
+    -- books a slot that overlaps one.
+    CREATE TABLE IF NOT EXISTS tenant_busy_blocks (
+      id TEXT PRIMARY KEY,
+      salon_slug TEXT NOT NULL,
+      stylist_id TEXT NOT NULL DEFAULT '',
+      block_date TEXT NOT NULL,
+      start_minutes INTEGER NOT NULL,
+      end_minutes INTEGER NOT NULL,
+      reason TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS tenant_busy_blocks_day ON tenant_busy_blocks (salon_slug, block_date);
   `);
 
   function attachAssistant(instance) {
@@ -1166,6 +1181,14 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     // hears about it in their own Telegram. Legacy salons keep ALERT_EMAIL.
     alertEmailFor(salonId) {
       return getTenant(salonId) ? "" : String(process.env.ALERT_EMAIL || "");
+    },
+    // Owner-blocked busy time for one salon day ("YYYY-MM-DD"): the whole
+    // salon's blocks plus this staff member's own.
+    busyBlocksFor(salonId, isoDate, stylistId) {
+      return db.prepare(`
+        SELECT start_minutes, end_minutes FROM tenant_busy_blocks
+        WHERE salon_slug = ? AND block_date = ? AND (stylist_id = '' OR stylist_id = ?)
+      `).all(String(salonId || ""), String(isoDate || ""), String(stylistId || ""));
     },
     onEvent(salonId, type, payload) {
       trackReminder(salonId, type, payload);
@@ -1701,7 +1724,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
   //   web chat client → 'waiting' until their chat page fetches it ('seen')
   //   no live channel (seeded / manual threads) → '' (nothing to deliver)
   // existingMessageId: the inbox route already stored the message.
-  async function sendStaffReply(slug, conversationId, text, { existingMessageId, via = "inbox" } = {}) {
+  async function sendStaffReply(slug, conversationId, text, { existingMessageId, via = "inbox", pauseMaya = true } = {}) {
     const scope = store.forSalon(slug);
     if (!scope) return { ok: false, error: "unknown_salon" };
     const conversation = db.prepare(`SELECT id, name, assistant_session_id FROM conversations WHERE salon_id = ? AND id = ?`).get(slug, conversationId);
@@ -1715,7 +1738,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       messageId = `message-staff-${crypto.randomBytes(6).toString("hex")}`;
       scope.createConversationMessage(conversationId, { text: body, type: "outgoing", author: "staff", id: messageId, delivery: sessionId ? (tgMatch ? "sending" : "waiting") : "" });
     }
-    if (assistant && typeof assistant.noteStaffMessage === "function") assistant.noteStaffMessage(conversationId, slug);
+    if (pauseMaya && assistant && typeof assistant.noteStaffMessage === "function") assistant.noteStaffMessage(conversationId, slug);
 
     let delivery = "";
     let note = "";
@@ -1958,7 +1981,9 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       quote: tenant.billing.quote,
       suggested: billing.suggestPlan(tenant.setup.staff.length, tenant.businessType),
       staffCount: tenant.setup.staff.length,
-      checkout: billing.stripeEnabled() ? "stripe" : "invoice"
+      checkout: billing.stripeEnabled() ? "stripe" : "invoice",
+      // Where the invoice goes: the owner's sign-in email.
+      ownerEmail: (store.getSalonRecord(slug) || {}).email || ""
     });
   }
 
@@ -2004,6 +2029,25 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
         `node scripts/tenants.mjs activate ${slug} ${q.plan}${q.addons.length ? ` ${q.addons.map((addon) => addon.key).join(" ")}` : ""}${q.cycle === "annual" ? " --annual" : ""}`
       ]
     });
+    // The owner's own copy of what they chose, in their Telegram when linked.
+    const ownerLine = (map) => map[lang] || map.en;
+    const addonLine = q.addons.length ? q.addons.map((addon) => `${ownerLine(addon.title)} +${billing.money(addon.price)}`).join(", ") : "";
+    const until = formatAlertDate(result.trialEndsAt.slice(0, 10), lang);
+    const perText = q.cycle === "annual" ? pick(lang, { en: "/year", fr: "/an", ru: " в год" }) : pick(lang, { en: "/month", fr: "/mois", ru: " в месяц" });
+    notifyOwner(slug, pick(lang, {
+      en: [`Thank you! You chose ${q.planTitle.en}${addonLine ? ` with ${addonLine}` : ""}.`,
+        `Total: ${billing.money(q.total)}${perText} + applicable tax (HST/GST/QST).`,
+        `Your trial now runs until ${until}, so nothing stops while you pay.`,
+        `Invoice by email within one business day to ${record.email || "your sign-in email"}, from ${billing.SELLER}, ${billing.SELLER_PLACE}.`].join("\n"),
+      fr: [`Merci! Vous avez choisi ${q.planTitle.fr}${addonLine ? ` avec ${addonLine}` : ""}.`,
+        `Total : ${billing.money(q.total)}${perText} + taxes applicables (TVH/TPS/TVQ).`,
+        `Votre essai va maintenant jusqu’au ${until} : rien ne s’arrête pendant le paiement.`,
+        `Facture par courriel d’ici un jour ouvrable à ${record.email || "votre adresse de connexion"}, de ${billing.SELLER}, ${billing.SELLER_PLACE}.`].join("\n"),
+      ru: [`Спасибо! Вы выбрали тариф «${q.planTitle.ru}»${addonLine ? ` и ${addonLine}` : ""}.`,
+        `Итого: ${billing.money(q.total)}${perText} + налог (HST/GST/QST).`,
+        `Пробный период продлён до ${until}, так что пока вы платите, ничего не остановится.`,
+        `Счёт придёт на почту ${record.email || "для входа"} в течение рабочего дня, от ${billing.SELLER}, ${billing.SELLER_PLACE}.`].join("\n")
+    }));
     let checkoutUrl = "";
     if (billing.stripeEnabled()) {
       try {
@@ -2085,9 +2129,246 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       .map((service) => ({ name: service.name, price: service.consultOnly ? "" : service.price, consultOnly: service.consultOnly }));
   }
 
+  // ---------- owner's Bookings screen (screens/bookings.html) ----------
+  // Real appointments only: the owner's own test chats (preview sessions) and
+  // rows flagged is_test (when that column exists) are never counted, and are
+  // listed only when the owner asks to see them.
+  function appointmentColumns() {
+    return new Set(db.prepare(`PRAGMA table_info(appointments)`).all().map((column) => column.name));
+  }
+
+  // The amount a booking is worth for "booked value": fixed prices in full,
+  // "from $75" and "$220–$320" at their lowest amount (so the total reads "at
+  // least"), never an add-on (+$15), a per-unit price, free or consultation.
+  function bookedAmount(label) {
+    const kind = mayaRules.priceKind(label);
+    if (kind !== "fixed" && kind !== "from" && kind !== "range") return { kind, value: null };
+    const first = mayaRules.amountsIn(label).find((num) => Number.isFinite(num) && num > 0);
+    return { kind, value: first === undefined ? null : first };
+  }
+
+  function salonToday(slug) {
+    const record = store.getSalonRecord(slug) || {};
+    return localParts(record.timezone).date;
+  }
+
+  // appointment id → how it was booked (Maya's booking event and its session).
+  function bookingSources(slug) {
+    const previewIds = new Set(db.prepare(`SELECT session_id FROM tenant_preview_sessions WHERE salon_slug = ?`).all(slug).map((row) => row.session_id));
+    const sessionOf = db.prepare(`SELECT id, conversation_id, language, client_phone FROM assistant_sessions WHERE salon_id = ? AND id = ?`);
+    const sources = new Map();
+    db.prepare(`SELECT session_id, payload_json FROM assistant_events WHERE salon_id = ? AND type = 'booking' ORDER BY created_at ASC`).all(slug).forEach((row) => {
+      let payload = {};
+      try { payload = JSON.parse(row.payload_json || "{}"); } catch (error) { payload = {}; }
+      if (!payload.appointmentId) return;
+      const session = sessionOf.get(slug, row.session_id) || {};
+      const sessionId = String(row.session_id || "");
+      sources.set(payload.appointmentId, {
+        sessionId,
+        conversationId: session.conversation_id || "",
+        language: session.language || "",
+        phone: realPhone(payload.phone) || realPhone(session.client_phone),
+        channel: /^tg:/.test(sessionId) ? "telegram" : sessionId ? "web" : "",
+        test: previewIds.has(sessionId)
+      });
+    });
+    return sources;
+  }
+
+  function bookingsView(slug, { days = 14, includeTests = false } = {}) {
+    const tenant = getTenant(slug);
+    if (!tenant) return null;
+    store.syncDayAnchor(slug);
+    const record = store.getSalonRecord(slug) || {};
+    const today = salonToday(slug);
+    const span = Math.max(1, Math.min(31, Number(days) || 14));
+    const until = addDaysIso(today, span - 1);
+    const anchorRow = db.prepare(`SELECT value FROM metadata WHERE salon_id = ? AND key = 'day_anchor'`).get(slug);
+    const anchor = anchorRow && /^\d{4}-\d{2}-\d{2}$/.test(anchorRow.value) ? anchorRow.value : today;
+    const hasIsTest = appointmentColumns().has("is_test");
+    const rows = db.prepare(`
+      SELECT a.id, a.stylist_id, a.service_name, a.client_name, a.start_minutes, a.end_minutes,
+             a.price_label, a.appointment_status, a.checked_out, a.notes,
+             ${hasIsTest ? "a.is_test" : "0"} AS is_test,
+             date(?, printf('%+d days', a.day_offset)) AS appt_date,
+             s.name AS staff, c.phone AS client_phone
+      FROM appointments a
+      LEFT JOIN stylists s ON s.salon_id = a.salon_id AND s.id = a.stylist_id
+      LEFT JOIN clients c ON c.salon_id = a.salon_id AND c.id = a.client_id
+      WHERE a.salon_id = ? AND date(?, printf('%+d days', a.day_offset)) BETWEEN ? AND ?
+      ORDER BY appt_date ASC, a.start_minutes ASC
+    `).all(anchor, slug, anchor, today, until);
+    const sources = bookingSources(slug);
+    let testCount = 0;
+    let value = 0;
+    let counted = 0;
+    let atLeast = false;
+    let notCounted = 0;
+    const bookings = [];
+    rows.forEach((row) => {
+      const source = sources.get(row.id) || null;
+      const test = Boolean(Number(row.is_test)) || Boolean(source && source.test);
+      const status = Number(row.checked_out) ? "done"
+        : row.appointment_status === "canceled" ? "cancelled"
+        : row.appointment_status === "no_show" ? "no_show" : "booked";
+      if (test) testCount += 1;
+      if (!test && status !== "cancelled" && status !== "no_show") {
+        const amount = bookedAmount(row.price_label);
+        if (amount.value === null) notCounted += 1;
+        else {
+          value += amount.value;
+          counted += 1;
+          if (amount.kind !== "fixed") atLeast = true;
+        }
+      }
+      if (test && !includeTests) return;
+      bookings.push({
+        id: row.id,
+        date: row.appt_date,
+        start: row.start_minutes,
+        end: row.end_minutes,
+        client: row.client_name,
+        phone: (source && source.phone) || realPhone(row.client_phone),
+        service: row.service_name,
+        price: row.price_label,
+        staff: row.staff || "",
+        staffId: row.stylist_id,
+        channel: source ? source.channel : "",
+        bookedBy: source ? "maya" : "owner",
+        status,
+        test
+      });
+    });
+    const staff = db.prepare(`SELECT id, name FROM stylists WHERE salon_id = ? ORDER BY sort_order ASC, name ASC`).all(slug);
+    return {
+      salon: { slug, name: record.name || slug, timezone: record.timezone || "America/Toronto" },
+      language: ownerLang(tenant),
+      today,
+      until,
+      days: span,
+      launched: tenant.launched,
+      telegram: telegramStatus(slug).connected,
+      staff: staff.map((row) => ({ id: row.id, name: row.name })),
+      bookings,
+      blocks: listBlocks(slug),
+      testCount,
+      // Real, non-test, not cancelled bookings only.
+      bookedValue: { amount: Math.round(value * 100) / 100, counted, atLeast, notCounted, currency: "CAD" }
+    };
+  }
+
+  function listBlocks(slug) {
+    const today = salonToday(slug);
+    const names = new Map(db.prepare(`SELECT id, name FROM stylists WHERE salon_id = ?`).all(slug).map((row) => [row.id, row.name]));
+    return db.prepare(`
+      SELECT id, stylist_id, block_date, start_minutes, end_minutes, reason FROM tenant_busy_blocks
+      WHERE salon_slug = ? AND block_date >= ? ORDER BY block_date ASC, start_minutes ASC
+    `).all(slug, today).map((row) => ({
+      id: row.id,
+      staffId: row.stylist_id,
+      staff: row.stylist_id ? (names.get(row.stylist_id) || "") : "",
+      date: row.block_date,
+      start: row.start_minutes,
+      end: row.end_minutes,
+      reason: row.reason
+    }));
+  }
+
+  function clockToMinutes(value) {
+    const match = /^(\d{1,2}):(\d{2})$/.exec(String(value || "").trim());
+    if (!match) return null;
+    const minutes = Number(match[1]) * 60 + Number(match[2]);
+    return Number(match[1]) <= 24 && Number(match[2]) < 60 && minutes <= 24 * 60 ? minutes : null;
+  }
+
+  function addBlock(slug, input = {}) {
+    const tenant = getTenant(slug);
+    if (!tenant) return { ok: false, status: 409, error: "not_self_serve" };
+    const lang = ownerLang(tenant);
+    const today = salonToday(slug);
+    const date = String(input.date || "").trim();
+    const staffId = String(input.staffId || "").trim();
+    const allDay = Boolean(input.allDay);
+    const start = allDay ? 0 : clockToMinutes(input.from);
+    const end = allDay ? 24 * 60 : clockToMinutes(input.to);
+    const errors = [];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < today || date > addDaysIso(today, 180)) {
+      errors.push({ field: "date", message: pick(lang, { en: "Pick a day from today on.", fr: "Choisissez un jour à partir d’aujourd’hui.", ru: "Выберите день, начиная с сегодняшнего." }) });
+    }
+    if (start === null || end === null || end <= start) {
+      errors.push({ field: "time", message: pick(lang, { en: "Set a start and an end time, the end after the start.", fr: "Indiquez une heure de début et une heure de fin, la fin après le début.", ru: "Укажите начало и конец, конец позже начала." }) });
+    }
+    if (staffId && !db.prepare(`SELECT 1 FROM stylists WHERE salon_id = ? AND id = ?`).get(slug, staffId)) {
+      errors.push({ field: "staffId", message: pick(lang, { en: "Pick someone from your team, or the whole salon.", fr: "Choisissez une personne de l’équipe, ou tout le salon.", ru: "Выберите мастера или весь салон." }) });
+    }
+    if (errors.length) return { ok: false, status: 422, error: "invalid", errors, message: errors[0].message };
+    const id = `block-${crypto.randomBytes(6).toString("hex")}`;
+    db.prepare(`
+      INSERT INTO tenant_busy_blocks (id, salon_slug, stylist_id, block_date, start_minutes, end_minutes, reason, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, slug, staffId, date, start, end, cleanText(input.reason, 120), nowIso(clock));
+    // Bookings already inside the blocked time stay booked; the owner decides.
+    const overlapping = (bookingsView(slug, { days: 181, includeTests: true }) || { bookings: [] }).bookings.filter((booking) =>
+      booking.status === "booked" && booking.date === date && (!staffId || booking.staffId === staffId) &&
+      booking.start < end && booking.end > start
+    ).length;
+    return { ok: true, status: 201, id, overlapping, blocks: listBlocks(slug) };
+  }
+
+  function removeBlock(slug, id) {
+    const result = db.prepare(`DELETE FROM tenant_busy_blocks WHERE salon_slug = ? AND id = ?`).run(slug, String(id || ""));
+    return result.changes ? { ok: true, blocks: listBlocks(slug) } : { ok: false, error: "not_found" };
+  }
+
+  // The owner cancels a visit. The client hears it where they booked: their
+  // Telegram chat through the salon bot, or their web chat the next time it
+  // opens. Maya stays on for that client, so they can pick another time.
+  async function cancelBooking(slug, appointmentId, { reason = "" } = {}) {
+    const tenant = getTenant(slug);
+    if (!tenant) return { ok: false, status: 409, error: "not_self_serve" };
+    const scope = store.forSalon(slug);
+    store.syncDayAnchor(slug);
+    const anchorRow = db.prepare(`SELECT value FROM metadata WHERE salon_id = ? AND key = 'day_anchor'`).get(slug);
+    const row = db.prepare(`
+      SELECT a.*, date(?, printf('%+d days', a.day_offset)) AS appt_date, s.name AS staff
+      FROM appointments a LEFT JOIN stylists s ON s.salon_id = a.salon_id AND s.id = a.stylist_id
+      WHERE a.salon_id = ? AND a.id = ?
+    `).get(anchorRow ? anchorRow.value : salonToday(slug), slug, String(appointmentId || ""));
+    if (!row) return { ok: false, status: 404, error: "not_found" };
+    if (row.appointment_status !== "scheduled" || Number(row.checked_out)) return { ok: false, status: 409, error: "not_active" };
+    const note = cleanText(reason, 200);
+    const done = scope.cancelAppointment(row.id, { reason: note ? `Cancelled by the salon: ${note}` : "Cancelled by the salon" });
+    if (!done || done.error) return { ok: false, status: 409, error: (done && done.error) || "not_active" };
+    db.prepare(`DELETE FROM tenant_reminders WHERE salon_slug = ? AND appointment_id = ?`).run(slug, row.id);
+    const source = bookingSources(slug).get(row.id);
+    let told = { channel: "", delivery: "" };
+    if (source && source.conversationId && source.channel) {
+      const record = store.getSalonRecord(slug) || {};
+      const raw = mayaLanguage.normalizeLanguageCode(source.language) || "en";
+      const lang = ["en", "fr", "ru", "uk"].includes(raw) ? raw : "en";
+      const date = formatAlertDate(row.appt_date, lang === "uk" ? "ru" : lang);
+      const time = formatAlertTime(row.start_minutes, lang === "uk" ? "ru" : lang);
+      const text = pickText({
+        en: `Hello ${row.client_name}, ${record.name || "the salon"} had to cancel your visit: ${row.service_name}, ${date} at ${time}.${note ? ` ${note}` : ""} We're sorry. Reply here and Maya will find you another time.`,
+        fr: `Bonjour ${row.client_name}, ${record.name || "le salon"} a dû annuler votre rendez-vous : ${row.service_name}, ${date} à ${time}.${note ? ` ${note}` : ""} Désolés. Répondez ici et Maya vous trouvera un autre moment.`,
+        ru: `Здравствуйте, ${row.client_name}! Салон «${record.name || ""}» вынужден отменить вашу запись: ${row.service_name}, ${date} в ${time}.${note ? ` ${note}` : ""} Просим прощения. Напишите сюда, и Майя подберёт другое время.`,
+        uk: `Вітаємо, ${row.client_name}! Салон «${record.name || ""}» мусить скасувати ваш запис: ${row.service_name}, ${date} о ${time}.${note ? ` ${note}` : ""} Перепрошуємо. Напишіть сюди, і Майя підбере інший час.`
+      }, lang);
+      const sent = await sendStaffReply(slug, source.conversationId, text, { pauseMaya: false, via: "bookings" });
+      if (sent.ok) told = { channel: sent.channel, delivery: sent.delivery };
+    }
+    if (assistant && typeof assistant.invalidate === "function") assistant.invalidate(slug);
+    return { ok: true, status: 200, id: row.id, told };
+  }
+
   return {
     hooks,
     attachAssistant,
+    bookingsView,
+    listBlocks,
+    addBlock,
+    removeBlock,
+    cancelBooking,
     getTenant,
     signup,
     saveSetup,
