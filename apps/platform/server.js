@@ -985,6 +985,11 @@ async function handleSetupRoutes(request, requestUrl, response) {
     return json(response, result.status || (result.ok ? 200 : 422), result);
   }
 
+  // "Reset test chat" in the wizard: the owner's test bookings go with it.
+  if (pathname === "/api/setup/test-chat/reset" && request.method === "POST") {
+    return json(response, 200, tenancy.resetTestChat(slug));
+  }
+
   if (pathname === "/api/setup/launch" && request.method === "POST") {
     const result = tenancy.launch(slug);
     return json(response, result.ok ? 200 : 422, result);

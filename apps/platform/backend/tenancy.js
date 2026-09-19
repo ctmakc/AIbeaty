@@ -133,6 +133,9 @@ const ALERT_TEXT = {
     webHint: (name) => `↩️ Reply to this message: ${name} sees your answer when they open the chat again.`,
     open: "Open the conversation",
     test: "Test chat",
+    waiting: (name, count) => count > 1 ? `💬 ${name} wrote again (${count} new messages)` : `💬 ${name} wrote again`,
+    waitingNote: "Maya is paused in this conversation, so only you can answer. The client was told the team will reply here. To let Maya answer again, open the conversation and press Let Maya continue.",
+    lastMessage: "Latest",
     usage: (threshold, turns, cap) => threshold >= 100
       ? `⛔ Maya used all of today's ${cap} replies. Clients get a polite note and their messages wait for you in the inbox. The count resets at midnight.`
       : `⚠️ Maya used ${threshold}% of today's replies (${turns} of ${cap}).`
@@ -170,6 +173,9 @@ const ALERT_TEXT = {
     webHint: (name) => `↩️ Répondez à ce message : ${name} verra votre réponse en rouvrant le clavardage.`,
     open: "Ouvrir la conversation",
     test: "Clavardage test",
+    waiting: (name, count) => count > 1 ? `💬 ${name} a écrit de nouveau (${count} nouveaux messages)` : `💬 ${name} a écrit de nouveau`,
+    waitingNote: "Maya est en pause dans cette conversation : vous seule pouvez répondre. La personne sait que l'équipe lui répondra ici. Pour que Maya reprenne, ouvrez la conversation et appuyez sur Laisser Maya continuer.",
+    lastMessage: "Dernier message",
     usage: (threshold, turns, cap) => threshold >= 100
       ? `⛔ Maya a utilisé les ${cap} réponses du jour. Les clients reçoivent un mot poli et leurs messages vous attendent dans la boîte de réception. Le compteur repart à minuit.`
       : `⚠️ Maya a utilisé ${threshold} % des réponses du jour (${turns} sur ${cap}).`
@@ -206,6 +212,9 @@ const ALERT_TEXT = {
     webHint: (name) => `↩️ Ответьте на это сообщение: ${name} увидит ответ, когда снова откроет чат.`,
     open: "Открыть переписку",
     test: "Тестовый чат",
+    waiting: (name, count) => count > 1 ? `💬 ${name} снова пишет (новых сообщений: ${count})` : `💬 ${name} снова пишет`,
+    waitingNote: "Майя в этой переписке на паузе, ответить можете только вы. Клиенту сказано, что команда ответит здесь. Чтобы Майя снова отвечала, откройте переписку и нажмите «Пусть Майя продолжит».",
+    lastMessage: "Последнее",
     usage: (threshold, turns, cap) => threshold >= 100
       ? `⛔ Майя израсходовала все ${cap} ответов на сегодня. Клиенты получают вежливую заглушку, их сообщения ждут вас во входящих. Счётчик обнулится в полночь.`
       : `⚠️ Майя израсходовала ${threshold}% дневных ответов (${turns} из ${cap}).`
@@ -1033,6 +1042,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     if (errors.length || !tenant.setupComplete) return { ok: false, error: "incomplete", errors };
     if (!tenant.launched) {
       db.prepare(`UPDATE tenants SET launched_at = ?, updated_at = ? WHERE salon_slug = ?`).run(nowIso(clock), nowIso(clock), slug);
+      clearTestBookings(slug);
       const record = store.getSalonRecord(slug) || {};
       notifyPlatform({
         subject: `AIbeaty: ${record.name || slug} went live`,
@@ -1169,13 +1179,45 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     },
     onEvent(salonId, type, payload) {
       trackReminder(salonId, type, payload);
+      if (type === "client_waiting") return noteClientWaiting(salonId, payload);
       queueOwnerAlert(salonId, type, payload);
+    },
+    // The salon owner's own chats with Maya: the wizard preview, the web chat
+    // opened while signed in, and the owner's linked Telegram chat. A handoff
+    // there never locks Maya and bookings there are test bookings.
+    isTestSession(salonId, sessionId) {
+      return isTestSessionId(salonId, sessionId);
     }
   };
 
+  function isTestSessionId(slug, sessionId) {
+    const id = String(sessionId || "");
+    if (!id || !getTenant(slug)) return false;
+    if (db.prepare(`SELECT 1 FROM tenant_preview_sessions WHERE salon_slug = ? AND session_id = ?`).get(slug, id)) return true;
+    const tg = /^tg:(\d+):(-?\d+)$/.exec(id);
+    if (tg) {
+      const row = getTelegram(slug);
+      return Boolean(row && row.bot_id === tg[1] && row.owner_chat_id && row.owner_chat_id === tg[2]);
+    }
+    return false;
+  }
+
+  // Test-chat bookings go when the salon goes live and when the owner resets
+  // the test chat, so they never hold a real client's slot.
+  function clearTestBookings(slug) {
+    const scope = store.forSalon(slug);
+    if (!scope || typeof scope.deleteTestAppointments !== "function") return 0;
+    return scope.deleteTestAppointments();
+  }
+
+  function resetTestChat(slug) {
+    if (!getTenant(slug)) return { ok: false, error: "not_self_serve" };
+    return { ok: true, removedBookings: clearTestBookings(slug) };
+  }
+
   // ---------- client reminders ----------
   function trackReminder(salonId, type, payload) {
-    if (!payload.appointmentId) return;
+    if (!payload.appointmentId || payload.test) return;
     if (type === "cancellation") {
       db.prepare(`DELETE FROM tenant_reminders WHERE salon_slug = ? AND appointment_id = ?`).run(salonId, payload.appointmentId);
       return;
@@ -1310,6 +1352,21 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     return sent;
   }
 
+  // A thread a person took over goes back to Maya after 12 hours with no
+  // staff answer (the client's holding replies stop then).
+  function returnStaleHandoffs() {
+    if (!assistant || typeof assistant.autoReturnStale !== "function") return 0;
+    let returned = 0;
+    db.prepare(`SELECT salon_slug FROM tenants`).all().forEach((row) => {
+      try {
+        returned += Number(assistant.autoReturnStale(row.salon_slug)) || 0;
+      } catch (error) {
+        console.error(`[tenancy] hand-back failed for ${row.salon_slug}: ${String(error.message).slice(0, 140)}`);
+      }
+    });
+    return returned;
+  }
+
   let ticker = null;
   function startTicker(intervalMs = 10 * 60 * 1000) {
     if (ticker) return;
@@ -1317,6 +1374,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       Promise.resolve()
         .then(() => sendTrialNotices())
         .then(() => sendDueReminders())
+        .then(() => returnStaleHandoffs())
         .catch((error) => console.error(`[tenancy] tick failed: ${String(error.message).slice(0, 160)}`));
     };
     ticker = setInterval(tick, intervalMs);
@@ -1351,6 +1409,82 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     }
     entry.timer = setTimeout(flush, ALERT_DELAY_MS);
     if (entry.timer.unref) entry.timer.unref();
+  }
+
+  // ---------- a client writes while a person handles the thread ----------
+  // Every message is counted; the owner hears at most once per conversation
+  // per WAITING_ALERT_MS, and whatever came in meanwhile goes out with a count
+  // when the window ends. Nothing is dropped.
+  const waitingCandidate = Number(process.env.OWNER_WAITING_ALERT_MS);
+  const WAITING_ALERT_MS = Number.isFinite(waitingCandidate) && waitingCandidate >= 0 ? waitingCandidate : 5 * 60 * 1000;
+  const waitingAlerts = new Map(); // `${slug}|${conversationId}` → { slug, conversationId, pending, lastSentAt, timer }
+
+  function waitingEntry(slug, conversationId) {
+    const key = `${slug}|${conversationId}`;
+    let entry = waitingAlerts.get(key);
+    if (!entry) {
+      entry = { slug, conversationId, pending: [], lastSentAt: 0, timer: null };
+      waitingAlerts.set(key, entry);
+    }
+    return entry;
+  }
+
+  function noteClientWaiting(slug, payload = {}) {
+    if (!getTenant(slug) || !payload.conversationId) return;
+    const entry = waitingEntry(slug, payload.conversationId);
+    entry.pending.push({ text: String(payload.text || ""), client: payload.client || "" });
+    const now = clock().getTime();
+    if (!entry.lastSentAt || now - entry.lastSentAt >= WAITING_ALERT_MS) {
+      flushWaiting(entry);
+      return;
+    }
+    if (!entry.timer) {
+      entry.timer = setTimeout(() => flushWaiting(entry), Math.max(0, entry.lastSentAt + WAITING_ALERT_MS - now));
+      if (entry.timer.unref) entry.timer.unref();
+    }
+  }
+
+  function flushWaiting(entry) {
+    if (entry.timer) clearTimeout(entry.timer);
+    entry.timer = null;
+    if (!entry.pending.length) return;
+    const pending = entry.pending;
+    entry.pending = [];
+    entry.lastSentAt = clock().getTime();
+    const text = composeWaitingAlert(entry.slug, entry.conversationId, pending);
+    if (text) notifyOwner(entry.slug, text, { conversationId: entry.conversationId });
+  }
+
+  // Sends the waiting-client alerts held back by the 5-minute window now
+  // (tests, shutdown).
+  function flushWaitingAlerts() {
+    [...waitingAlerts.values()].forEach((entry) => flushWaiting(entry));
+  }
+
+  function composeWaitingAlert(slug, conversationId, pending) {
+    const tenant = getTenant(slug);
+    if (!tenant) return "";
+    const lang = ownerLang(tenant);
+    const t = ALERT_TEXT[lang];
+    const facts = conversationFacts(slug, conversationId);
+    const rawName = [pending[pending.length - 1].client, facts && facts.name].find((value) => value && !GENERIC_NAME_RE.test(String(value))) ||
+      (facts && facts.name) || "";
+    const name = !rawName || GENERIC_NAME_RE.test(rawName) ? localGenericName(rawName, lang) : rawName;
+    const phone = facts && facts.phone;
+    const lines = [t.waiting(name, pending.length)];
+    if (phone) lines.push(`${name} · ${phone}`);
+    // Medspa / clinic: no client words in a notification (health privacy).
+    if (isMedspa(tenant)) {
+      lines.push(t.textHidden);
+    } else {
+      const shown = pending.slice(-3).map((item) => quote(item.text, 200)).filter(Boolean);
+      if (shown.length) lines.push(`${pending.length > 1 ? t.lastMessage : t.said}${t.colon || ": "}${shown.join("\n")}`);
+    }
+    lines.push(t.waitingNote);
+    const footer = [];
+    if (facts && facts.sessionId) footer.push(facts.telegram ? t.replyHint(name) : t.webHint(name));
+    footer.push(`${t.open}${t.colon || ": "}${PUBLIC_BASE}/screens/unified-inbox-luminous-core.html?conversationId=${encodeURIComponent(conversationId)}`);
+    return `${lines.join("\n")}\n\n${footer.join("\n")}`;
   }
 
   // Sends everything still waiting in the alert queue now (tests, shutdown).
@@ -1454,6 +1588,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
         attention = null;
       } else {
         lastAttentionAt.set(key, now);
+        if (conversationId) waitingEntry(slug, conversationId).lastSentAt = now;
       }
     }
     if (attention) {
@@ -1486,7 +1621,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       if (facts.sessionId) footer.push(facts.telegram ? t.replyHint(name) : t.webHint(name));
       footer.push(`${t.open}${t.colon || ": "}${PUBLIC_BASE}/screens/unified-inbox-luminous-core.html?conversationId=${encodeURIComponent(conversationId)}`);
     }
-    const head = facts && facts.preview ? `[${t.test}] ` : "";
+    const head = (facts && facts.preview) || events.some((event) => event.payload && event.payload.test) ? `[${t.test}] ` : "";
     return `${head}${blocks.join("\n\n")}${footer.length ? `\n\n${footer.join("\n")}` : ""}`;
   }
 
@@ -1768,6 +1903,10 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
   function inboxView(slug) {
     const scope = store.forSalon(slug);
     if (!scope) return null;
+    // Threads nobody answered for 12 hours are Maya's again before we show them.
+    if (assistant && typeof assistant.autoReturnStale === "function" && getTenant(slug)) {
+      try { assistant.autoReturnStale(slug); } catch (error) { /* shown as they are */ }
+    }
     const tenant = getTenant(slug);
     const record = store.getSalonRecord(slug) || {};
     const previewIds = new Set(db.prepare(`SELECT session_id FROM tenant_preview_sessions WHERE salon_slug = ?`).all(slug).map((row) => row.session_id));
@@ -1776,6 +1915,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
       FROM conversations WHERE salon_id = ? ORDER BY updated_at DESC
     `).all(slug);
     const phoneOf = db.prepare(`SELECT client_phone FROM assistant_sessions WHERE salon_id = ? AND id = ?`);
+    const stateOf = db.prepare(`SELECT state_json FROM assistant_sessions WHERE salon_id = ? AND id = ?`);
     const conversations = rows.map((row) => {
       const sessionId = row.assistant_session_id || "";
       const messages = scope.getConversationMessages(row.id).map((message) => ({
@@ -1788,6 +1928,13 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
         createdAt: message.createdAt
       }));
       const last = [...messages].reverse().find((message) => message.type !== "system") || messages[messages.length - 1];
+      // Client messages that came in while Maya was paused and nobody has
+      // answered yet.
+      let waiting = 0;
+      if (sessionId && row.assistant_state !== "active") {
+        const stateRow = stateOf.get(slug, sessionId);
+        try { waiting = Number(JSON.parse((stateRow && stateRow.state_json) || "{}").waitingCount) || 0; } catch (error) { waiting = 0; }
+      }
       const session = sessionId ? phoneOf.get(slug, sessionId) : null;
       return {
         id: row.id,
@@ -1799,6 +1946,7 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
         state: row.assistant_state === "escalated" ? "needs_human" : row.assistant_state === "takeover" ? "takeover" : "maya",
         preview: last ? String(last.text).slice(0, 140) : "",
         lastAuthor: last ? last.author : "",
+        waiting,
         updatedAt: row.updated_at,
         messages
       };
@@ -2103,6 +2251,10 @@ function createTenancy({ store, auth, llm, clock = () => new Date(), fetchImpl, 
     webUpdates,
     inboxView,
     flushOwnerAlerts,
+    flushWaitingAlerts,
+    resetTestChat,
+    returnStaleHandoffs,
+    isTestSession: isTestSessionId,
     listAddons,
     requestAddon,
     planView,

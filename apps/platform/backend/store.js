@@ -522,6 +522,9 @@ function createPlatformStore() {
     ensureColumn("appointments", "refunded_value", "REAL NOT NULL DEFAULT 0");
     ensureColumn("appointments", "refunded_label", "TEXT NOT NULL DEFAULT '$0'");
     ensureColumn("appointments", "appointment_status", "TEXT NOT NULL DEFAULT 'scheduled'");
+    // Bookings made in the salon owner's own test chat: they never hold a
+    // real slot, never count as revenue and are deleted at Go live.
+    ensureColumn("appointments", "is_test", "INTEGER NOT NULL DEFAULT 0");
     ensureColumn("conversations", "client_id", "TEXT NOT NULL DEFAULT ''");
     ensureColumn("conversations", "recovery_state", "TEXT NOT NULL DEFAULT ''");
     ensureColumn("conversations", "recovery_sent_count", "INTEGER NOT NULL DEFAULT 0");
@@ -1768,7 +1771,8 @@ function createPlatformStore() {
         clientStatus: row.client_status || "",
         clientStatusTone: row.client_status_tone || "",
         checkedOut: Boolean(row.checked_out),
-        appointmentStatus: row.appointment_status || "scheduled"
+        appointmentStatus: row.appointment_status || "scheduled",
+        test: Boolean(row.is_test)
       }));
     }
 
@@ -1941,7 +1945,7 @@ function createPlatformStore() {
           const date = addDays(weekStart, index);
           const absoluteOffset = Math.round((date.getTime() - referenceDay.getTime()) / 86400000);
           const dayAppointments = appointments.filter((appointment) => Number(appointment.dayOffset || 0) === absoluteOffset);
-          const revenue = dayAppointments.reduce((sum, appointment) => sum + parseMoney(appointment.price || 0), 0);
+          const revenue = dayAppointments.filter((appointment) => !appointment.test).reduce((sum, appointment) => sum + parseMoney(appointment.price || 0), 0);
           const stylistCounts = {};
           dayAppointments.forEach((appointment) => {
             const stylistName = appointment.stylist || (page.stylists[appointment.column] && page.stylists[appointment.column].name) || "Front Desk";
@@ -2019,7 +2023,7 @@ function createPlatformStore() {
         SELECT COUNT(*) AS appointments,
                COALESCE(SUM(CASE WHEN checked_out = 1 AND total_paid_value > 0 THEN total_paid_value ELSE price_value END), 0) AS revenue
         FROM appointments
-      WHERE salon_id = ?
+      WHERE salon_id = ? AND is_test = 0
     `).get(salonId);
       const clientsCount = db.prepare(`SELECT COUNT(*) AS count FROM clients
       WHERE salon_id = ?
@@ -2044,7 +2048,7 @@ function createPlatformStore() {
                COALESCE(SUM(a.price_value), 0) AS revenue,
                COUNT(a.id) AS appointments
         FROM stylists s
-        LEFT JOIN appointments a ON a.stylist_id = s.id AND a.checked_out = 0
+        LEFT JOIN appointments a ON a.stylist_id = s.id AND a.checked_out = 0 AND a.is_test = 0
         WHERE s.salon_id = ?
       GROUP BY s.id
         ORDER BY revenue DESC, appointments DESC, s.sort_order ASC
@@ -2325,7 +2329,7 @@ function createPlatformStore() {
         SELECT COUNT(*) AS appointments,
                COALESCE(SUM(CASE WHEN checked_out = 1 AND total_paid_value > 0 THEN total_paid_value ELSE price_value END), 0) AS revenue
         FROM appointments
-      WHERE salon_id = ?
+      WHERE salon_id = ? AND is_test = 0
     `).get(salonId);
       const clientsCount = db.prepare(`SELECT COUNT(*) AS count FROM clients
       WHERE salon_id = ?
@@ -2347,7 +2351,7 @@ function createPlatformStore() {
         topStylists: db.prepare(`
           SELECT s.name, COALESCE(SUM(a.price_value), 0) AS revenue, COUNT(a.id) AS appointments
           FROM stylists s
-          LEFT JOIN appointments a ON a.stylist_id = s.id AND a.checked_out = 0
+          LEFT JOIN appointments a ON a.stylist_id = s.id AND a.checked_out = 0 AND a.is_test = 0
           WHERE s.salon_id = ?
       GROUP BY s.id
           ORDER BY revenue DESC, appointments DESC, s.sort_order ASC
@@ -2563,6 +2567,16 @@ function createPlatformStore() {
         new Date().toISOString(),
         appointmentId, salonId);
       return appointmentId;
+    }
+
+    // Test-chat bookings go at Go live and when the owner resets the test
+    // chat.
+    function deleteTestAppointments() {
+      const ids = db.prepare(`SELECT id FROM appointments WHERE salon_id = ? AND is_test = 1`).all(salonId).map((row) => row.id);
+      if (!ids.length) return 0;
+      db.prepare(`DELETE FROM appointments WHERE salon_id = ? AND is_test = 1`).run(salonId);
+      touch();
+      return ids.length;
     }
 
     function createAppointment(payload) {
@@ -3586,6 +3600,7 @@ function createPlatformStore() {
       upsertBuilderWorkflow,
       updateService,
       createAppointment,
+      deleteTestAppointments,
       updateAppointment,
       checkoutAppointment,
       captureAppointmentDeposit,
