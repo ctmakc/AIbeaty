@@ -482,19 +482,28 @@ async function main() {
     assert.strictEqual(row.start_minutes, 14 * 60, "Maya books the time she read back");
   });
 
-  await step("an offer listing 12:00 is not read as the client having seen 2:00 PM", async () => {
+  await step("an offer listing 11:30 AM is not read as the client having seen 1:30 PM", async () => {
+    // The offer only names times the salon really has free, so the time guard
+    // leaves it alone and the read-back check sees the model's own words. That
+    // is where a substring match used to go wrong: "11:30 AM" contains "1:30",
+    // so a staged 1:30 PM counted as read back and "yes" booked it silently.
     const today = todayToronto();
     const day = dates.addDays(today, 6);
     const session = "web-client-s2";
-    script.push(toolCall("book_appointment", { service: "Gel manicure", day, time: "14:00", client_name: "Sam Okafor" }), text("ok"));
-    await tenancy.chat(slug, { sessionId: session, message: `Gel manicure ${day} at 2pm, I'm Sam Okafor` });
-    script.push(text(`On ${day} I have 9:00 AM, 12:00 PM, 1:00 PM or 3:00 PM free. Which suits you?`));
+    script.push(toolCall("book_appointment", { service: "Gel manicure", day, time: "13:30", client_name: "Sam Okafor" }), text("ok"));
+    const staged = await tenancy.chat(slug, { sessionId: session, message: `Gel manicure ${day} at 1:30pm, I'm Sam Okafor` });
+    assert.match(staged.reply, /1:30 PM/);
+
+    script.push(text(`On ${day} I have 11:30 AM or 3:00 PM free. Which suits you?`));
     const offer = await tenancy.chat(slug, { sessionId: session, message: "what else is free?" });
-    assert.doesNotMatch(offer.reply, /2:00 PM/);
+    assert.ok(!offer.state.gates.some((gate) => /^time_guard/.test(gate)), JSON.stringify(offer.state.gates));
+    assert.match(offer.reply, /11:30 AM/);
+    assert.doesNotMatch(offer.reply, /(?<![\d:.])1:30 PM/, "the offer never shows the staged time on its own");
+
     const consent = await tenancy.chat(slug, { sessionId: session, message: "yes, that's right" });
     assert.ok(consent.state.gates.includes("stale_consent"), JSON.stringify(consent.state.gates));
     assert.ok(!store.db.prepare(`SELECT 1 FROM appointments WHERE salon_id = ? AND client_name = 'Sam Okafor'`).get(slug),
-      "a 'yes' to a list that never showed 2:00 PM does not book 2:00 PM");
+      "a 'yes' to a list that never showed 1:30 PM on its own does not book 1:30 PM");
   });
 
   await step("check_availability with no day answers about the day the client named, not today", async () => {
