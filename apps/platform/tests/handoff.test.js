@@ -136,6 +136,14 @@ async function main() {
     assert.strictEqual(dates.findDateExpressions("this Friday", "2026-09-18", { todayOver: true })[0].offset, 0);
     assert.strictEqual(dates.findDateExpressions("vendredi", "2026-09-18", {})[0].offset, 0);
     assert.strictEqual(dates.findDateExpressions("в пятницу", "2026-09-18", { todayOver: true })[0].offset, 7);
+    // A year is not a day of the month: "mardi 22 septembre 2026" used to yield
+    // "septembre 20" first, so the reply was read as being about Sep 20.
+    const frDate = dates.findDateExpressions("Voici les créneaux le mardi 22 septembre 2026 : 12 h ou 15 h.", "2026-09-20", {});
+    assert.ok(frDate.length, "the French date is found");
+    frDate.forEach((hit) => assert.strictEqual(hit.offset, 2, `"${hit.phrase}" → offset ${hit.offset}`));
+    const enDate = dates.findDateExpressions("We are open in September 2026.", "2026-09-20", {});
+    assert.deepStrictEqual(enDate, [], "a bare month + year names no day");
+    assert.strictEqual(dates.findDateExpressions("See you Sep 24, 2026", "2026-09-20", {})[0].offset, 4);
     const { isAffirmation, affirmationRemainder } = assistant._internals;
     assert.ok(isAffirmation("yes cancel. but what about my deposit??"));
     assert.strictEqual(affirmationRemainder("yes cancel. but what about my deposit??"), "what about my deposit??");
@@ -434,6 +442,83 @@ async function main() {
     const change = await tenancy.chat(slug, { sessionId: "web-client-y3", message: "yes but can we do 3 instead?" });
     assert.doesNotMatch(change.reply, /you're booked/, "a change request is not consent");
     assert.ok(!store.db.prepare(`SELECT 1 FROM appointments WHERE salon_id = ? AND client_name = 'Kim Lee'`).get(slug));
+  });
+
+  await step("a 'yes' after Maya offered other times re-reads the staged slot back instead of booking it", async () => {
+    const today = todayToronto();
+    const day = dates.addDays(today, 5);
+    const session = "web-client-s1";
+
+    // Maya stages 2:00 PM and reads it back.
+    script.push(toolCall("book_appointment", { service: "Gel manicure", day, time: "14:00", client_name: "Nora Diaz" }), text("ok"));
+    const staged = await tenancy.chat(slug, { sessionId: session, message: `Gel manicure ${day} at 2pm, I'm Nora Diaz` });
+    assert.match(staged.reply, /2:00 PM/);
+    assert.match(staged.reply, /Shall I book it\?/);
+
+    // The client asks what else is free; the model invents times, the time
+    // guard replaces them with the real free slots — 2:00 PM is not among them.
+    // 12:00 PM in that list must not read as "the client saw 2:00 PM".
+    script.push(text("That day I can do 9:00 AM, 12:00 PM, 1:00 PM or 3:00 PM. Which one?"));
+    const offer = await tenancy.chat(slug, { sessionId: session, message: "what other times are free that day?" });
+    assert.ok(offer.state.gates.some((gate) => /^time_guard/.test(gate)), JSON.stringify(offer.state.gates));
+    assert.match(offer.reply, /I can offer 10:00 AM/);
+    assert.doesNotMatch(offer.reply, /2:00 PM/, "the fresh offer does not contain the staged time");
+
+    // "yes" now means one of THOSE times, so nothing may be booked silently.
+    const consent = await tenancy.chat(slug, { sessionId: session, message: "yes" });
+    assert.ok(consent.state.gates.includes("stale_consent"), JSON.stringify(consent.state.gates));
+    assert.match(consent.reply, /2:00 PM/);
+    assert.match(consent.reply, /Shall I book it\?/);
+    assert.ok(
+      !store.db.prepare(`SELECT 1 FROM appointments WHERE salon_id = ? AND client_name = 'Nora Diaz'`).get(slug),
+      "no appointment before the client saw the time they are agreeing to"
+    );
+
+    // A second "yes", now against a read-back that does show 2:00 PM, books it.
+    const done = await tenancy.chat(slug, { sessionId: session, message: "yes" });
+    assert.match(done.reply, /you're booked/);
+    const row = store.db.prepare(`SELECT start_minutes FROM appointments WHERE salon_id = ? AND client_name = 'Nora Diaz'`).get(slug);
+    assert.ok(row, "the re-confirmed booking is written");
+    assert.strictEqual(row.start_minutes, 14 * 60, "Maya books the time she read back");
+  });
+
+  await step("an offer listing 11:30 AM is not read as the client having seen 1:30 PM", async () => {
+    // The offer only names times the salon really has free, so the time guard
+    // leaves it alone and the read-back check sees the model's own words. That
+    // is where a substring match used to go wrong: "11:30 AM" contains "1:30",
+    // so a staged 1:30 PM counted as read back and "yes" booked it silently.
+    const today = todayToronto();
+    const day = dates.addDays(today, 6);
+    const session = "web-client-s2";
+    script.push(toolCall("book_appointment", { service: "Gel manicure", day, time: "13:30", client_name: "Sam Okafor" }), text("ok"));
+    const staged = await tenancy.chat(slug, { sessionId: session, message: `Gel manicure ${day} at 1:30pm, I'm Sam Okafor` });
+    assert.match(staged.reply, /1:30 PM/);
+
+    script.push(text(`On ${day} I have 11:30 AM or 3:00 PM free. Which suits you?`));
+    const offer = await tenancy.chat(slug, { sessionId: session, message: "what else is free?" });
+    assert.ok(!offer.state.gates.some((gate) => /^time_guard/.test(gate)), JSON.stringify(offer.state.gates));
+    assert.match(offer.reply, /11:30 AM/);
+    assert.doesNotMatch(offer.reply, /(?<![\d:.])1:30 PM/, "the offer never shows the staged time on its own");
+
+    const consent = await tenancy.chat(slug, { sessionId: session, message: "yes, that's right" });
+    assert.ok(consent.state.gates.includes("stale_consent"), JSON.stringify(consent.state.gates));
+    assert.ok(!store.db.prepare(`SELECT 1 FROM appointments WHERE salon_id = ? AND client_name = 'Sam Okafor'`).get(slug),
+      "a 'yes' to a list that never showed 1:30 PM on its own does not book 1:30 PM");
+  });
+
+  await step("check_availability with no day answers about the day the client named, not today", async () => {
+    const today = todayToronto();
+    const named = dates.addDays(today, 5);
+    let answeredFor = "";
+    script.push(
+      toolCall("check_availability", { service: "Gel manicure" }), // the model forgot the day
+      (messages) => {
+        answeredFor = (lastToolResult(messages) || {}).date || "";
+        return text("Let me see.");
+      }
+    );
+    await tenancy.chat(slug, { sessionId: "web-client-h1", message: `Anything for a Gel manicure on ${named}?` });
+    assert.strictEqual(answeredFor, named, `availability answered for ${answeredFor}, the client named ${named}`);
   });
 
   fs.rmSync(dir, { recursive: true, force: true });

@@ -4,9 +4,9 @@
 //   LLM_BASE_URL      e.g. https://ollama.com/v1  (default)
 //   LLM_API_KEY       raw key, or
 //   LLM_API_KEY_FILE  path to a file with the key (default ~/.ollama/api_key)
-//   LLM_MODEL         e.g. deepseek-v4-pro:0813   (default; see docs/assistant.md)
+//   LLM_MODEL         e.g. gpt-oss:120b           (default; see docs/assistant.md)
 //                     or a comma-separated fallback chain, tried in order:
-//                     "deepseek-v4-pro:0813,gpt-oss:120b,nemotron-3-super"
+//                     "gpt-oss:120b,nemotron-3-super"
 //
 // Why a chain: on 2026-09-18 the Ollama Cloud plan lapsed and the one model Maya
 // used started answering "not included in your free usage". Every salon's
@@ -18,7 +18,12 @@ const os = require("os");
 const path = require("path");
 
 const DEFAULT_BASE_URL = "https://ollama.com/v1";
-const DEFAULT_MODEL = "deepseek-v4-pro:0813";
+// The default IS a chain. On 2026-09-18 the Ollama Cloud plan lapsed: the old
+// single default (deepseek-v4-pro:0813) answers 403 "not included in your free
+// usage", so anything that boots without LLM_MODEL (tests, scripts, a fresh box)
+// went silent. These two answer on the free tier; add paid models in front via
+// LLM_MODEL when a plan is active.
+const DEFAULT_MODEL = "gpt-oss:120b,nemotron-3-super";
 const DEFAULT_KEY_FILE = path.join(os.homedir(), ".ollama", "api_key");
 
 function resolveApiKey(options = {}) {

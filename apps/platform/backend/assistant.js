@@ -1303,6 +1303,19 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       return dates.addDays(todayIso(), offset);
     }
 
+    // The model sometimes calls check_availability with no day at all. Falling
+    // back to today is wrong whenever the client just named a day, or the
+    // conversation already settled on one: the tool then answers about a day
+    // nobody asked about, and the time guard rewrites the reply around it
+    // ("no room Sunday" to a client asking about Friday).
+    function dayHintFor(session, turn) {
+      const named = findDates(String((turn && turn.userMessage) || "")).find((hit) => hit.offset !== undefined);
+      if (named) return dayIso(named.offset);
+      const draftDay = (session.state.draft || {}).dayOffset;
+      if (draftDay !== undefined && draftDay !== null) return dayIso(draftDay);
+      return "";
+    }
+
     function dayError(day) {
       const today = `${dates.WEEKDAY_EN[dates.weekdayOf(todayIso())]} ${todayIso()}`;
       if (day.error === "date_in_past") {
@@ -1883,7 +1896,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         case "get_services_and_prices": {
           const rows = args.query ? resolveServices(args.query) : [];
           const list = (rows.length ? rows : allServices()).map((row) => serviceSummary(session, row));
-          return { services: list, note: "These are the only services the salon offers. Quote each price label verbatim (ranges, \"from\", add-ons, per-unit, Free, By consultation) and never add prices up." };
+          return { services: list, note: "These are the only services the salon offers. Quote each price label verbatim (ranges, \"from\", add-ons, per-unit, Free, By consultation). The only sum you may do is a fixed base price plus an add-on row; never invent any other total." };
         }
 
         case "check_availability": {
@@ -1906,7 +1919,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
           const service = matches[0];
           noteDraft(session, { serviceId: service.id, serviceName: service.name });
           if (consultOnly(service)) return consultOnlyResult(session, service);
-          const day = resolveDay(args.day);
+          const day = resolveDay(String(args.day || "").trim() || dayHintFor(session, turn));
           if (day.error) return dayError(day);
           const stylistPick = stylistForTool(session, turn, args.stylist);
           const stylist = stylistPick.row;
@@ -2130,7 +2143,8 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
           };
           notePrice(session, service.price_value);
           const pending = session.state.pendingAction;
-          if (!pendingMatches(pending, proposal) || !isAffirmation(turn.userMessage)) {
+          if (!pendingMatches(pending, proposal) || !isAffirmation(turn.userMessage) ||
+              consentLooksStale(session, pending)) {
             proposal.stagedAt = turn.incomingIndex || 0;
             session.state.pendingAction = proposal;
             turn.stagedAction = proposal;
@@ -2485,7 +2499,13 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       const h12 = h % 12 || 12;
       const forms = [`${h}:${mm}`, `${h}h${mm === "00" ? "" : mm}`, `${h} h${mm === "00" ? "" : ` ${mm}`}`, `${h12}:${mm}`];
       if (mm === "00") forms.push(`${h12} pm`, `${h12}pm`, `${h12} am`, `${h12}am`, `${h} ч`, `${h} год`);
-      return forms.some((form) => value.includes(form));
+      // A substring match is not enough: "12:00" contains "2:00", so an offer of
+      // 9:00 / 12:00 / 1:00 / 3:00 used to read as "the client saw 2:00 PM" and
+      // their "yes" committed a 14:00 slot nobody had shown them.
+      return forms.some((form) => {
+        const escaped = form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return new RegExp(`(?<![\\d:.])${escaped}(?![\\d])`).test(value);
+      });
     }
 
     // ---------- deterministic commit ----------
@@ -2605,6 +2625,31 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         }
       }
       return null;
+    }
+
+    // A "yes" consents to the last thing the client actually read. When Maya's
+    // last message offered times and the staged action's time is not among
+    // them — the time guard replaced a wrong offer with the real free slots, or
+    // the model listed new ones — the client is agreeing to one of THOSE, not
+    // to the old staged slot. Silently committing the old one is how Maya came
+    // to offer 10:00/11:30/13:30/15:00 and then book 14:00.
+    function consentLooksStale(session, staged) {
+      if (!staged || staged.startMinutes === undefined || staged.startMinutes === null) return false;
+      const lastOut = db.prepare(`
+        SELECT text_value FROM conversation_messages
+        WHERE salon_id = ? AND conversation_id = ? AND type = 'outgoing'
+        ORDER BY sort_order DESC LIMIT 1
+      `).get(salonId, session.conversation_id);
+      const seen = String((lastOut && lastOut.text_value) || "");
+      if (!seen) return false;
+      if (replyShowsTime(seen, staged.startMinutes)) return false;
+      for (const sentence of seen.split(/(?<=[.!?\u2026])\s+|\n+/)) {
+        if (TIME_HOURS_RE.test(sentence) || TIME_NEGATIVE_RE.test(sentence)) continue;
+        for (const hit of replyTimes(sentence)) {
+          if (!hit.options.includes(staged.startMinutes)) return true;
+        }
+      }
+      return false;
     }
 
     // The honest replacement: real free times for that day from the calendar.
@@ -3276,6 +3321,19 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       let extraQuestion = "";
       const staged = session.state.pendingAction;
       if (staged && !turn.escalateAfter && isAffirmation(text) &&
+          (!staged.stagedAt || incomingIndex - staged.stagedAt <= 2) &&
+          consentLooksStale(session, staged)) {
+        // Maya's last message put other times on the table: ask again, showing
+        // the slot this "yes" would actually book.
+        staged.stagedAt = incomingIndex;
+        recordEvent(session, "stale_consent", { kind: staged.kind, time: staged.timeLabel });
+        const reply = finishIntro(readBackText(staged, session.language));
+        persistMessage(session, "outgoing", reply);
+        recordEvent(session, "message_out", { text: reply.slice(0, 300), canned: "stale_consent" });
+        saveSession(session);
+        return { reply, state: sessionState(session, { gates: ["stale_consent"] }) };
+      }
+      if (staged && !turn.escalateAfter && isAffirmation(text) &&
           (!staged.stagedAt || incomingIndex - staged.stagedAt <= 2)) {
         const committed = commitPendingAction(session, turn);
         if (committed) {
@@ -3456,7 +3514,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
           preGates.push("fact_regen");
           const notes = [];
           if (badPrices.length) {
-            notes.push(`The amount(s) ${badPrices.map((price) => `$${price}`).join(", ")} are not in the salon's data. Quote price labels exactly as the tools and the FAQ give them (ranges like "$220–$320", "from $75", "+$15", "$5/nail", "Free", "By consultation"). Never add prices up and never invent an amount.`);
+            notes.push(`The amount(s) ${badPrices.map((price) => `$${price}`).join(", ")} are not in the salon's data. Quote price labels exactly as the tools and the FAQ give them (ranges like "$220–$320", "from $75", "+$15", "$5/nail", "Free", "By consultation"). The only sum allowed is a fixed base price plus an add-on row; never invent an amount.`);
           }
           badClosed.forEach(({ offset }) => {
             notes.push(`The salon is OPEN on ${dayIso(offset)} (${dates.WEEKDAY_EN[dates.weekdayOf(dayIso(offset))]}, ${hoursLabelForOffset(offset)}). Never say it is closed. If a team member is off that day, say who is off and who works.`);
@@ -3487,6 +3545,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       // action but the model produced nothing (empty reply or LLM error) —
       // commit the staged action in code and confirm honestly.
       if (!turn.actionCommitted && session.state.pendingAction && isAffirmation(text) &&
+          !consentLooksStale(session, session.state.pendingAction) &&
           (llmError || !String(reply || "").trim())) {
         const pendingKind = session.state.pendingAction.kind;
         const committed = commitPendingAction(session, turn);

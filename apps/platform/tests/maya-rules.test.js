@@ -242,6 +242,19 @@ function weekdayOfIso(iso) {
     });
     [75, 15, 90, 14, 280, 25].forEach((num) => assert.ok(allowed.has(num), `allowed ${num}`));
     assert.ok(!allowed.has(100), "an invented total is not allowed");
+
+    // An add-on priced as its own row: base + add-on is the owner's own maths.
+    const withAddOn = rules.buildPriceAllowList({
+      services: [
+        { price_label: "$55", price_value: 55 },
+        { price_label: "$220-$320", price_value: 220 },
+        { price_label: "+$15", price_value: 15 }
+      ],
+      faqTexts: [],
+      clientMessage: "gel manicure with nail art?"
+    });
+    [55, 15, 70, 220, 320, 235, 335].forEach((num) => assert.ok(withAddOn.has(num), `add-on total ${num}`));
+    assert.ok(!withAddOn.has(80), "a total nobody's price list supports is still blocked");
   });
 
   await test("rules: work days parse from numbers, English, French, Russian; label reads Tue–Thu", async () => {

@@ -99,7 +99,7 @@ const PRICE_NOTES = {
   per_unit: "Priced per unit. Quote the label verbatim; multiply only by a quantity the client gave, and say the final price is confirmed at the visit.",
   range: "A range. Quote it verbatim, e.g. \"$220–$320\"; the stylist confirms the final price.",
   from: "A starting price. Quote it verbatim with the word \"from\"; the final price is confirmed at the visit.",
-  add_on: "An add-on to another service. Quote it verbatim; do not add prices up into a total.",
+  add_on: "An add-on to another service. Quote it verbatim; you may add it to one fixed base price and give the total.",
   fixed: "Fixed price. Quote it exactly."
 };
 
@@ -125,6 +125,23 @@ function buildPriceAllowList({ services = [], faqTexts = [], extra = [], clientM
       quantities.forEach((qty) => add(unit * qty));
     }
   });
+  // An add-on is its own row in the price list ("Nail art  +$15", "Toner +$40").
+  // "Gel manicure with nail art is $70" is then the owner's own arithmetic, so
+  // base + add-on totals are allowed; anything else still is not.
+  const addOnAmounts = services
+    .map((service) => String(service.price_label || service.price || ""))
+    .filter((label) => priceKind(label) === "add_on")
+    .map((label) => amountsIn(label)[0])
+    .filter((num) => Number.isFinite(num));
+  if (addOnAmounts.length) {
+    services.forEach((service) => {
+      const label = String(service.price_label || service.price || "");
+      if (priceKind(label) === "add_on") return;
+      const base = amountsIn(label);
+      base.forEach((amount) => addOnAmounts.forEach((extraAmount) => add(amount + extraAmount)));
+    });
+  }
+
   faqTexts.forEach((text) => amountsIn(text).forEach(add));
   extra.forEach((num) => add(Number(num)));
   return allowed;

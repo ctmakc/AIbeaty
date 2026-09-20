@@ -23,6 +23,7 @@
     "salon:onboard": "node scripts/onboard-salon.mjs",
     "salon:list": "node scripts/list-salons.mjs",
     "salon:test": "node apps/platform/tests/scope-audit.test.js && node apps/platform/tests/multi-salon.test.js && node apps/platform/tests/multi-salon-http.test.js",
+    "funnel:emulate": "node scripts/funnel-emulate.js",
     "selfserve:test": "node apps/platform/tests/llm-fallback.test.js && node apps/platform/tests/day-anchor.test.js && node apps/platform/tests/tenancy-reminders.test.js && node apps/platform/tests/self-serve-http.test.js && node apps/platform/tests/owner-alerts.test.js && node apps/platform/tests/owner-loop.test.js && node apps/platform/tests/billing-wizard.test.js && node apps/platform/tests/handoff.test.js && node apps/platform/tests/owner-surfaces.test.js && node apps/platform/tests/sec-maya.test.js"
   },
   "devDependencies": {
