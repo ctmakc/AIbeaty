@@ -1303,6 +1303,19 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       return dates.addDays(todayIso(), offset);
     }
 
+    // The model sometimes calls check_availability with no day at all. Falling
+    // back to today is wrong whenever the client just named a day, or the
+    // conversation already settled on one: the tool then answers about a day
+    // nobody asked about, and the time guard rewrites the reply around it
+    // ("no room Sunday" to a client asking about Friday).
+    function dayHintFor(session, turn) {
+      const named = findDates(String((turn && turn.userMessage) || "")).find((hit) => hit.offset !== undefined);
+      if (named) return dayIso(named.offset);
+      const draftDay = (session.state.draft || {}).dayOffset;
+      if (draftDay !== undefined && draftDay !== null) return dayIso(draftDay);
+      return "";
+    }
+
     function dayError(day) {
       const today = `${dates.WEEKDAY_EN[dates.weekdayOf(todayIso())]} ${todayIso()}`;
       if (day.error === "date_in_past") {
@@ -1906,7 +1919,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
           const service = matches[0];
           noteDraft(session, { serviceId: service.id, serviceName: service.name });
           if (consultOnly(service)) return consultOnlyResult(session, service);
-          const day = resolveDay(args.day);
+          const day = resolveDay(String(args.day || "").trim() || dayHintFor(session, turn));
           if (day.error) return dayError(day);
           const stylistPick = stylistForTool(session, turn, args.stylist);
           const stylist = stylistPick.row;
@@ -2486,7 +2499,13 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
       const h12 = h % 12 || 12;
       const forms = [`${h}:${mm}`, `${h}h${mm === "00" ? "" : mm}`, `${h} h${mm === "00" ? "" : ` ${mm}`}`, `${h12}:${mm}`];
       if (mm === "00") forms.push(`${h12} pm`, `${h12}pm`, `${h12} am`, `${h12}am`, `${h} ч`, `${h} год`);
-      return forms.some((form) => value.includes(form));
+      // A substring match is not enough: "12:00" contains "2:00", so an offer of
+      // 9:00 / 12:00 / 1:00 / 3:00 used to read as "the client saw 2:00 PM" and
+      // their "yes" committed a 14:00 slot nobody had shown them.
+      return forms.some((form) => {
+        const escaped = form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return new RegExp(`(?<![\\d:.])${escaped}(?![\\d])`).test(value);
+      });
     }
 
     // ---------- deterministic commit ----------

@@ -449,6 +449,7 @@ async function main() {
 
     // The client asks what else is free; the model invents times, the time
     // guard replaces them with the real free slots — 2:00 PM is not among them.
+    // 12:00 PM in that list must not read as "the client saw 2:00 PM".
     script.push(text("That day I can do 9:00 AM, 12:00 PM, 1:00 PM or 3:00 PM. Which one?"));
     const offer = await tenancy.chat(slug, { sessionId: session, message: "what other times are free that day?" });
     assert.ok(offer.state.gates.some((gate) => /^time_guard/.test(gate)), JSON.stringify(offer.state.gates));
@@ -471,6 +472,36 @@ async function main() {
     const row = store.db.prepare(`SELECT start_minutes FROM appointments WHERE salon_id = ? AND client_name = 'Nora Diaz'`).get(slug);
     assert.ok(row, "the re-confirmed booking is written");
     assert.strictEqual(row.start_minutes, 14 * 60, "Maya books the time she read back");
+  });
+
+  await step("an offer listing 12:00 is not read as the client having seen 2:00 PM", async () => {
+    const today = todayToronto();
+    const day = dates.addDays(today, 6);
+    const session = "web-client-s2";
+    script.push(toolCall("book_appointment", { service: "Gel manicure", day, time: "14:00", client_name: "Sam Okafor" }), text("ok"));
+    await tenancy.chat(slug, { sessionId: session, message: `Gel manicure ${day} at 2pm, I'm Sam Okafor` });
+    script.push(text(`On ${day} I have 9:00 AM, 12:00 PM, 1:00 PM or 3:00 PM free. Which suits you?`));
+    const offer = await tenancy.chat(slug, { sessionId: session, message: "what else is free?" });
+    assert.doesNotMatch(offer.reply, /2:00 PM/);
+    const consent = await tenancy.chat(slug, { sessionId: session, message: "yes, that's right" });
+    assert.ok(consent.state.gates.includes("stale_consent"), JSON.stringify(consent.state.gates));
+    assert.ok(!store.db.prepare(`SELECT 1 FROM appointments WHERE salon_id = ? AND client_name = 'Sam Okafor'`).get(slug),
+      "a 'yes' to a list that never showed 2:00 PM does not book 2:00 PM");
+  });
+
+  await step("check_availability with no day answers about the day the client named, not today", async () => {
+    const today = todayToronto();
+    const named = dates.addDays(today, 5);
+    let answeredFor = "";
+    script.push(
+      toolCall("check_availability", { service: "Gel manicure" }), // the model forgot the day
+      (messages) => {
+        answeredFor = (lastToolResult(messages) || {}).date || "";
+        return text("Let me see.");
+      }
+    );
+    await tenancy.chat(slug, { sessionId: "web-client-h1", message: `Anything for a Gel manicure on ${named}?` });
+    assert.strictEqual(answeredFor, named, `availability answered for ${answeredFor}, the client named ${named}`);
   });
 
   fs.rmSync(dir, { recursive: true, force: true });

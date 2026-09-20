@@ -125,6 +125,23 @@ function buildPriceAllowList({ services = [], faqTexts = [], extra = [], clientM
       quantities.forEach((qty) => add(unit * qty));
     }
   });
+  // An add-on is its own row in the price list ("Nail art  +$15", "Toner +$40").
+  // "Gel manicure with nail art is $70" is then the owner's own arithmetic, so
+  // base + add-on totals are allowed; anything else still is not.
+  const addOnAmounts = services
+    .map((service) => String(service.price_label || service.price || ""))
+    .filter((label) => priceKind(label) === "add_on")
+    .map((label) => amountsIn(label)[0])
+    .filter((num) => Number.isFinite(num));
+  if (addOnAmounts.length) {
+    services.forEach((service) => {
+      const label = String(service.price_label || service.price || "");
+      if (priceKind(label) === "add_on") return;
+      const base = amountsIn(label);
+      base.forEach((amount) => addOnAmounts.forEach((extraAmount) => add(amount + extraAmount)));
+    });
+  }
+
   faqTexts.forEach((text) => amountsIn(text).forEach(add));
   extra.forEach((num) => add(Number(num)));
   return allowed;
