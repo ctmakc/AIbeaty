@@ -152,7 +152,10 @@ function findDateExpressions(text, todayIso, opts = {}) {
   }
 
   // Month in words + day ("Sep 24", "24 septembre", "24 сентября", optional year).
-  const wordDateRe = /(\d{1,2})(?:st|nd|rd|th|er|e|-?го|-?е)?\s+(?:de\s+)?([a-zà-ÿа-яёіїєґ]{3,}\.?)(?:,?\s+(\d{4}))?|([a-zà-ÿа-яёіїєґ]{3,}\.?)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?/giu;
+  // The day number may not be a slice of a longer number: without the
+  // lookarounds, "mardi 22 septembre 2026" also matched "septembre 20" and
+  // resolved to September 20 — the wrong day, and the first hit in the list.
+  const wordDateRe = /(?<!\d)(\d{1,2})(?:st|nd|rd|th|er|e|-?го|-?е)?(?!\d)\s+(?:de\s+)?([a-zà-ÿа-яёіїєґ]{3,}\.?)(?:,?\s+(\d{4}))?|([a-zà-ÿа-яёіїєґ]{3,}\.?)\s+(?<!\d)(\d{1,2})(?:st|nd|rd|th)?(?!\d)(?:,?\s+(\d{4}))?/giu;
   while ((match = wordDateRe.exec(lower)) !== null) {
     const day = Number(match[1] || match[5]);
     const month = monthIndex(match[2] || match[4]);

@@ -136,6 +136,14 @@ async function main() {
     assert.strictEqual(dates.findDateExpressions("this Friday", "2026-09-18", { todayOver: true })[0].offset, 0);
     assert.strictEqual(dates.findDateExpressions("vendredi", "2026-09-18", {})[0].offset, 0);
     assert.strictEqual(dates.findDateExpressions("в пятницу", "2026-09-18", { todayOver: true })[0].offset, 7);
+    // A year is not a day of the month: "mardi 22 septembre 2026" used to yield
+    // "septembre 20" first, so the reply was read as being about Sep 20.
+    const frDate = dates.findDateExpressions("Voici les créneaux le mardi 22 septembre 2026 : 12 h ou 15 h.", "2026-09-20", {});
+    assert.ok(frDate.length, "the French date is found");
+    frDate.forEach((hit) => assert.strictEqual(hit.offset, 2, `"${hit.phrase}" → offset ${hit.offset}`));
+    const enDate = dates.findDateExpressions("We are open in September 2026.", "2026-09-20", {});
+    assert.deepStrictEqual(enDate, [], "a bare month + year names no day");
+    assert.strictEqual(dates.findDateExpressions("See you Sep 24, 2026", "2026-09-20", {})[0].offset, 4);
     const { isAffirmation, affirmationRemainder } = assistant._internals;
     assert.ok(isAffirmation("yes cancel. but what about my deposit??"));
     assert.strictEqual(affirmationRemainder("yes cancel. but what about my deposit??"), "what about my deposit??");

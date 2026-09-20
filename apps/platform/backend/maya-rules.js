@@ -99,7 +99,7 @@ const PRICE_NOTES = {
   per_unit: "Priced per unit. Quote the label verbatim; multiply only by a quantity the client gave, and say the final price is confirmed at the visit.",
   range: "A range. Quote it verbatim, e.g. \"$220–$320\"; the stylist confirms the final price.",
   from: "A starting price. Quote it verbatim with the word \"from\"; the final price is confirmed at the visit.",
-  add_on: "An add-on to another service. Quote it verbatim; do not add prices up into a total.",
+  add_on: "An add-on to another service. Quote it verbatim; you may add it to one fixed base price and give the total.",
   fixed: "Fixed price. Quote it exactly."
 };
 

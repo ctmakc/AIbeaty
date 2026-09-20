@@ -1896,7 +1896,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
         case "get_services_and_prices": {
           const rows = args.query ? resolveServices(args.query) : [];
           const list = (rows.length ? rows : allServices()).map((row) => serviceSummary(session, row));
-          return { services: list, note: "These are the only services the salon offers. Quote each price label verbatim (ranges, \"from\", add-ons, per-unit, Free, By consultation) and never add prices up." };
+          return { services: list, note: "These are the only services the salon offers. Quote each price label verbatim (ranges, \"from\", add-ons, per-unit, Free, By consultation). The only sum you may do is a fixed base price plus an add-on row; never invent any other total." };
         }
 
         case "check_availability": {
@@ -3514,7 +3514,7 @@ function createAssistant({ store: rootStore, llm, faqPath, clock, alertEmail, al
           preGates.push("fact_regen");
           const notes = [];
           if (badPrices.length) {
-            notes.push(`The amount(s) ${badPrices.map((price) => `$${price}`).join(", ")} are not in the salon's data. Quote price labels exactly as the tools and the FAQ give them (ranges like "$220–$320", "from $75", "+$15", "$5/nail", "Free", "By consultation"). Never add prices up and never invent an amount.`);
+            notes.push(`The amount(s) ${badPrices.map((price) => `$${price}`).join(", ")} are not in the salon's data. Quote price labels exactly as the tools and the FAQ give them (ranges like "$220–$320", "from $75", "+$15", "$5/nail", "Free", "By consultation"). The only sum allowed is a fixed base price plus an add-on row; never invent an amount.`);
           }
           badClosed.forEach(({ offset }) => {
             notes.push(`The salon is OPEN on ${dayIso(offset)} (${dates.WEEKDAY_EN[dates.weekdayOf(dayIso(offset))]}, ${hoursLabelForOffset(offset)}). Never say it is closed. If a team member is off that day, say who is off and who works.`);
