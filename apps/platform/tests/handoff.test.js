@@ -436,6 +436,43 @@ async function main() {
     assert.ok(!store.db.prepare(`SELECT 1 FROM appointments WHERE salon_id = ? AND client_name = 'Kim Lee'`).get(slug));
   });
 
+  await step("a 'yes' after Maya offered other times re-reads the staged slot back instead of booking it", async () => {
+    const today = todayToronto();
+    const day = dates.addDays(today, 5);
+    const session = "web-client-s1";
+
+    // Maya stages 2:00 PM and reads it back.
+    script.push(toolCall("book_appointment", { service: "Gel manicure", day, time: "14:00", client_name: "Nora Diaz" }), text("ok"));
+    const staged = await tenancy.chat(slug, { sessionId: session, message: `Gel manicure ${day} at 2pm, I'm Nora Diaz` });
+    assert.match(staged.reply, /2:00 PM/);
+    assert.match(staged.reply, /Shall I book it\?/);
+
+    // The client asks what else is free; the model invents times, the time
+    // guard replaces them with the real free slots — 2:00 PM is not among them.
+    script.push(text("That day I can do 9:00 AM, 12:00 PM, 1:00 PM or 3:00 PM. Which one?"));
+    const offer = await tenancy.chat(slug, { sessionId: session, message: "what other times are free that day?" });
+    assert.ok(offer.state.gates.some((gate) => /^time_guard/.test(gate)), JSON.stringify(offer.state.gates));
+    assert.match(offer.reply, /I can offer 10:00 AM/);
+    assert.doesNotMatch(offer.reply, /2:00 PM/, "the fresh offer does not contain the staged time");
+
+    // "yes" now means one of THOSE times, so nothing may be booked silently.
+    const consent = await tenancy.chat(slug, { sessionId: session, message: "yes" });
+    assert.ok(consent.state.gates.includes("stale_consent"), JSON.stringify(consent.state.gates));
+    assert.match(consent.reply, /2:00 PM/);
+    assert.match(consent.reply, /Shall I book it\?/);
+    assert.ok(
+      !store.db.prepare(`SELECT 1 FROM appointments WHERE salon_id = ? AND client_name = 'Nora Diaz'`).get(slug),
+      "no appointment before the client saw the time they are agreeing to"
+    );
+
+    // A second "yes", now against a read-back that does show 2:00 PM, books it.
+    const done = await tenancy.chat(slug, { sessionId: session, message: "yes" });
+    assert.match(done.reply, /you're booked/);
+    const row = store.db.prepare(`SELECT start_minutes FROM appointments WHERE salon_id = ? AND client_name = 'Nora Diaz'`).get(slug);
+    assert.ok(row, "the re-confirmed booking is written");
+    assert.strictEqual(row.start_minutes, 14 * 60, "Maya books the time she read back");
+  });
+
   fs.rmSync(dir, { recursive: true, force: true });
   console.log(`handoff: ${passed} checks passed`);
 }

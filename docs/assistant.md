@@ -165,20 +165,24 @@ client's language). Script: kept in repo history; acceptance bar was 9/10.
 
 | Model | Provider | Tools | Notes |
 | --- | --- | --- | --- |
-| **deepseek-v4-pro:0813** | Ollama Cloud Pro | **10/10** | **Winner.** Fastest (avg ~1.0s/turn), natural warm RU, correct RU/UK/EN mirroring. Default. |
+| **gpt-oss:120b** | Ollama Cloud (free tier) | 10/10 | **Default since 2026-09-20.** Answers on the lapsed plan, RU/UK/EN/FR mirroring correct, avg ~2s/turn. |
+| nemotron-3-super | Ollama Cloud (free tier) | 10/10 | Second link of the default chain. |
+| deepseek-v4-pro:0813 | Ollama Cloud Pro | 10/10 | Was the default until 2026-09-18. Fastest (~1.0s/turn), but HTTP 403 "not included in your free usage" since the plan lapsed — put it back in front of `LLM_MODEL` only with a paid plan. |
 | glm-5.2 | Ollama Cloud Pro | 10/10 | Avg ~1.7s. Warm, uses emoji freely. Solid fallback. |
 | qwen3.5:397b | Ollama Cloud Pro | 10/10 | Avg ~2.2s. Slightly formal RU. Fallback. |
 | kimi-k3 | Ollama Cloud | 0/10 | Blocked: HTTP 402 — model is "extra usage only" on our plan. |
 | kimi-k3 | OpenCode Zen | 0/10 | Blocked: HTTP 429 — monthly usage limit reached (resets ~2026-08-26). |
 
 End-to-end (booking dialogue → SQLite row → schedule API) verified live with
-deepseek-v4-pro:0813.
+gpt-oss:120b (`npm run assistant:test`, last turn = `assistant-live-smoke`).
 
 ### Wiring (env — see `.env.example`)
 
 - `LLM_BASE_URL` — default `https://ollama.com/v1`
 - `LLM_API_KEY` or `LLM_API_KEY_FILE` — default file `~/.ollama/api_key`
-- `LLM_MODEL` — default `deepseek-v4-pro:0813`
+- `LLM_MODEL` — default `gpt-oss:120b,nemotron-3-super` (a comma-separated
+  chain; a model that answers 4xx is benched 10 min and the next one takes the
+  turn)
 
 Any OpenAI-compatible endpoint with function calling drops in (a future
 Anthropic OpenAI-compat endpoint is a 2-var swap). No SDK — plain `fetch`.
